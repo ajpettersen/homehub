@@ -3,20 +3,36 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: HomeHub household management API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: dashboard
+    description: Dashboard summary
+  - name: family
+    description: Family members
+  - name: properties
+    description: Properties (house and cabin)
+  - name: chores
+    description: Chore assignments and tracking
+  - name: grocery
+    description: Grocery lists and items
+  - name: meals
+    description: Meal planning
+  - name: todos
+    description: To-do lists and items
+  - name: maintenance
+    description: Home maintenance tasks and reminders
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +40,559 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get dashboard summary for today
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /family-members:
+    get:
+      operationId: getFamilyMembers
+      tags: [family]
+      summary: List all family members
+      responses:
+        "200":
+          description: List of family members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FamilyMember"
+
+  /properties:
+    get:
+      operationId: getProperties
+      tags: [properties]
+      summary: List all properties
+      responses:
+        "200":
+          description: List of properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Property"
+
+  /chores:
+    get:
+      operationId: getChores
+      tags: [chores]
+      summary: List all chores
+      parameters:
+        - name: assigneeId
+          in: query
+          schema:
+            type: string
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of chores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Chore"
+    post:
+      operationId: createChore
+      tags: [chores]
+      summary: Create a new chore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChoreInput"
+      responses:
+        "201":
+          description: Created chore
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chore"
+
+  /chores/{id}:
+    put:
+      operationId: updateChore
+      tags: [chores]
+      summary: Update a chore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChoreInput"
+      responses:
+        "200":
+          description: Updated chore
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chore"
+    delete:
+      operationId: deleteChore
+      tags: [chores]
+      summary: Delete a chore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /chores/{id}/complete:
+    post:
+      operationId: completeChore
+      tags: [chores]
+      summary: Mark a chore as complete
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteChoreInput"
+      responses:
+        "200":
+          description: Updated chore
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chore"
+
+  /grocery-lists:
+    get:
+      operationId: getGroceryLists
+      tags: [grocery]
+      summary: List all grocery lists
+      responses:
+        "200":
+          description: List of grocery lists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroceryList"
+    post:
+      operationId: createGroceryList
+      tags: [grocery]
+      summary: Create a grocery list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroceryListInput"
+      responses:
+        "201":
+          description: Created grocery list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroceryList"
+
+  /grocery-lists/{id}:
+    delete:
+      operationId: deleteGroceryList
+      tags: [grocery]
+      summary: Delete a grocery list
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /grocery-lists/{id}/items:
+    get:
+      operationId: getGroceryItems
+      tags: [grocery]
+      summary: Get items in a grocery list
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Grocery items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroceryItem"
+    post:
+      operationId: addGroceryItem
+      tags: [grocery]
+      summary: Add item to grocery list
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroceryItemInput"
+      responses:
+        "201":
+          description: Created grocery item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroceryItem"
+
+  /grocery-items/{id}:
+    put:
+      operationId: updateGroceryItem
+      tags: [grocery]
+      summary: Update a grocery item (check/uncheck, rename)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGroceryItemInput"
+      responses:
+        "200":
+          description: Updated grocery item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroceryItem"
+    delete:
+      operationId: deleteGroceryItem
+      tags: [grocery]
+      summary: Delete a grocery item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /meal-plans:
+    get:
+      operationId: getMealPlans
+      tags: [meals]
+      summary: List meal plans
+      parameters:
+        - name: weekStart
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: List of meal plan entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MealPlanEntry"
+    post:
+      operationId: createMealPlanEntry
+      tags: [meals]
+      summary: Create or update a meal plan entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMealPlanEntryInput"
+      responses:
+        "201":
+          description: Created meal plan entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MealPlanEntry"
+
+  /meal-plans/{id}:
+    delete:
+      operationId: deleteMealPlanEntry
+      tags: [meals]
+      summary: Delete a meal plan entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /todo-lists:
+    get:
+      operationId: getTodoLists
+      tags: [todos]
+      summary: List all to-do lists
+      responses:
+        "200":
+          description: List of to-do lists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TodoList"
+    post:
+      operationId: createTodoList
+      tags: [todos]
+      summary: Create a to-do list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTodoListInput"
+      responses:
+        "201":
+          description: Created to-do list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodoList"
+
+  /todo-lists/{id}:
+    delete:
+      operationId: deleteTodoList
+      tags: [todos]
+      summary: Delete a to-do list
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /todo-lists/{id}/items:
+    get:
+      operationId: getTodoItems
+      tags: [todos]
+      summary: Get items in a to-do list
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: To-do items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TodoItem"
+    post:
+      operationId: addTodoItem
+      tags: [todos]
+      summary: Add item to a to-do list
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTodoItemInput"
+      responses:
+        "201":
+          description: Created to-do item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodoItem"
+
+  /todo-items/{id}:
+    put:
+      operationId: updateTodoItem
+      tags: [todos]
+      summary: Update a to-do item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTodoItemInput"
+      responses:
+        "200":
+          description: Updated to-do item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodoItem"
+    delete:
+      operationId: deleteTodoItem
+      tags: [todos]
+      summary: Delete a to-do item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /maintenance-tasks:
+    get:
+      operationId: getMaintenanceTasks
+      tags: [maintenance]
+      summary: List all maintenance tasks
+      parameters:
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of maintenance tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MaintenanceTask"
+    post:
+      operationId: createMaintenanceTask
+      tags: [maintenance]
+      summary: Create a maintenance task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMaintenanceTaskInput"
+      responses:
+        "201":
+          description: Created maintenance task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceTask"
+
+  /maintenance-tasks/{id}:
+    put:
+      operationId: updateMaintenanceTask
+      tags: [maintenance]
+      summary: Update a maintenance task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMaintenanceTaskInput"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceTask"
+    delete:
+      operationId: deleteMaintenanceTask
+      tags: [maintenance]
+      summary: Delete a maintenance task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /maintenance-tasks/{id}/complete:
+    post:
+      operationId: completeMaintenanceTask
+      tags: [maintenance]
+      summary: Mark a maintenance task as done (resets next due date)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceTask"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +603,508 @@ components:
       required:
         - status
 
+    DashboardSummary:
+      type: object
+      properties:
+        choresToday:
+          type: integer
+        choresOverdue:
+          type: integer
+        maintenanceDueSoon:
+          type: integer
+        maintenanceOverdue:
+          type: integer
+        activeTodoItems:
+          type: integer
+        todaysMeals:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealPlanEntry"
+        upcomingMaintenance:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaintenanceTask"
+      required:
+        - choresToday
+        - choresOverdue
+        - maintenanceDueSoon
+        - maintenanceOverdue
+        - activeTodoItems
+        - todaysMeals
+        - upcomingMaintenance
+
+    FamilyMember:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [parent, child, pet]
+        color:
+          type: string
+      required:
+        - id
+        - name
+        - role
+        - color
+
+    Property:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [house, cabin]
+        icon:
+          type: string
+      required:
+        - id
+        - name
+        - type
+        - icon
+
+    Chore:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        assigneeId:
+          type: string
+          nullable: true
+        assigneeName:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+        propertyName:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekly, biweekly, monthly, custom]
+        dueDate:
+          type: string
+          format: date
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedBy:
+          type: string
+          nullable: true
+        isOverdue:
+          type: boolean
+        points:
+          type: integer
+      required:
+        - id
+        - title
+        - propertyId
+        - propertyName
+        - frequency
+        - isOverdue
+        - points
+
+    CreateChoreInput:
+      type: object
+      properties:
+        title:
+          type: string
+        assigneeId:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekly, biweekly, monthly, custom]
+        dueDate:
+          type: string
+          format: date
+          nullable: true
+        points:
+          type: integer
+      required:
+        - title
+        - propertyId
+        - frequency
+
+    UpdateChoreInput:
+      type: object
+      properties:
+        title:
+          type: string
+        assigneeId:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekly, biweekly, monthly, custom]
+        dueDate:
+          type: string
+          format: date
+          nullable: true
+        points:
+          type: integer
+
+    CompleteChoreInput:
+      type: object
+      properties:
+        completedBy:
+          type: string
+      required:
+        - completedBy
+
+    GroceryList:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        propertyId:
+          type: string
+        propertyName:
+          type: string
+        itemCount:
+          type: integer
+        checkedCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - propertyId
+        - propertyName
+        - itemCount
+        - checkedCount
+        - createdAt
+
+    CreateGroceryListInput:
+      type: object
+      properties:
+        name:
+          type: string
+        propertyId:
+          type: string
+      required:
+        - name
+        - propertyId
+
+    GroceryItem:
+      type: object
+      properties:
+        id:
+          type: string
+        listId:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        checked:
+          type: boolean
+        addedBy:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - listId
+        - name
+        - checked
+        - createdAt
+
+    CreateGroceryItemInput:
+      type: object
+      properties:
+        name:
+          type: string
+        quantity:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        addedBy:
+          type: string
+          nullable: true
+      required:
+        - name
+
+    UpdateGroceryItemInput:
+      type: object
+      properties:
+        name:
+          type: string
+        quantity:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        checked:
+          type: boolean
+
+    MealPlanEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        weekStart:
+          type: string
+          format: date
+        dayOfWeek:
+          type: integer
+          minimum: 0
+          maximum: 6
+        mealType:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        meal:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+      required:
+        - id
+        - weekStart
+        - dayOfWeek
+        - mealType
+        - meal
+        - propertyId
+
+    CreateMealPlanEntryInput:
+      type: object
+      properties:
+        weekStart:
+          type: string
+          format: date
+        dayOfWeek:
+          type: integer
+          minimum: 0
+          maximum: 6
+        mealType:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        meal:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+      required:
+        - weekStart
+        - dayOfWeek
+        - mealType
+        - meal
+        - propertyId
+
+    TodoList:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        assigneeId:
+          type: string
+          nullable: true
+        assigneeName:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+          nullable: true
+        itemCount:
+          type: integer
+        completedCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - itemCount
+        - completedCount
+        - createdAt
+
+    CreateTodoListInput:
+      type: object
+      properties:
+        name:
+          type: string
+        assigneeId:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+          nullable: true
+      required:
+        - name
+
+    TodoItem:
+      type: object
+      properties:
+        id:
+          type: string
+        listId:
+          type: string
+        content:
+          type: string
+        completed:
+          type: boolean
+        dueDate:
+          type: string
+          format: date
+          nullable: true
+        assigneeId:
+          type: string
+          nullable: true
+        assigneeName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - listId
+        - content
+        - completed
+        - createdAt
+
+    CreateTodoItemInput:
+      type: object
+      properties:
+        content:
+          type: string
+        dueDate:
+          type: string
+          format: date
+          nullable: true
+        assigneeId:
+          type: string
+          nullable: true
+      required:
+        - content
+
+    UpdateTodoItemInput:
+      type: object
+      properties:
+        content:
+          type: string
+        completed:
+          type: boolean
+        dueDate:
+          type: string
+          format: date
+          nullable: true
+        assigneeId:
+          type: string
+          nullable: true
+
+    MaintenanceTask:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+        propertyName:
+          type: string
+        category:
+          type: string
+          enum: [filter, water, seasonal, appliance, yard, other]
+        frequencyDays:
+          type: integer
+        lastCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextDueDate:
+          type: string
+          format: date
+        isOverdue:
+          type: boolean
+        isDueSoon:
+          type: boolean
+      required:
+        - id
+        - title
+        - propertyId
+        - propertyName
+        - category
+        - frequencyDays
+        - nextDueDate
+        - isOverdue
+        - isDueSoon
+
+    CreateMaintenanceTaskInput:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+        category:
+          type: string
+          enum: [filter, water, seasonal, appliance, yard, other]
+        frequencyDays:
+          type: integer
+        nextDueDate:
+          type: string
+          format: date
+      required:
+        - title
+        - propertyId
+        - category
+        - frequencyDays
+        - nextDueDate
+
+    UpdateMaintenanceTaskInput:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        category:
+          type: string
+          enum: [filter, water, seasonal, appliance, yard, other]
+        frequencyDays:
+          type: integer
+        nextDueDate:
+          type: string
+          format: date
