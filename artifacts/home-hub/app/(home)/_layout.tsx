@@ -10,8 +10,9 @@ export default function HomeLayout() {
     setAuthTokenGetter(() => getToken());
   }, [getToken]);
   
-  if (!isLoaded) return null;
-  if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
+  // Auth guard disabled for preview — re-enable before going live
+  // if (!isLoaded) return null;
+  // if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
   
   return <Stack screenOptions={{ headerShown: false }} />;
 }
