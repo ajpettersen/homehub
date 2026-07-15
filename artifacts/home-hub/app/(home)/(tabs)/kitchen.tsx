@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
+import { PropertySwitcher } from '@/components/PropertySwitcher';
+import { useProperty } from '@/context/PropertyContext';
 import {
   useGetGroceryLists,
   useCreateGroceryList,
@@ -149,6 +151,7 @@ export default function KitchenScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const queryClient = useQueryClient();
+  const { selectedProperty } = useProperty();
   
   const [activeTab, setActiveTab] = useState<'groceries' | 'meals'>('groceries');
   
@@ -158,7 +161,9 @@ export default function KitchenScreen() {
   const [newListName, setNewListName] = useState('');
   
   const { data: properties } = useGetProperties();
-  const { data: lists, isLoading: isLoadingLists } = useGetGroceryLists();
+  const { data: allLists, isLoading: isLoadingLists } = useGetGroceryLists();
+  // Filter grocery lists to the selected property
+  const lists = allLists?.filter((l: any) => !selectedProperty || l.propertyId === selectedProperty.id);
   const createList = useCreateGroceryList();
   
   // Meals state
@@ -186,7 +191,7 @@ export default function KitchenScreen() {
 
   const handleCreateList = () => {
     if (!newListName.trim() || !properties?.length) return;
-    createList.mutate({ data: { name: newListName.trim(), propertyId: properties[0].id } }, {
+    createList.mutate({ data: { name: newListName.trim(), propertyId: selectedProperty?.id ?? properties?.[0]?.id ?? '' } }, {
       onSuccess: () => {
         setNewListName('');
         setIsAddListModalVisible(false);
@@ -203,7 +208,7 @@ export default function KitchenScreen() {
         dayOfWeek: newMeal.dayOfWeek,
         mealType: newMeal.mealType as any,
         meal: newMeal.meal.trim(),
-        propertyId: properties[0].id
+        propertyId: selectedProperty?.id ?? properties?.[0]?.id ?? ''
       }
     }, {
       onSuccess: () => {
@@ -231,6 +236,10 @@ export default function KitchenScreen() {
         >
           <IconComponent name="plus" iosName="plus" size={24} color={colors.primary} />
         </Pressable>
+      </View>
+
+      <View style={styles.switcherRow}>
+        <PropertySwitcher />
       </View>
 
       <View style={styles.topTabs}>
@@ -420,6 +429,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingHorizontal: 24,
     paddingBottom: 8,
+  },
+  switcherRow: {
+    paddingHorizontal: 24,
+    paddingBottom: 12,
   },
   headerTitle: {
     fontSize: 28,

@@ -43,6 +43,7 @@ export const MaintenanceTaskCategory = {
   appliance: 'appliance',
   yard: 'yard',
   other: 'other',
+  cleaning: 'cleaning',
 } as const;
 
 export interface MaintenanceTask {
@@ -53,7 +54,9 @@ export interface MaintenanceTask {
   propertyName: string;
   category: MaintenanceTaskCategory;
   frequencyDays: number;
+  isCleanerTask: boolean;
   lastCompletedAt?: string | null;
+  lastCompletedBy?: string | null;
   nextDueDate: string;
   isOverdue: boolean;
   isDueSoon: boolean;
@@ -284,6 +287,7 @@ export const CreateMaintenanceTaskInputCategory = {
   appliance: 'appliance',
   yard: 'yard',
   other: 'other',
+  cleaning: 'cleaning',
 } as const;
 
 export interface CreateMaintenanceTaskInput {
@@ -292,6 +296,7 @@ export interface CreateMaintenanceTaskInput {
   propertyId: string;
   category: CreateMaintenanceTaskInputCategory;
   frequencyDays: number;
+  isCleanerTask?: boolean;
   nextDueDate: string;
 }
 
@@ -305,14 +310,20 @@ export const UpdateMaintenanceTaskInputCategory = {
   appliance: 'appliance',
   yard: 'yard',
   other: 'other',
+  cleaning: 'cleaning',
 } as const;
 
 export interface UpdateMaintenanceTaskInput {
   title?: string;
   description?: string | null;
   category?: UpdateMaintenanceTaskInputCategory;
+  isCleanerTask?: boolean;
   frequencyDays?: number;
   nextDueDate?: string;
+}
+
+export interface CompleteMaintenanceTaskBody {
+  completedBy?: string;
 }
 
 export type GetChoresParams = {

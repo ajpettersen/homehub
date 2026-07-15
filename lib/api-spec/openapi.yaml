@@ -1042,12 +1042,17 @@ components:
           type: string
         category:
           type: string
-          enum: [filter, water, seasonal, appliance, yard, other]
+          enum: [filter, water, seasonal, appliance, yard, other, cleaning]
         frequencyDays:
           type: integer
+        isCleanerTask:
+          type: boolean
         lastCompletedAt:
           type: string
           format: date-time
+          nullable: true
+        lastCompletedBy:
+          type: string
           nullable: true
         nextDueDate:
           type: string
@@ -1063,6 +1068,7 @@ components:
         - propertyName
         - category
         - frequencyDays
+        - isCleanerTask
         - nextDueDate
         - isOverdue
         - isDueSoon
@@ -1079,9 +1085,11 @@ components:
           type: string
         category:
           type: string
-          enum: [filter, water, seasonal, appliance, yard, other]
+          enum: [filter, water, seasonal, appliance, yard, other, cleaning]
         frequencyDays:
           type: integer
+        isCleanerTask:
+          type: boolean
         nextDueDate:
           type: string
           format: date
@@ -1102,7 +1110,9 @@ components:
           nullable: true
         category:
           type: string
-          enum: [filter, water, seasonal, appliance, yard, other]
+          enum: [filter, water, seasonal, appliance, yard, other, cleaning]
+        isCleanerTask:
+          type: boolean
         frequencyDays:
           type: integer
         nextDueDate:

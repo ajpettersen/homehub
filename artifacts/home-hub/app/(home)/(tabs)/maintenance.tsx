@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, RefreshControl, Pressable, Platform, Modal, TextInput } from 'react-native';
+import {
+  StyleSheet, Text, View, ScrollView, RefreshControl,
+  Pressable, Platform, Modal, TextInput, ActivityIndicator,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
@@ -9,262 +12,409 @@ import {
   useGetMaintenanceTasks,
   useCreateMaintenanceTask,
   useCompleteMaintenanceTask,
-  useGetProperties,
-  getMaintenanceTasksQueryKey,
-  MaintenanceTaskCategory
+  useGetFamilyMembers,
+  getGetMaintenanceTasksQueryKey,
+  MaintenanceTask,
+  MaintenanceTaskCategory,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
+import { PropertySwitcher } from '@/components/PropertySwitcher';
+import { useProperty } from '@/context/PropertyContext';
 
-const IconComponent = ({ name, iosName, size, color }: { name: any, iosName: string, size: number, color: string }) => {
-  if (Platform.OS === 'ios') {
-    return <SymbolView name={iosName} tintColor={color} size={size} />;
-  }
+const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size: number; color: string }) => {
+  if (Platform.OS === 'ios') return <SymbolView name={iosName} tintColor={color} size={size} />;
   return <FeatherIcon name={name} size={size} color={color} />;
 };
+
+function UrgencyBadge({ task, colors }: { task: MaintenanceTask; colors: any }) {
+  const bg = task.isOverdue ? '#FEF2F2' : task.isDueSoon ? '#FEF9C3' : '#F0FDF4';
+  const fg = task.isOverdue ? colors.danger : task.isDueSoon ? '#B45309' : colors.success;
+  const label = task.isOverdue ? 'Overdue' : task.isDueSoon ? 'Due Soon' : 'Upcoming';
+  return (
+    <View style={[styles.urgencyBadge, { backgroundColor: bg }]}>
+      <Text style={[styles.urgencyText, { color: fg }]}>{label}</Text>
+    </View>
+  );
+}
+
+function TaskCard({
+  task,
+  onMarkDone,
+  colors,
+  isPending,
+}: {
+  task: MaintenanceTask;
+  onMarkDone: (task: MaintenanceTask) => void;
+  colors: any;
+  isPending: boolean;
+}) {
+  const lastDoneText = task.lastCompletedAt
+    ? `Done ${format(new Date(task.lastCompletedAt), 'MMM d')}${task.lastCompletedBy ? ` by ${task.lastCompletedBy}` : ''}`
+    : 'Never completed';
+
+  return (
+    <View style={[styles.taskCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={styles.taskTop}>
+        <Text style={[styles.taskTitle, { color: colors.foreground }]} numberOfLines={2}>{task.title}</Text>
+        <UrgencyBadge task={task} colors={colors} />
+      </View>
+      {task.description ? (
+        <Text style={[styles.taskDesc, { color: colors.mutedForeground }]} numberOfLines={2}>
+          {task.description}
+        </Text>
+      ) : null}
+      <View style={styles.taskBottom}>
+        <View style={styles.taskMeta}>
+          <Icon name="calendar" iosName="calendar" size={13} color={colors.mutedForeground} />
+          <Text style={[styles.taskMetaText, { color: colors.mutedForeground }]}>
+            {format(new Date(task.nextDueDate), 'MMM d')} · every {task.frequencyDays}d
+          </Text>
+        </View>
+        <View style={styles.taskMeta}>
+          <Icon name="clock" iosName="clock" size={13} color={colors.mutedForeground} />
+          <Text style={[styles.taskMetaText, { color: colors.mutedForeground }]}>{lastDoneText}</Text>
+        </View>
+      </View>
+      <Pressable
+        style={({ pressed }) => [
+          styles.doneBtn,
+          { backgroundColor: task.isOverdue ? colors.danger : colors.primary },
+          (pressed || isPending) && { opacity: 0.7 },
+        ]}
+        onPress={() => onMarkDone(task)}
+        disabled={isPending}
+      >
+        {isPending ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <>
+            <Icon name="check" iosName="checkmark" size={15} color="#fff" />
+            <Text style={styles.doneBtnText}>Mark Done</Text>
+          </>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+function TaskSection({
+  title,
+  tasks,
+  onMarkDone,
+  colors,
+  pendingId,
+  emptyText,
+}: {
+  title: string;
+  tasks: MaintenanceTask[];
+  onMarkDone: (task: MaintenanceTask) => void;
+  colors: any;
+  pendingId: string | null;
+  emptyText?: string;
+}) {
+  const overdue = tasks.filter((t) => t.isOverdue);
+  const dueSoon = tasks.filter((t) => t.isDueSoon && !t.isOverdue);
+  const upcoming = tasks.filter((t) => !t.isDueSoon && !t.isOverdue);
+
+  if (tasks.length === 0 && emptyText) {
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>
+        <View style={[styles.emptyCard, { backgroundColor: colors.secondary }]}>
+          <Icon name="check-circle" iosName="checkmark.circle.fill" size={24} color={colors.mutedForeground} />
+          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{emptyText}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (tasks.length === 0) return null;
+
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>
+      {overdue.length > 0 && (
+        <View style={styles.subSection}>
+          <Text style={[styles.subSectionLabel, { color: colors.danger }]}>Needs attention</Text>
+          {overdue.map((t) => (
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} colors={colors} isPending={pendingId === t.id} />
+          ))}
+        </View>
+      )}
+      {dueSoon.length > 0 && (
+        <View style={styles.subSection}>
+          <Text style={[styles.subSectionLabel, { color: '#B45309' }]}>Due soon</Text>
+          {dueSoon.map((t) => (
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} colors={colors} isPending={pendingId === t.id} />
+          ))}
+        </View>
+      )}
+      {upcoming.length > 0 && (
+        <View style={styles.subSection}>
+          <Text style={[styles.subSectionLabel, { color: colors.mutedForeground }]}>Upcoming</Text>
+          {upcoming.map((t) => (
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} colors={colors} isPending={pendingId === t.id} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
 
 export default function MaintenanceScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const queryClient = useQueryClient();
-  
-  const { data: properties } = useGetProperties();
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
-  
-  // Default to first property if null
-  React.useEffect(() => {
-    if (properties?.length && !selectedPropertyId) {
-      setSelectedPropertyId(properties[0].id);
-    }
-  }, [properties]);
-  
-  const { data: tasks, isLoading } = useGetMaintenanceTasks(selectedPropertyId ? { propertyId: selectedPropertyId } : undefined);
-  
+  const { selectedProperty } = useProperty();
+  const { data: members } = useGetFamilyMembers();
+
+  const { data: tasks, isLoading, refetch } = useGetMaintenanceTasks(
+    selectedProperty ? { propertyId: selectedProperty.id } : undefined,
+  );
+
   const completeTask = useCompleteMaintenanceTask();
   const createTask = useCreateMaintenanceTask();
-  
-  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+
   const [refreshing, setRefreshing] = useState(false);
-  
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  // "Who did it?" sheet
+  const [whoSheet, setWhoSheet] = useState<{ task: MaintenanceTask } | null>(null);
+  // Add task modal
+  const [isAddVisible, setIsAddVisible] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', category: 'other', frequencyDays: '30', isCleanerTask: false });
+
   const onRefresh = async () => {
     setRefreshing(true);
     await queryClient.invalidateQueries({ queryKey: getMaintenanceTasksQueryKey() });
     setRefreshing(false);
   };
-  
-  const handleComplete = (taskId: string) => {
-    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    completeTask.mutate({ id: taskId }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getMaintenanceTasksQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
-      }
-    });
+
+  const handleMarkDone = (task: MaintenanceTask) => {
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setWhoSheet({ task });
   };
 
-  const [newTask, setNewTask] = useState<{title: string, category: string, frequencyDays: string, propertyId: string}>({
-    title: '',
-    category: 'other',
-    frequencyDays: '30',
-    propertyId: ''
-  });
-
-  React.useEffect(() => {
-    if (properties?.length && !newTask.propertyId) {
-      setNewTask(prev => ({ ...prev, propertyId: properties[0].id }));
-    }
-  }, [properties]);
+  const handleConfirmDone = (task: MaintenanceTask, completedBy: string) => {
+    setWhoSheet(null);
+    setPendingId(task.id);
+    completeTask.mutate(
+      { id: task.id, data: { completedBy } },
+      {
+        onSettled: () => {
+          setPendingId(null);
+          queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
+        },
+      },
+    );
+  };
 
   const handleCreate = () => {
-    if (!newTask.title || !newTask.propertyId || !newTask.frequencyDays) return;
-    
+    if (!newTask.title || !selectedProperty) return;
     const nextDate = addDays(new Date(), parseInt(newTask.frequencyDays, 10));
-    
-    createTask.mutate({
-      data: {
-        title: newTask.title,
-        propertyId: newTask.propertyId,
-        category: newTask.category as any,
-        frequencyDays: parseInt(newTask.frequencyDays, 10),
-        nextDueDate: nextDate.toISOString()
-      }
-    }, {
-      onSuccess: () => {
-        setIsAddModalVisible(false);
-        setNewTask({ title: '', category: 'other', frequencyDays: '30', propertyId: properties?.[0]?.id || '' });
-        queryClient.invalidateQueries({ queryKey: getMaintenanceTasksQueryKey() });
-      }
-    });
+    createTask.mutate(
+      {
+        data: {
+          title: newTask.title,
+          propertyId: selectedProperty.id,
+          category: newTask.category as any,
+          frequencyDays: parseInt(newTask.frequencyDays, 10),
+          isCleanerTask: newTask.isCleanerTask,
+          nextDueDate: nextDate.toISOString().split('T')[0],
+        },
+      },
+      {
+        onSuccess: () => {
+          setIsAddVisible(false);
+          setNewTask({ title: '', category: 'other', frequencyDays: '30', isCleanerTask: false });
+          queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
+        },
+      },
+    );
   };
 
-  // Organize tasks
-  const overdueTasks = tasks?.filter(t => t.isOverdue) || [];
-  const dueSoonTasks = tasks?.filter(t => t.isDueSoon && !t.isOverdue) || [];
-  const upcomingTasks = tasks?.filter(t => !t.isDueSoon && !t.isOverdue) || [];
+  const isCabin = selectedProperty?.type === 'cabin';
+  const yourTasks = tasks?.filter((t) => !t.isCleanerTask) ?? [];
+  const cleanerTasks = tasks?.filter((t) => t.isCleanerTask) ?? [];
 
-  const renderTask = (task: any) => (
-    <View key={task.id} style={[styles.taskCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={styles.taskContent}>
-        <View style={styles.taskHeader}>
-          <Text style={[styles.taskTitle, { color: colors.foreground }]}>{task.title}</Text>
-          <View style={[
-            styles.urgencyBadge,
-            { backgroundColor: task.isOverdue ? '#FEF2F2' : task.isDueSoon ? '#FEF9C3' : '#F0FDF4' }
-          ]}>
-            <Text style={[
-              styles.urgencyText,
-              { color: task.isOverdue ? colors.danger : task.isDueSoon ? '#B45309' : colors.success }
-            ]}>
-              {task.isOverdue ? 'Overdue' : task.isDueSoon ? 'Due Soon' : 'Upcoming'}
-            </Text>
-          </View>
-        </View>
-        
-        <View style={styles.taskFooter}>
-          <View style={styles.taskMeta}>
-            <IconComponent name="calendar" iosName="calendar" size={14} color={colors.mutedForeground} />
-            <Text style={[styles.taskMetaText, { color: colors.mutedForeground }]}>
-              {format(new Date(task.nextDueDate), 'MMM d, yyyy')}
-            </Text>
-            <Text style={[styles.taskMetaDot, { color: colors.mutedForeground }]}>•</Text>
-            <Text style={[styles.taskMetaText, { color: colors.mutedForeground }]}>
-              Every {task.frequencyDays} days
-            </Text>
-          </View>
-          
-          <Pressable
-            style={({pressed}) => [
-              styles.doneButton,
-              { backgroundColor: colors.secondary },
-              pressed && { opacity: 0.8 }
-            ]}
-            onPress={() => handleComplete(task.id)}
-            disabled={completeTask.isPending}
-          >
-            <Text style={[styles.doneButtonText, { color: colors.primary }]}>Mark Done</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
+  // Who options: parents + "Cleaner"
+  const whoOptions = [
+    ...(members?.filter((m) => m.role === 'parent') ?? []).map((m) => ({ id: m.id, name: m.name, color: m.color })),
+    { id: 'cleaner', name: 'Cleaner', color: '#6B7280' },
+  ];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Maintenance</Text>
-        <Pressable 
-          style={({pressed}) => [styles.addButton, pressed && { opacity: 0.7 }]}
-          onPress={() => setIsAddModalVisible(true)}
+        <Pressable
+          style={({ pressed }) => [styles.addButton, pressed && { opacity: 0.7 }]}
+          onPress={() => setIsAddVisible(true)}
         >
-          <IconComponent name="plus" iosName="plus" size={24} color={colors.primary} />
+          <Icon name="plus" iosName="plus" size={24} color={colors.primary} />
         </Pressable>
       </View>
 
-      <View style={styles.segmentedControlContainer}>
-        <View style={[styles.segmentedControl, { backgroundColor: colors.secondary }]}>
-          {properties?.map(prop => (
-            <Pressable
-              key={prop.id}
-              style={[
-                styles.segmentSegment,
-                selectedPropertyId === prop.id && { backgroundColor: colors.card, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }
-              ]}
-              onPress={() => setSelectedPropertyId(prop.id)}
-            >
-              <Text style={[
-                styles.segmentText,
-                selectedPropertyId === prop.id ? { color: colors.foreground, fontFamily: 'Inter_600SemiBold' } : { color: colors.mutedForeground }
-              ]}>{prop.name}</Text>
-            </Pressable>
-          ))}
-        </View>
+      {/* Property switcher */}
+      <View style={styles.switcherRow}>
+        <PropertySwitcher />
       </View>
 
-      <ScrollView 
+      {isCabin && (
+        <View style={styles.contextBanner}>
+          <Icon name="map-pin" iosName="location.fill" size={14} color={colors.primary} />
+          <Text style={[styles.contextText, { color: colors.primary }]}>
+            Showing tasks for when you're at the cabin
+          </Text>
+        </View>
+      )}
+
+      <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        {overdueTasks.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.danger }]}>Needs Attention</Text>
-            {overdueTasks.map(renderTask)}
-          </View>
-        )}
-        
-        {dueSoonTasks.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: '#B45309' }]}>Due Soon</Text>
-            {dueSoonTasks.map(renderTask)}
-          </View>
-        )}
-        
-        {upcomingTasks.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Upcoming</Text>
-            {upcomingTasks.map(renderTask)}
-          </View>
-        )}
-        
-        {(!tasks || tasks.length === 0) && !isLoading && (
-           <View style={[styles.emptyCard, { backgroundColor: colors.secondary }]}>
-            <IconComponent name="check-circle" iosName="checkmark.circle.fill" size={32} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No tasks to manage right now.</Text>
-          </View>
+        {isLoading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+        ) : isCabin ? (
+          <TaskSection
+            title="On-Site Tasks"
+            tasks={tasks ?? []}
+            onMarkDone={handleMarkDone}
+            colors={colors}
+            pendingId={pendingId}
+            emptyText="No cabin tasks yet. Tap + to add one."
+          />
+        ) : (
+          <>
+            <TaskSection
+              title="Your Tasks"
+              tasks={yourTasks}
+              onMarkDone={handleMarkDone}
+              colors={colors}
+              pendingId={pendingId}
+              emptyText="No personal tasks for this property."
+            />
+            <TaskSection
+              title="Cleaner's Checklist"
+              tasks={cleanerTasks}
+              onMarkDone={handleMarkDone}
+              colors={colors}
+              pendingId={pendingId}
+              emptyText="No cleaner tasks yet. Add one with the + button."
+            />
+          </>
         )}
       </ScrollView>
 
+      {/* Who did it? sheet */}
+      <Modal visible={!!whoSheet} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Who completed this?</Text>
+            {whoSheet && (
+              <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]} numberOfLines={2}>
+                {whoSheet.task.title}
+              </Text>
+            )}
+            <View style={styles.whoGrid}>
+              {whoOptions.map((who) => (
+                <Pressable
+                  key={who.id}
+                  style={({ pressed }) => [
+                    styles.whoOption,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  onPress={() => whoSheet && handleConfirmDone(whoSheet.task, who.name)}
+                >
+                  <View style={[styles.whoAvatar, { backgroundColor: who.color }]}>
+                    <Text style={styles.whoAvatarText}>{who.name.charAt(0)}</Text>
+                  </View>
+                  <Text style={[styles.whoName, { color: colors.foreground }]}>{who.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable
+              style={[styles.cancelBtn, { borderColor: colors.border }]}
+              onPress={() => setWhoSheet(null)}
+            >
+              <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       {/* Add Task Modal */}
-      <Modal visible={isAddModalVisible} animationType="slide" transparent>
+      <Modal visible={isAddVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }]}>
-            <View style={styles.modalHeader}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeaderRow}>
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Task</Text>
-              <Pressable onPress={() => setIsAddModalVisible(false)} style={styles.closeButton}>
-                <IconComponent name="x" iosName="xmark" size={24} color={colors.foreground} />
+              <Pressable onPress={() => setIsAddVisible(false)}>
+                <Icon name="x" iosName="xmark" size={22} color={colors.mutedForeground} />
               </Pressable>
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.foreground }]}>Task Title</Text>
+              <Text style={[styles.label, { color: colors.foreground }]}>Task Name</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
                 value={newTask.title}
-                onChangeText={(text) => setNewTask(prev => ({ ...prev, title: text }))}
-                placeholder="e.g. Change AC Filter"
+                onChangeText={(t) => setNewTask((p) => ({ ...p, title: t }))}
+                placeholder="e.g. Clean gutters"
                 placeholderTextColor={colors.mutedForeground}
+                autoFocus
               />
             </View>
-            
+
             <View style={styles.formRow}>
               <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={[styles.label, { color: colors.foreground }]}>Frequency (Days)</Text>
+                <Text style={[styles.label, { color: colors.foreground }]}>Every (days)</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
                   value={newTask.frequencyDays}
-                  onChangeText={(text) => setNewTask(prev => ({ ...prev, frequencyDays: text }))}
+                  onChangeText={(t) => setNewTask((p) => ({ ...p, frequencyDays: t }))}
                   keyboardType="number-pad"
-                  placeholder="90"
+                  placeholder="30"
                   placeholderTextColor={colors.mutedForeground}
                 />
               </View>
-              <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={[styles.label, { color: colors.foreground }]}>Category</Text>
-                <View style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, justifyContent: 'center' }]}>
-                  <Text style={{ color: colors.foreground, fontSize: 16 }}>{newTask.category}</Text>
+              {!isCabin && (
+                <View style={[styles.formGroup, { flex: 1 }]}>
+                  <Text style={[styles.label, { color: colors.foreground }]}>Who does it?</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <Pressable
+                      style={[styles.pill, !newTask.isCleanerTask ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+                      onPress={() => setNewTask((p) => ({ ...p, isCleanerTask: false }))}
+                    >
+                      <Text style={[styles.pillText, { color: !newTask.isCleanerTask ? colors.primaryForeground : colors.foreground }]}>Us</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.pill, newTask.isCleanerTask ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+                      onPress={() => setNewTask((p) => ({ ...p, isCleanerTask: true }))}
+                    >
+                      <Text style={[styles.pillText, { color: newTask.isCleanerTask ? colors.primaryForeground : colors.foreground }]}>Cleaner</Text>
+                    </Pressable>
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
-            
+
             <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.foreground }]}>Category Selection</Text>
+              <Text style={[styles.label, { color: colors.foreground }]}>Category</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {Object.values(MaintenanceTaskCategory).map(cat => (
+                {Object.values(MaintenanceTaskCategory).map((cat) => (
                   <Pressable
                     key={cat}
                     style={[styles.pill, newTask.category === cat ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
-                    onPress={() => setNewTask(prev => ({ ...prev, category: cat }))}
+                    onPress={() => setNewTask((p) => ({ ...p, category: cat }))}
                   >
-                    <Text style={[styles.pillText, newTask.category === cat ? { color: colors.primaryForeground } : { color: colors.foreground }]}>{cat}</Text>
+                    <Text style={[styles.pillText, { color: newTask.category === cat ? colors.primaryForeground : colors.foreground }]}>{cat}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
@@ -274,13 +424,13 @@ export default function MaintenanceScreen() {
               style={({ pressed }) => [
                 styles.submitButton,
                 { backgroundColor: colors.primary },
-                (!newTask.title || !newTask.propertyId || !newTask.frequencyDays) && { opacity: 0.5 },
-                pressed && { opacity: 0.8 }
+                (!newTask.title || !selectedProperty) && { opacity: 0.5 },
+                pressed && { opacity: 0.8 },
               ]}
               onPress={handleCreate}
-              disabled={!newTask.title || !newTask.propertyId || !newTask.frequencyDays || createTask.isPending}
+              disabled={!newTask.title || !selectedProperty || createTask.isPending}
             >
-              <Text style={[styles.submitButtonText, { color: colors.primaryForeground }]}>Create Task</Text>
+              <Text style={[styles.submitButtonText, { color: colors.primaryForeground }]}>Add Task</Text>
             </Pressable>
           </View>
         </View>
@@ -296,7 +446,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingHorizontal: 24,
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   headerTitle: {
     fontSize: 28,
@@ -309,162 +459,221 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  segmentedControlContainer: {
+  switcherRow: {
     paddingHorizontal: 24,
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
-  segmentedControl: {
+  contextBanner: {
     flexDirection: 'row',
-    padding: 4,
-    borderRadius: 12,
-  },
-  segmentSegment: {
-    flex: 1,
-    paddingVertical: 8,
     alignItems: 'center',
-    borderRadius: 8,
+    gap: 6,
+    marginHorizontal: 24,
+    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#F0FDF4',
   },
-  segmentText: {
-    fontSize: 14,
+  contextText: {
+    fontSize: 13,
     fontFamily: 'Inter_500Medium',
   },
   scrollContent: {
     paddingHorizontal: 24,
-    gap: 24,
+    gap: 28,
     paddingTop: 8,
   },
   section: {
     gap: 12,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: -0.3,
+  },
+  subSection: {
+    gap: 8,
+  },
+  subSectionLabel: {
+    fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
-    marginLeft: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginLeft: 2,
   },
   taskCard: {
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
+    gap: 10,
   },
-  taskContent: {
-    gap: 16,
-  },
-  taskHeader: {
+  taskTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: 12,
   },
   taskTitle: {
+    flex: 1,
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
-    flex: 1,
-    marginRight: 16,
+  },
+  taskDesc: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 20,
+  },
+  taskBottom: {
+    gap: 4,
+  },
+  taskMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  taskMetaText: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+  },
+  doneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  doneBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
   },
   urgencyBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    flexShrink: 0,
   },
   urgencyText: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
   },
-  taskFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  taskMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  taskMetaText: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-  },
-  taskMetaDot: {
-    fontSize: 12,
-  },
-  doneButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  doneButtonText: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-  },
   emptyCard: {
-    padding: 32,
+    padding: 28,
     borderRadius: 16,
     alignItems: 'center',
-    gap: 16,
-    marginTop: 20,
+    gap: 10,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
   modalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingTop: 32,
-    gap: 20,
+    paddingTop: 16,
+    gap: 16,
   },
-  modalHeader: {
+  modalHandle: {
+    width: 36, height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+  modalHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontFamily: 'Inter_700Bold',
   },
-  closeButton: {
-    padding: 4,
+  modalSubtitle: {
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+    marginTop: -8,
   },
-  formGroup: {
-    gap: 8,
-  },
-  formRow: {
+  whoGrid: {
     flexDirection: 'row',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 10,
   },
+  whoOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minWidth: '45%',
+    flex: 1,
+  },
+  whoAvatar: {
+    width: 32, height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  whoAvatarText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  whoName: {
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
+  },
+  cancelBtn: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
+  },
+  formGroup: { gap: 8 },
+  formRow: { flexDirection: 'row', gap: 12 },
   label: {
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },
   input: {
-    height: 52,
+    height: 50,
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
   },
   pill: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 20,
   },
   pillText: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: 'Inter_500Medium',
     textTransform: 'capitalize',
   },
   submitButton: {
-    height: 56,
+    height: 54,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 8,
   },
   submitButtonText: {
     fontSize: 16,

@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import { Redirect, Stack } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
+import { PropertyProvider } from "@/context/PropertyContext";
 
 export default function HomeLayout() {
   const { isSignedIn, isLoaded, getToken } = useAuth();
@@ -18,5 +19,9 @@ export default function HomeLayout() {
     if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <PropertyProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </PropertyProvider>
+  );
 }

@@ -25,6 +25,7 @@ import type {
   CreateChoreInput,
   CreateGroceryItemInput,
   CreateGroceryListInput,
+  CompleteMaintenanceTaskBody,
   CreateMaintenanceTaskInput,
   CreateMealPlanEntryInput,
   CreateTodoItemInput,
@@ -2310,14 +2311,14 @@ export const getCompleteMaintenanceTaskUrl = (id: string,) => {
 /**
  * @summary Mark a maintenance task as done (resets next due date)
  */
-export const completeMaintenanceTask = async (id: string, options?: RequestInit): Promise<MaintenanceTask> => {
+export const completeMaintenanceTask = async (id: string, body?: CompleteMaintenanceTaskBody, options?: RequestInit): Promise<MaintenanceTask> => {
 
   return customFetch<MaintenanceTask>(getCompleteMaintenanceTaskUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(body ?? {})
   }
 );}
 
@@ -2339,10 +2340,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeMaintenanceTask>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeMaintenanceTask>>, {id: string; data?: CompleteMaintenanceTaskBody}> = (props) => {
+          const {id, data} = props ?? {};
 
-          return  completeMaintenanceTask(id,requestOptions)
+          return  completeMaintenanceTask(id, data, requestOptions)
         }
 
 

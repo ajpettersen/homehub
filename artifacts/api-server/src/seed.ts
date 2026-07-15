@@ -377,3 +377,78 @@ export async function fixStaleMaintenanceDates() {
     logger.error({ err }, "Failed to fix maintenance dates");
   }
 }
+
+/** Seed cleaner-specific maintenance tasks for the Main House if none exist */
+export async function ensureHouseCleanerTasks() {
+  try {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(maintenanceTasksTable)
+      .where(sql`is_cleaner_task = true`);
+
+    if (count > 0) return;
+
+    const properties = await db.select().from(propertiesTable).orderBy(propertiesTable.id);
+    const house = properties.find((p) => p.type === "house");
+    if (!house) return;
+
+    const today = new Date();
+    const addD = (d: Date, n: number) => {
+      const r = new Date(d); r.setDate(r.getDate() + n); return r.toISOString().split("T")[0];
+    };
+
+    logger.info("Seeding cleaner maintenance tasks for Main House...");
+
+    await db.insert(maintenanceTasksTable).values([
+      {
+        title: "Deep clean kitchen",
+        description: "Clean oven, microwave, behind appliances, and inside cabinets",
+        propertyId: house.id,
+        category: "cleaning",
+        frequencyDays: 30,
+        isCleanerTask: true,
+        nextDueDate: addD(today, 7),
+      },
+      {
+        title: "Clean all bathrooms",
+        description: "Scrub toilets, tubs, sinks, and mop floors",
+        propertyId: house.id,
+        category: "cleaning",
+        frequencyDays: 14,
+        isCleanerTask: true,
+        nextDueDate: addD(today, 5),
+      },
+      {
+        title: "Vacuum and mop all floors",
+        description: "All rooms including under furniture",
+        propertyId: house.id,
+        category: "cleaning",
+        frequencyDays: 14,
+        isCleanerTask: true,
+        nextDueDate: addD(today, 5),
+      },
+      {
+        title: "Clean interior windows",
+        description: "Wipe down all interior window glass and sills",
+        propertyId: house.id,
+        category: "cleaning",
+        frequencyDays: 90,
+        isCleanerTask: true,
+        nextDueDate: addD(today, 30),
+      },
+      {
+        title: "Wash bedding & linens",
+        description: "All beds, pillow cases, and bathroom towels",
+        propertyId: house.id,
+        category: "cleaning",
+        frequencyDays: 14,
+        isCleanerTask: true,
+        nextDueDate: addD(today, 3),
+      },
+    ]);
+
+    logger.info("Cleaner tasks seeded successfully");
+  } catch (err) {
+    logger.error({ err }, "Failed to seed cleaner tasks");
+  }
+}

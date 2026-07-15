@@ -25,7 +25,9 @@ function formatTask(
     propertyName,
     category: task.category,
     frequencyDays: task.frequencyDays,
+    isCleanerTask: task.isCleanerTask,
     lastCompletedAt: task.lastCompletedAt?.toISOString() ?? null,
+    lastCompletedBy: task.lastCompletedBy ?? null,
     nextDueDate: task.nextDueDate,
     isOverdue,
     isDueSoon,
@@ -59,7 +61,7 @@ router.get("/maintenance-tasks", async (req, res) => {
 
 router.post("/maintenance-tasks", async (req, res) => {
   try {
-    const { title, description, propertyId, category, frequencyDays, nextDueDate } = req.body;
+    const { title, description, propertyId, category, frequencyDays, nextDueDate, isCleanerTask } = req.body;
     if (!title || !propertyId || !category || !frequencyDays || !nextDueDate) {
       return res.status(400).json({ error: "title, propertyId, category, frequencyDays, nextDueDate required" });
     }
@@ -72,6 +74,7 @@ router.post("/maintenance-tasks", async (req, res) => {
         propertyId: Number(propertyId),
         category,
         frequencyDays: Number(frequencyDays),
+        isCleanerTask: isCleanerTask === true,
         nextDueDate,
       })
       .returning();
@@ -87,7 +90,7 @@ router.post("/maintenance-tasks", async (req, res) => {
 router.put("/maintenance-tasks/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { title, description, category, frequencyDays, nextDueDate } = req.body;
+    const { title, description, category, frequencyDays, nextDueDate, isCleanerTask } = req.body;
 
     await db
       .update(maintenanceTasksTable)
@@ -97,6 +100,7 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
         ...(category !== undefined && { category }),
         ...(frequencyDays !== undefined && { frequencyDays: Number(frequencyDays) }),
         ...(nextDueDate !== undefined && { nextDueDate }),
+        ...(isCleanerTask !== undefined && { isCleanerTask: Boolean(isCleanerTask) }),
       })
       .where(eq(maintenanceTasksTable.id, id));
 
@@ -127,6 +131,7 @@ router.delete("/maintenance-tasks/:id", async (req, res) => {
 router.post("/maintenance-tasks/:id/complete", async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const { completedBy } = req.body;
 
     const [existing] = await db
       .select()
@@ -141,7 +146,11 @@ router.post("/maintenance-tasks/:id/complete", async (req, res) => {
 
     await db
       .update(maintenanceTasksTable)
-      .set({ lastCompletedAt: new Date(), nextDueDate })
+      .set({
+        lastCompletedAt: new Date(),
+        lastCompletedBy: completedBy ?? null,
+        nextDueDate,
+      })
       .where(eq(maintenanceTasksTable.id, id));
 
     const rows = await db

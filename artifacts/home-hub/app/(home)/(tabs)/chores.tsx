@@ -11,6 +11,8 @@ import {
   getGetChoresQueryKey,
   ChoreFrequency
 } from '@workspace/api-client-react';
+import { PropertySwitcher } from '@/components/PropertySwitcher';
+import { useProperty } from '@/context/PropertyContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
@@ -27,11 +29,16 @@ export default function ChoresScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const queryClient = useQueryClient();
+  const { selectedProperty } = useProperty();
   
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   
-  const { data: chores, isLoading: isLoadingChores } = useGetChores(selectedMemberId ? { assigneeId: selectedMemberId } : undefined);
+  const choreParams: any = {};
+  if (selectedMemberId) choreParams.assigneeId = selectedMemberId;
+  if (selectedProperty) choreParams.propertyId = selectedProperty.id;
+  
+  const { data: chores, isLoading: isLoadingChores } = useGetChores(Object.keys(choreParams).length ? choreParams : undefined);
   const { data: members } = useGetFamilyMembers();
   const { data: properties } = useGetProperties();
   
@@ -101,6 +108,10 @@ export default function ChoresScreen() {
         >
           <IconComponent name="plus" iosName="plus" size={24} color={colors.primary} />
         </Pressable>
+      </View>
+
+      <View style={styles.switcherRow}>
+        <PropertySwitcher />
       </View>
 
       <View style={styles.filterRow}>
@@ -293,6 +304,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  switcherRow: {
+    paddingHorizontal: 24,
+    paddingBottom: 12,
   },
   filterRow: {
     marginBottom: 16,

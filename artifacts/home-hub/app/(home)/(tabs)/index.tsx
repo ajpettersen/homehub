@@ -1,93 +1,63 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View, ScrollView, RefreshControl, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { useGetDashboard, useGetProperties, getGetDashboardQueryKey, getGetPropertiesQueryKey } from '@workspace/api-client-react';
+import { useGetDashboard, getGetDashboardQueryKey, getGetPropertiesQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
+import { PropertySwitcher } from '@/components/PropertySwitcher';
+import { useProperty } from '@/context/PropertyContext';
+
+const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size: number; color: string }) => {
+  if (Platform.OS === 'ios') return <SymbolView name={iosName} tintColor={color} size={size} />;
+  return <FeatherIcon name={name} size={size} color={color} />;
+};
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const queryClient = useQueryClient();
-  
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
-  
-  const { data: dashboard, isLoading: isLoadingDashboard, refetch: refetchDashboard } = useGetDashboard();
-  const { data: properties, isLoading: isLoadingProperties } = useGetProperties();
-  
-  const [refreshing, setRefreshing] = useState(false);
+  const { selectedProperty } = useProperty();
+
+  const { data: dashboard } = useGetDashboard();
+  const [refreshing, setRefreshing] = React.useState(false);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getGetPropertiesQueryKey() })
+      queryClient.invalidateQueries({ queryKey: getGetPropertiesQueryKey() }),
     ]);
     setRefreshing(false);
   };
-  
+
   const todayDate = format(new Date(), 'EEEE, MMMM d');
-  
-  const IconComponent = ({ name, iosName, size, color }: { name: any, iosName: string, size: number, color: string }) => {
-    if (Platform.OS === 'ios') {
-      return <SymbolView name={iosName} tintColor={color} size={size} />;
-    }
-    return <FeatherIcon name={name} size={size} color={color} />;
-  };
+
+  // Filter maintenance to selected property
+  const maintenance = dashboard?.upcomingMaintenance.filter(
+    (t) => !selectedProperty || t.propertyId === selectedProperty.id,
+  ) ?? [];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 20, backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <View>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>HomeHub</Text>
           <Text style={[styles.headerDate, { color: colors.mutedForeground }]}>{todayDate}</Text>
         </View>
       </View>
-      
-      <ScrollView 
+
+      {/* Persistent property switcher */}
+      <View style={styles.switcherRow}>
+        <PropertySwitcher />
+      </View>
+
+      <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        {properties && properties.length > 0 && (
-          <View style={styles.propertySelector}>
-            <Pressable
-              style={[
-                styles.propertyPill,
-                !selectedPropertyId && { backgroundColor: colors.primary }
-              ]}
-              onPress={() => setSelectedPropertyId(null)}
-            >
-              <Text style={[
-                styles.propertyPillText,
-                !selectedPropertyId ? { color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' } : { color: colors.mutedForeground }
-              ]}>All Properties</Text>
-            </Pressable>
-            {properties.map(prop => (
-              <Pressable
-                key={prop.id}
-                style={[
-                  styles.propertyPill,
-                  selectedPropertyId === prop.id && { backgroundColor: colors.primary }
-                ]}
-                onPress={() => setSelectedPropertyId(prop.id)}
-              >
-                <IconComponent 
-                  name={prop.type === 'house' ? 'home' : 'map-pin'} 
-                  iosName={prop.type === 'house' ? 'house.fill' : 'tree.fill'} 
-                  size={14} 
-                  color={selectedPropertyId === prop.id ? colors.primaryForeground : colors.mutedForeground} 
-                />
-                <Text style={[
-                  styles.propertyPillText,
-                  selectedPropertyId === prop.id ? { color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' } : { color: colors.mutedForeground }
-                ]}>{prop.name}</Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
         {dashboard && (
           <>
             <View style={styles.summaryRow}>
@@ -96,18 +66,30 @@ export default function DashboardScreen() {
                 <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Chores Today</Text>
               </View>
               <View style={[styles.summaryCard, { backgroundColor: dashboard.choresOverdue > 0 ? '#FEF2F2' : colors.secondary }]}>
-                <Text style={[styles.summaryValue, { color: dashboard.choresOverdue > 0 ? colors.danger : colors.primary }]}>{dashboard.choresOverdue}</Text>
-                <Text style={[styles.summaryLabel, { color: dashboard.choresOverdue > 0 ? colors.danger : colors.mutedForeground }]}>Overdue Chores</Text>
+                <Text style={[styles.summaryValue, { color: dashboard.choresOverdue > 0 ? colors.danger : colors.primary }]}>
+                  {dashboard.choresOverdue}
+                </Text>
+                <Text style={[styles.summaryLabel, { color: dashboard.choresOverdue > 0 ? colors.danger : colors.mutedForeground }]}>
+                  Overdue Chores
+                </Text>
               </View>
             </View>
             <View style={styles.summaryRow}>
               <View style={[styles.summaryCard, { backgroundColor: dashboard.maintenanceDueSoon > 0 ? '#FEF9C3' : colors.secondary }]}>
-                <Text style={[styles.summaryValue, { color: dashboard.maintenanceDueSoon > 0 ? colors.warning : colors.primary }]}>{dashboard.maintenanceDueSoon}</Text>
-                <Text style={[styles.summaryLabel, { color: dashboard.maintenanceDueSoon > 0 ? '#B45309' : colors.mutedForeground }]}>Maint. Due Soon</Text>
+                <Text style={[styles.summaryValue, { color: dashboard.maintenanceDueSoon > 0 ? colors.warning : colors.primary }]}>
+                  {dashboard.maintenanceDueSoon}
+                </Text>
+                <Text style={[styles.summaryLabel, { color: dashboard.maintenanceDueSoon > 0 ? '#B45309' : colors.mutedForeground }]}>
+                  Maint. Due Soon
+                </Text>
               </View>
               <View style={[styles.summaryCard, { backgroundColor: dashboard.maintenanceOverdue > 0 ? '#FEF2F2' : colors.secondary }]}>
-                <Text style={[styles.summaryValue, { color: dashboard.maintenanceOverdue > 0 ? colors.danger : colors.primary }]}>{dashboard.maintenanceOverdue}</Text>
-                <Text style={[styles.summaryLabel, { color: dashboard.maintenanceOverdue > 0 ? colors.danger : colors.mutedForeground }]}>Overdue Maint.</Text>
+                <Text style={[styles.summaryValue, { color: dashboard.maintenanceOverdue > 0 ? colors.danger : colors.primary }]}>
+                  {dashboard.maintenanceOverdue}
+                </Text>
+                <Text style={[styles.summaryLabel, { color: dashboard.maintenanceOverdue > 0 ? colors.danger : colors.mutedForeground }]}>
+                  Overdue Maint.
+                </Text>
               </View>
             </View>
 
@@ -115,46 +97,58 @@ export default function DashboardScreen() {
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Today's Meals</Text>
               {dashboard.todaysMeals.length > 0 ? (
                 <View style={[styles.mealsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  {['breakfast', 'lunch', 'dinner', 'snack'].map((mealType) => {
-                    const mealForType = dashboard.todaysMeals.find(m => m.mealType === mealType);
-                    if (!mealForType) return null;
+                  {['breakfast', 'lunch', 'dinner', 'snack'].map((mt) => {
+                    const meal = dashboard.todaysMeals.find((m) => m.mealType === mt);
+                    if (!meal) return null;
                     return (
-                      <View key={mealType} style={styles.mealRow}>
-                        <View style={styles.mealTypeContainer}>
-                          <Text style={[styles.mealType, { color: colors.mutedForeground }]}>{mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
-                        </View>
-                        <Text style={[styles.mealName, { color: colors.foreground }]}>{mealForType.meal}</Text>
+                      <View key={mt} style={styles.mealRow}>
+                        <Text style={[styles.mealType, { color: colors.mutedForeground }]}>
+                          {mt.charAt(0).toUpperCase() + mt.slice(1)}
+                        </Text>
+                        <Text style={[styles.mealName, { color: colors.foreground }]}>{meal.meal}</Text>
                       </View>
                     );
                   })}
                 </View>
               ) : (
                 <View style={[styles.emptyCard, { backgroundColor: colors.secondary }]}>
-                  <IconComponent name="coffee" iosName="cup.and.saucer.fill" size={24} color={colors.mutedForeground} />
-                  <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No meals planned for today. Tap Kitchen to add some!</Text>
+                  <Icon name="coffee" iosName="cup.and.saucer.fill" size={24} color={colors.mutedForeground} />
+                  <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                    No meals planned for today. Tap Kitchen to add some!
+                  </Text>
                 </View>
               )}
             </View>
 
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Upcoming Maintenance</Text>
-              {dashboard.upcomingMaintenance.filter(task => !selectedPropertyId || task.propertyId === selectedPropertyId).length > 0 ? (
-                dashboard.upcomingMaintenance
-                  .filter(task => !selectedPropertyId || task.propertyId === selectedPropertyId)
-                  .map(task => (
-                  <View key={task.id} style={[styles.taskCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                {selectedProperty ? `${selectedProperty.name} Maintenance` : 'Upcoming Maintenance'}
+              </Text>
+              {maintenance.length > 0 ? (
+                maintenance.map((task) => (
+                  <View
+                    key={task.id}
+                    style={[styles.taskCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
                     <View style={styles.taskInfo}>
                       <Text style={[styles.taskTitle, { color: colors.foreground }]}>{task.title}</Text>
-                      <Text style={[styles.taskProperty, { color: colors.mutedForeground }]}>{task.propertyName} • {task.category}</Text>
+                      <Text style={[styles.taskMeta, { color: colors.mutedForeground }]}>
+                        {task.propertyName} • {task.category}
+                        {(task as any).isCleanerTask ? ' • For cleaner' : ''}
+                      </Text>
                     </View>
-                    <View style={[
-                      styles.urgencyBadge,
-                      { backgroundColor: task.isOverdue ? '#FEF2F2' : task.isDueSoon ? '#FEF9C3' : '#F0FDF4' }
-                    ]}>
-                      <Text style={[
-                        styles.urgencyText,
-                        { color: task.isOverdue ? colors.danger : task.isDueSoon ? '#B45309' : colors.success }
-                      ]}>
+                    <View
+                      style={[
+                        styles.urgencyBadge,
+                        { backgroundColor: task.isOverdue ? '#FEF2F2' : task.isDueSoon ? '#FEF9C3' : '#F0FDF4' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.urgencyText,
+                          { color: task.isOverdue ? colors.danger : task.isDueSoon ? '#B45309' : colors.success },
+                        ]}
+                      >
                         {task.isOverdue ? 'Overdue' : task.isDueSoon ? 'Due Soon' : 'Upcoming'}
                       </Text>
                     </View>
@@ -162,7 +156,7 @@ export default function DashboardScreen() {
                 ))
               ) : (
                 <View style={[styles.emptyCard, { backgroundColor: colors.secondary }]}>
-                  <IconComponent name="check-circle" iosName="checkmark.circle.fill" size={24} color={colors.mutedForeground} />
+                  <Icon name="check-circle" iosName="checkmark.circle.fill" size={24} color={colors.mutedForeground} />
                   <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>All caught up on maintenance!</Text>
                 </View>
               )}
@@ -175,12 +169,10 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     paddingHorizontal: 24,
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   headerTitle: {
     fontSize: 28,
@@ -188,30 +180,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   headerDate: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: 'Inter_400Regular',
-    marginTop: 4,
+    marginTop: 2,
+  },
+  switcherRow: {
+    paddingHorizontal: 24,
+    paddingBottom: 16,
   },
   scrollContent: {
     paddingHorizontal: 24,
-    paddingTop: 16,
-    gap: 24,
-  },
-  propertySelector: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  propertyPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
-  },
-  propertyPillText: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    paddingTop: 8,
+    gap: 20,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -243,17 +223,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
-    gap: 16,
+    gap: 14,
   },
   mealRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
   },
-  mealTypeContainer: {
-    width: 80,
-  },
   mealType: {
+    width: 72,
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
   },
@@ -281,7 +259,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderRadius: 16,
-    marginBottom: 12,
   },
   taskInfo: {
     flex: 1,
@@ -291,7 +268,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
   },
-  taskProperty: {
+  taskMeta: {
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
   },
@@ -299,6 +276,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    marginLeft: 12,
   },
   urgencyText: {
     fontSize: 12,
