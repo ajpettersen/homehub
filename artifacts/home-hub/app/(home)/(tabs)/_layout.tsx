@@ -3,41 +3,12 @@ import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Tabs } from 'expo-router';
-import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
 import { SymbolView } from 'expo-symbols';
 
-function NativeTabLayout() {
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: 'house', selected: 'house.fill' }} />
-        <Label>Home</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="chores">
-        <Icon sf={{ default: 'checkmark.circle', selected: 'checkmark.circle.fill' }} />
-        <Label>Chores</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="kitchen">
-        <Icon sf={{ default: 'cart', selected: 'cart.fill' }} />
-        <Label>Kitchen</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="tasks">
-        <Icon sf={{ default: 'checklist', selected: 'checklist' }} />
-        <Label>Tasks</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="maintenance">
-        <Icon sf={{ default: 'wrench.and.screwdriver', selected: 'wrench.and.screwdriver.fill' }} />
-        <Label>Maintenance</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="settings">
-        <Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
-        <Label>Settings</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
+// NativeTabs (expo-router/unstable-native-tabs) and expo-glass-effect both
+// require native modules that are not bundled in Expo Go. We always use the
+// classic Tabs layout so the app works in Expo Go and dev builds alike.
 
 function ClassicTabLayout() {
   const colors = useColors();
@@ -154,8 +125,5 @@ function ClassicTabLayout() {
 }
 
 export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
-  }
   return <ClassicTabLayout />;
 }
