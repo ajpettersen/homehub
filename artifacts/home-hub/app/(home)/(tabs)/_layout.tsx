@@ -23,9 +23,9 @@ function NativeTabLayout() {
         <Icon sf={{ default: 'cart', selected: 'cart.fill' }} />
         <Label>Kitchen</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="lists">
-        <Icon sf={{ default: 'list.bullet', selected: 'list.bullet' }} />
-        <Label>Lists</Label>
+      <NativeTabs.Trigger name="tasks">
+        <Icon sf={{ default: 'checklist', selected: 'checklist' }} />
+        <Label>Tasks</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="maintenance">
         <Icon sf={{ default: 'wrench.and.screwdriver', selected: 'wrench.and.screwdriver.fill' }} />
@@ -114,14 +114,14 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="lists"
+        name="tasks"
         options={{
-          title: 'Lists',
+          title: 'Tasks',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="list.bullet" tintColor={color} size={24} />
+              <SymbolView name="checklist" tintColor={color} size={24} />
             ) : (
-              <Feather name="list" size={22} color={color} />
+              <Feather name="check-square" size={22} color={color} />
             ),
         }}
       />
