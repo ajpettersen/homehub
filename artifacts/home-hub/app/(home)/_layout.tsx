@@ -1,18 +1,22 @@
 import { useEffect } from "react";
+import { Platform } from "react-native";
 import { Redirect, Stack } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 
 export default function HomeLayout() {
   const { isSignedIn, isLoaded, getToken } = useAuth();
-  
+
   useEffect(() => {
     setAuthTokenGetter(() => getToken());
   }, [getToken]);
-  
-  // Auth guard disabled for preview — re-enable before going live
-  // if (!isLoaded) return null;
-  // if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
-  
+
+  // Web = Replit preview — auth bypassed so you can still see the app.
+  // On a real device (iOS/Android) Clerk auth is fully enforced.
+  if (Platform.OS !== "web") {
+    if (!isLoaded) return null;
+    if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
+  }
+
   return <Stack screenOptions={{ headerShown: false }} />;
 }

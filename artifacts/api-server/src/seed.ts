@@ -3,16 +3,28 @@ import {
   familyMembersTable,
   propertiesTable,
   maintenanceTasksTable,
+  choresTable,
   groceryListsTable,
   todoListsTable,
 } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { sql, lt } from "drizzle-orm";
 import { logger } from "./lib/logger";
 
 function addDays(date: Date, days: number): string {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
   return result.toISOString().split("T")[0];
+}
+
+/** Advance a date string forward by frequencyDays until it's in the future */
+function advanceToFuture(dateStr: string, frequencyDays: number): string {
+  const d = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  while (d < today) {
+    d.setDate(d.getDate() + frequencyDays);
+  }
+  return d.toISOString().split("T")[0];
 }
 
 export async function seedIfEmpty() {
@@ -26,7 +38,7 @@ export async function seedIfEmpty() {
     logger.info("Seeding database with initial data...");
 
     // Family members
-    const [aj, emily, holden, brody, daphne] = await db
+    await db
       .insert(familyMembersTable)
       .values([
         { name: "AJ", role: "parent", color: "#2D6A4F", avatarInitials: "AJ" },
@@ -35,21 +47,24 @@ export async function seedIfEmpty() {
         { name: "Brody", role: "child", color: "#E9C46A", avatarInitials: "BR" },
         { name: "Daphne", role: "child", color: "#A8DADC", avatarInitials: "DA" },
         { name: "Willa", role: "pet", color: "#BC6C25", avatarInitials: "WI" },
-      ])
-      .returning();
+      ]);
 
     // Properties
-    const [house, cabin] = await db
+    await db
       .insert(propertiesTable)
       .values([
         { name: "Main House", type: "house", icon: "home" },
         { name: "Cabin", type: "cabin", icon: "triangle" },
-      ])
-      .returning();
+      ]);
 
     const today = new Date();
 
     // Maintenance tasks for Main House
+    const [house, cabin] = await db
+      .select()
+      .from(propertiesTable)
+      .orderBy(propertiesTable.id);
+
     await db.insert(maintenanceTasksTable).values([
       {
         title: "Change furnace filter",
@@ -113,19 +128,21 @@ export async function seedIfEmpty() {
       },
       {
         title: "Winterize — shut off water",
-        description: "Turn off main water, drain pipes, winterize jet ski and four-wheeler, schedule pontoon pickup",
+        description:
+          "Turn off main water, drain pipes, winterize jet ski and four-wheeler, schedule pontoon pickup",
         propertyId: cabin.id,
         category: "seasonal",
         frequencyDays: 365,
-        nextDueDate: "2025-10-15",
+        nextDueDate: advanceToFuture("2025-10-15", 365),
       },
       {
         title: "Spring opening",
-        description: "Turn on water, de-winterize four-wheeler and jet ski, schedule pontoon launch",
+        description:
+          "Turn on water, de-winterize four-wheeler and jet ski, schedule pontoon launch",
         propertyId: cabin.id,
         category: "seasonal",
         frequencyDays: 365,
-        nextDueDate: "2026-05-01",
+        nextDueDate: advanceToFuture("2026-05-01", 365),
       },
     ]);
 
@@ -145,5 +162,218 @@ export async function seedIfEmpty() {
     logger.info("Database seeded successfully");
   } catch (err) {
     logger.error({ err }, "Failed to seed database");
+  }
+}
+
+/** Seed starter chores if the chores table is empty */
+export async function seedChoresIfEmpty() {
+  try {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(choresTable);
+
+    if (count > 0) return;
+
+    const members = await db.select().from(familyMembersTable).orderBy(familyMembersTable.id);
+    const properties = await db.select().from(propertiesTable).orderBy(propertiesTable.id);
+
+    if (!members.length || !properties.length) return;
+
+    const byName = (name: string) => members.find((m) => m.name === name);
+    const aj = byName("AJ");
+    const emily = byName("Emily");
+    const holden = byName("Holden");
+    const brody = byName("Brody");
+    const daphne = byName("Daphne");
+
+    const house = properties.find((p) => p.type === "house");
+    const cabin = properties.find((p) => p.type === "cabin");
+    if (!house || !cabin) return;
+
+    const today = new Date();
+    const t = (d: Date) => d.toISOString().split("T")[0];
+
+    logger.info("Seeding starter chores...");
+
+    await db.insert(choresTable).values([
+      // House — daily chores
+      {
+        title: "Unload dishwasher",
+        propertyId: house.id,
+        frequency: "daily",
+        dueDate: t(today),
+        points: 5,
+      },
+      {
+        title: "Feed Willa",
+        propertyId: house.id,
+        frequency: "daily",
+        dueDate: t(today),
+        points: 5,
+      },
+      {
+        title: "Wipe down kitchen counters",
+        propertyId: house.id,
+        frequency: "daily",
+        dueDate: t(today),
+        points: 5,
+      },
+      // House — weekly chores (unassigned)
+      {
+        title: "Take out trash & recycling",
+        propertyId: house.id,
+        frequency: "weekly",
+        dueDate: t(today),
+        points: 10,
+      },
+      {
+        title: "Vacuum main floor",
+        propertyId: house.id,
+        frequency: "weekly",
+        dueDate: addDays(today, 2),
+        points: 10,
+      },
+      {
+        title: "Mop floors",
+        propertyId: house.id,
+        frequency: "weekly",
+        dueDate: addDays(today, 3),
+        points: 10,
+      },
+      {
+        title: "Clean bathrooms",
+        propertyId: house.id,
+        frequency: "weekly",
+        dueDate: addDays(today, 4),
+        points: 15,
+      },
+      {
+        title: "Mow lawn",
+        propertyId: house.id,
+        frequency: "weekly",
+        dueDate: addDays(today, 5),
+        points: 20,
+      },
+      // AJ's chores
+      ...(aj
+        ? [
+            {
+              title: "Do laundry",
+              assigneeId: aj.id,
+              propertyId: house.id,
+              frequency: "weekly",
+              dueDate: addDays(today, 1),
+              points: 15,
+            },
+          ]
+        : []),
+      // Emily's chores
+      ...(emily
+        ? [
+            {
+              title: "Meal prep",
+              assigneeId: emily.id,
+              propertyId: house.id,
+              frequency: "weekly",
+              dueDate: addDays(today, 0),
+              points: 15,
+            },
+          ]
+        : []),
+      // Kids' chores — Holden (10)
+      ...(holden
+        ? [
+            {
+              title: "Clean room",
+              assigneeId: holden.id,
+              propertyId: house.id,
+              frequency: "weekly",
+              dueDate: addDays(today, 1),
+              points: 10,
+            },
+            {
+              title: "Take out trash",
+              assigneeId: holden.id,
+              propertyId: house.id,
+              frequency: "weekly",
+              dueDate: t(today),
+              points: 10,
+            },
+          ]
+        : []),
+      // Kids' chores — Brody (8)
+      ...(brody
+        ? [
+            {
+              title: "Clean room",
+              assigneeId: brody.id,
+              propertyId: house.id,
+              frequency: "weekly",
+              dueDate: addDays(today, 1),
+              points: 10,
+            },
+            {
+              title: "Unload dishwasher",
+              assigneeId: brody.id,
+              propertyId: house.id,
+              frequency: "daily",
+              dueDate: t(today),
+              points: 5,
+            },
+          ]
+        : []),
+      // Kids' chores — Daphne (5)
+      ...(daphne
+        ? [
+            {
+              title: "Pick up toys",
+              assigneeId: daphne.id,
+              propertyId: house.id,
+              frequency: "daily",
+              dueDate: t(today),
+              points: 5,
+            },
+            {
+              title: "Help set the table",
+              assigneeId: daphne.id,
+              propertyId: house.id,
+              frequency: "daily",
+              dueDate: t(today),
+              points: 5,
+            },
+          ]
+        : []),
+    ]);
+
+    logger.info("Starter chores seeded successfully");
+  } catch (err) {
+    logger.error({ err }, "Failed to seed chores");
+  }
+}
+
+/** Fix any seasonal maintenance tasks whose nextDueDate is in the past */
+export async function fixStaleMaintenanceDates() {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const stale = await db
+      .select()
+      .from(maintenanceTasksTable)
+      .where(lt(maintenanceTasksTable.nextDueDate, today));
+
+    if (!stale.length) return;
+
+    logger.info({ count: stale.length }, "Fixing stale maintenance due dates");
+
+    for (const task of stale) {
+      const fixed = advanceToFuture(task.nextDueDate, task.frequencyDays);
+      await db
+        .update(maintenanceTasksTable)
+        .set({ nextDueDate: fixed })
+        .where(sql`id = ${task.id}`);
+    }
+
+    logger.info("Maintenance dates fixed");
+  } catch (err) {
+    logger.error({ err }, "Failed to fix maintenance dates");
   }
 }

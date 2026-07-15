@@ -40,17 +40,22 @@ function GroceryListDetail({ listId, listName, onBack }: { listId: string, listN
   const deleteItem = useDeleteGroceryItem();
   
   const [newItemName, setNewItemName] = useState('');
+  const inputRef = React.useRef<TextInput>(null);
   
   const handleAdd = () => {
     if (!newItemName.trim()) return;
+    const name = newItemName.trim();
+    setNewItemName(''); // clear immediately so it feels instant
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     addItem.mutate({
       id: listId,
-      data: { name: newItemName.trim() }
+      data: { name }
     }, {
       onSuccess: () => {
-        setNewItemName('');
         queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(listId) });
         queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
+        // Keep keyboard open for rapid entry
+        inputRef.current?.focus();
       }
     });
   };
@@ -117,13 +122,16 @@ function GroceryListDetail({ listId, listName, onBack }: { listId: string, listN
 
       <View style={[styles.inlineInputContainer, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom || 24 }]}>
         <TextInput
+          ref={inputRef}
           style={[styles.inlineInput, { backgroundColor: colors.secondary, color: colors.foreground }]}
           value={newItemName}
           onChangeText={setNewItemName}
-          placeholder="Add grocery item..."
+          placeholder="Add item..."
           placeholderTextColor={colors.mutedForeground}
           onSubmitEditing={handleAdd}
           returnKeyType="done"
+          blurOnSubmit={false}
+          autoFocus
         />
         <Pressable 
           style={[styles.inlineAddBtn, { backgroundColor: colors.primary }, !newItemName.trim() && { opacity: 0.5 }]}

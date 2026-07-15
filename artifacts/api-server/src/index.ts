@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedIfEmpty } from "./seed";
+import { seedIfEmpty, seedChoresIfEmpty, fixStaleMaintenanceDates } from "./seed";
 
 const rawPort = process.env["PORT"];
 
@@ -24,4 +24,6 @@ app.listen(port, async (err) => {
 
   logger.info({ port }, "Server listening");
   await seedIfEmpty();
+  await seedChoresIfEmpty();
+  await fixStaleMaintenanceDates();
 });

@@ -74,7 +74,7 @@ export default function DashboardScreen() {
                 onPress={() => setSelectedPropertyId(prop.id)}
               >
                 <IconComponent 
-                  name={prop.type === 'house' ? 'home' : 'tent'} 
+                  name={prop.type === 'house' ? 'home' : 'map-pin'} 
                   iosName={prop.type === 'house' ? 'house.fill' : 'tree.fill'} 
                   size={14} 
                   color={selectedPropertyId === prop.id ? colors.primaryForeground : colors.mutedForeground} 
