@@ -274,12 +274,13 @@ function ChoreRow({
 // ─── Maintenance Row ────────────────────────────────────────────────────────
 
 function MaintenanceRow({
-  task, expanded, onToggle, colors,
+  task, expanded, onToggle, colors, showCleanerOption,
 }: {
   task: MaintenanceTask;
   expanded: boolean;
   onToggle: () => void;
   colors: any;
+  showCleanerOption: boolean;
 }) {
   const queryClient = useQueryClient();
   const updateTask = useUpdateMaintenanceTask();
@@ -316,7 +317,7 @@ function MaintenanceRow({
   };
 
   const cleanerColor = '#6B7280';
-  const borderColor = task.isCleanerTask ? cleanerColor : colors.primary;
+  const borderColor = (showCleanerOption && task.isCleanerTask) ? cleanerColor : colors.primary;
 
   return (
     <View>
@@ -344,15 +345,17 @@ function MaintenanceRow({
               {freqLabel(task.frequencyDays)}
             </Text>
           </View>
-          {/* Cleaner badge */}
-          {task.isCleanerTask ? (
-            <View style={[styles.cleanerBadge, { backgroundColor: '#F3F4F6' }]}>
-              <Text style={[styles.cleanerBadgeText, { color: cleanerColor }]}>Cleaner</Text>
-            </View>
-          ) : (
-            <View style={[styles.cleanerBadge, { backgroundColor: '#F0FDF4' }]}>
-              <Text style={[styles.cleanerBadgeText, { color: colors.primary }]}>Us</Text>
-            </View>
+          {/* Cleaner badge — Main House only */}
+          {showCleanerOption && (
+            task.isCleanerTask ? (
+              <View style={[styles.cleanerBadge, { backgroundColor: '#F3F4F6' }]}>
+                <Text style={[styles.cleanerBadgeText, { color: cleanerColor }]}>Cleaner</Text>
+              </View>
+            ) : (
+              <View style={[styles.cleanerBadge, { backgroundColor: '#F0FDF4' }]}>
+                <Text style={[styles.cleanerBadgeText, { color: colors.primary }]}>Us</Text>
+              </View>
+            )
           )}
           <Icon
             name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -418,41 +421,42 @@ function MaintenanceRow({
             </View>
           </View>
 
-          {/* Cleaner toggle */}
-          <View style={styles.cleanerToggleRow}>
-            <View>
-              <Text style={[styles.editorLabel, { color: colors.mutedForeground }]}>WHO DOES IT</Text>
-              <Text style={[styles.cleanerToggleDesc, { color: colors.foreground }]}>
-                {task.isCleanerTask ? 'House cleaner handles this' : 'We handle this ourselves'}
-              </Text>
-            </View>
-            <View style={styles.cleanerSegment}>
-              <Pressable
-                style={[
-                  styles.segmentBtn,
-                  !task.isCleanerTask && { backgroundColor: colors.primary },
-                  { borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
-                ]}
-                onPress={() => handleCleanerToggle(false)}
-              >
-                <Text style={[styles.segmentBtnText, { color: !task.isCleanerTask ? colors.primaryForeground : colors.mutedForeground }]}>
-                  Us
+          {showCleanerOption && (
+            <View style={styles.cleanerToggleRow}>
+              <View>
+                <Text style={[styles.editorLabel, { color: colors.mutedForeground }]}>WHO DOES IT</Text>
+                <Text style={[styles.cleanerToggleDesc, { color: colors.foreground }]}>
+                  {task.isCleanerTask ? 'House cleaner handles this' : 'We handle this ourselves'}
                 </Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.segmentBtn,
-                  task.isCleanerTask && { backgroundColor: '#6B7280' },
-                  { borderTopRightRadius: 10, borderBottomRightRadius: 10 },
-                ]}
-                onPress={() => handleCleanerToggle(true)}
-              >
-                <Text style={[styles.segmentBtnText, { color: task.isCleanerTask ? '#fff' : colors.mutedForeground }]}>
-                  Cleaner
-                </Text>
-              </Pressable>
+              </View>
+              <View style={styles.cleanerSegment}>
+                <Pressable
+                  style={[
+                    styles.segmentBtn,
+                    !task.isCleanerTask && { backgroundColor: colors.primary },
+                    { borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
+                  ]}
+                  onPress={() => handleCleanerToggle(false)}
+                >
+                  <Text style={[styles.segmentBtnText, { color: !task.isCleanerTask ? colors.primaryForeground : colors.mutedForeground }]}>
+                    Us
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.segmentBtn,
+                    task.isCleanerTask && { backgroundColor: '#6B7280' },
+                    { borderTopRightRadius: 10, borderBottomRightRadius: 10 },
+                  ]}
+                  onPress={() => handleCleanerToggle(true)}
+                >
+                  <Text style={[styles.segmentBtnText, { color: task.isCleanerTask ? '#fff' : colors.mutedForeground }]}>
+                    Cleaner
+                  </Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
+          )}
 
           {/* Delete */}
           <Pressable onPress={handleDelete} style={styles.deleteLink}>
@@ -686,6 +690,7 @@ export default function SettingsScreen() {
                   expanded={expandedTaskId === task.id}
                   onToggle={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
                   colors={colors}
+                  showCleanerOption={selectedProperty?.type !== 'cabin'}
                 />
               ))}
             </>

@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedIfEmpty, seedChoresIfEmpty, fixStaleMaintenanceDates, ensureHouseCleanerTasks } from "./seed";
+import { seedRecurringMaintenanceTasks } from "./seedMaintenance";
 
 const rawPort = process.env["PORT"];
 
@@ -27,4 +28,5 @@ app.listen(port, async (err) => {
   await seedChoresIfEmpty();
   await fixStaleMaintenanceDates();
   await ensureHouseCleanerTasks();
+  await seedRecurringMaintenanceTasks();
 });
