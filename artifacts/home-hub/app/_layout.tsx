@@ -16,6 +16,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { ClerkProvider, ClerkLoaded } from "@clerk/expo";
 import { tokenCache } from "../utils/tokenCache"; // I'll provide tokenCache
 import { setBaseUrl } from "@workspace/api-client-react";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -29,6 +30,7 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 function RootLayoutNav() {
+  usePushNotifications();
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(home)" />

@@ -60,6 +60,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
-    "date-fns": "^3.6.0"
+    "date-fns": "^3.6.0",
+    "expo-notifications": "^0.32.17"
   }
 }

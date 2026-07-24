@@ -9,6 +9,7 @@ import mealsRouter from "./meals";
 import todosRouter from "./todos";
 import maintenanceRouter from "./maintenance";
 import aiRouter from "./ai";
+import pushTokensRouter from "./pushTokens";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(mealsRouter);
 router.use(todosRouter);
 router.use(maintenanceRouter);
 router.use(aiRouter);
+router.use(pushTokensRouter);
 
 export default router;
