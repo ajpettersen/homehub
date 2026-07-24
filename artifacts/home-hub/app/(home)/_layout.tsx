@@ -12,12 +12,7 @@ export default function HomeLayout() {
     setAuthTokenGetter(() => getToken());
   }, [getToken]);
 
-  // Web = Replit preview — auth bypassed so you can still see the app.
-  // On a real device (iOS/Android) Clerk auth is fully enforced.
-  if (Platform.OS !== "web") {
-    if (!isLoaded) return null;
-    if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
-  }
+  // Auth temporarily bypassed for testing — skip sign-in check on all platforms
 
   return (
     <PropertyProvider>

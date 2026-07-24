@@ -322,9 +322,25 @@ export interface UpdateMaintenanceTaskInput {
   nextDueDate?: string;
 }
 
-export interface CompleteMaintenanceTaskBody {
-  completedBy?: string;
+export interface MealSuggestion {
+  name: string;
+  description: string;
+  usesIngredients?: string[];
+  missingIngredients: string[];
 }
+
+export interface PantryScanResult {
+  ingredients: string[];
+  mealSuggestions: MealSuggestion[];
+}
+
+export interface SuggestMealsResult {
+  mealSuggestions: MealSuggestion[];
+}
+
+export type ScanPantryBody = {
+  imageBase64: string;
+};
 
 export type GetChoresParams = {
 assigneeId?: string;

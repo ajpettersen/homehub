@@ -13,5 +13,6 @@ export interface CreateMaintenanceTaskInput {
   propertyId: string;
   category: CreateMaintenanceTaskInputCategory;
   frequencyDays: number;
+  isCleanerTask?: boolean;
   nextDueDate: Date;
 }

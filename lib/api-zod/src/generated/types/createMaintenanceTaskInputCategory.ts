@@ -16,4 +16,5 @@ export const CreateMaintenanceTaskInputCategory = {
   appliance: 'appliance',
   yard: 'yard',
   other: 'other',
+  cleaning: 'cleaning',
 } as const;

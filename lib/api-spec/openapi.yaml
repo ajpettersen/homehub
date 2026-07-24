@@ -8,6 +8,8 @@ servers:
   - url: /api
     description: Base API path
 tags:
+  - name: ai
+    description: AI-powered meal suggestions and pantry scanning
   - name: health
     description: Health operations
   - name: dashboard
@@ -28,6 +30,42 @@ tags:
     description: Home maintenance tasks and reminders
 
 paths:
+  /ai/scan-pantry:
+    post:
+      operationId: scanPantry
+      tags: [ai]
+      summary: Scan a fridge/pantry photo and get ingredient list + meal suggestions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageBase64]
+              properties:
+                imageBase64:
+                  type: string
+      responses:
+        "200":
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PantryScanResult"
+
+  /ai/suggest-meals:
+    post:
+      operationId: suggestMeals
+      tags: [ai]
+      summary: Get AI meal suggestions based on meal history
+      responses:
+        "200":
+          description: Meal suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestMealsResult"
+
   /healthz:
     get:
       operationId: healthCheck
@@ -1118,3 +1156,42 @@ components:
         nextDueDate:
           type: string
           format: date
+
+    MealSuggestion:
+      type: object
+      required: [name, description, missingIngredients]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        usesIngredients:
+          type: array
+          items:
+            type: string
+        missingIngredients:
+          type: array
+          items:
+            type: string
+
+    PantryScanResult:
+      type: object
+      required: [ingredients, mealSuggestions]
+      properties:
+        ingredients:
+          type: array
+          items:
+            type: string
+        mealSuggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealSuggestion"
+
+    SuggestMealsResult:
+      type: object
+      required: [mealSuggestions]
+      properties:
+        mealSuggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealSuggestion"

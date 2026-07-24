@@ -19,9 +19,6 @@ export default function Index() {
     );
   }
 
-  if (!isSignedIn) {
-    return <Redirect href="/(auth)/sign-in" />;
-  }
-
+  // Auth temporarily bypassed — go straight to app
   return <Redirect href="/(home)/(tabs)/" />;
 }

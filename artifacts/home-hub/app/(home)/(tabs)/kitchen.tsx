@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, RefreshControl, Pressable, Platform, Modal, TextInput } from 'react-native';
+import React, { useState, useRef } from 'react';
+import {
+  StyleSheet, Text, View, ScrollView, RefreshControl,
+  Pressable, Platform, Modal, TextInput, ActivityIndicator, Image,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
+import * as ImagePicker from 'expo-image-picker';
 import { PropertySwitcher } from '@/components/PropertySwitcher';
 import { useProperty } from '@/context/PropertyContext';
 import {
@@ -19,113 +23,126 @@ import {
   getGetGroceryListsQueryKey,
   getGetGroceryItemsQueryKey,
   getGetMealPlansQueryKey,
+  useScanPantry,
+  useSuggestMeals,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { format, startOfWeek, addDays } from 'date-fns';
+import { format, startOfWeek } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 
-const IconComponent = ({ name, iosName, size, color }: { name: any, iosName: string, size: number, color: string }) => {
-  if (Platform.OS === 'ios') {
-    return <SymbolView name={iosName} tintColor={color} size={size} />;
-  }
+const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size: number; color: string }) => {
+  if (Platform.OS === 'ios') return <SymbolView name={iosName} tintColor={color} size={size} />;
   return <FeatherIcon name={name} size={size} color={color} />;
 };
 
-function GroceryListDetail({ listId, listName, onBack }: { listId: string, listName: string, onBack: () => void }) {
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface MealSuggestion {
+  name: string;
+  description: string;
+  usesIngredients?: string[];
+  missingIngredients: string[];
+}
+
+interface ScanResult {
+  ingredients: string[];
+  mealSuggestions: MealSuggestion[];
+}
+
+// ─── Grocery list detail (drill-in) ──────────────────────────────────────────
+
+function GroceryListDetail({ listId, listName, onBack }: { listId: string; listName: string; onBack: () => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  
   const { data: items } = useGetGroceryItems(listId);
   const addItem = useAddGroceryItem();
   const updateItem = useUpdateGroceryItem();
   const deleteItem = useDeleteGroceryItem();
-  
   const [newItemName, setNewItemName] = useState('');
-  const inputRef = React.useRef<TextInput>(null);
-  
+  const inputRef = useRef<TextInput>(null);
+
   const handleAdd = () => {
-    if (!newItemName.trim()) return;
     const name = newItemName.trim();
-    setNewItemName(''); // clear immediately so it feels instant
+    if (!name) return;
+    setNewItemName('');
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    addItem.mutate({
-      id: listId,
-      data: { name }
-    }, {
+    addItem.mutate({ id: listId, data: { name } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(listId) });
         queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
-        // Keep keyboard open for rapid entry
         inputRef.current?.focus();
-      }
+      },
     });
   };
-  
+
   const handleToggle = (itemId: string, checked: boolean) => {
     if (Platform.OS !== 'web') Haptics.selectionAsync();
-    updateItem.mutate({
-      id: itemId,
-      data: { checked: !checked }
-    }, {
+    updateItem.mutate({ id: itemId, data: { checked: !checked } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(listId) });
         queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
-      }
+      },
     });
   };
-  
+
   const handleDelete = (itemId: string) => {
     deleteItem.mutate({ id: itemId }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(listId) });
         queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
-      }
+      },
     });
   };
 
+  const unchecked = items?.filter((i) => !i.checked) ?? [];
+  const checked = items?.filter((i) => i.checked) ?? [];
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 20, alignItems: 'center', paddingBottom: 16 }]}>
-        <Pressable onPress={onBack} style={{ padding: 8, marginLeft: -8 }}>
-          <IconComponent name="chevron-left" iosName="chevron.left" size={28} color={colors.primary} />
+      <View style={[styles.detailHeader, { paddingTop: insets.top + 16 }]}>
+        <Pressable onPress={onBack} style={styles.backBtn} hitSlop={12}>
+          <Icon name="chevron-left" iosName="chevron.left" size={22} color={colors.primary} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground, flex: 1, fontSize: 22 }]} numberOfLines={1}>{listName}</Text>
+        <Text style={[styles.detailTitle, { color: colors.foreground }]} numberOfLines={1}>{listName}</Text>
       </View>
-      
-      <ScrollView contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 120 }]}>
-        {items?.map(item => (
+
+      <ScrollView contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 110 }]}>
+        {unchecked.map((item) => (
           <View key={item.id} style={[styles.itemRow, { borderBottomColor: colors.border }]}>
-            <Pressable
-              style={styles.itemCheckboxArea}
-              onPress={() => handleToggle(item.id, item.checked)}
-            >
-              <View style={[
-                styles.checkbox,
-                { borderColor: item.checked ? colors.primary : colors.mutedForeground },
-                item.checked && { backgroundColor: colors.primary }
-              ]}>
-                {item.checked && <IconComponent name="check" iosName="checkmark" size={14} color={colors.primaryForeground} />}
-              </View>
+            <Pressable style={styles.itemCheckArea} onPress={() => handleToggle(item.id, item.checked)}>
+              <View style={[styles.checkbox, { borderColor: colors.primary }]} />
             </Pressable>
-            <Text style={[
-              styles.itemContent, 
-              { color: item.checked ? colors.mutedForeground : colors.foreground },
-              item.checked && { textDecorationLine: 'line-through' }
-            ]}>
-              {item.name}
-            </Text>
-            <Pressable onPress={() => handleDelete(item.id)} style={{ padding: 8 }}>
-              <IconComponent name="trash-2" iosName="trash" size={20} color={colors.mutedForeground} />
+            <Text style={[styles.itemText, { color: colors.foreground }]}>{item.name}</Text>
+            <Pressable onPress={() => handleDelete(item.id)} hitSlop={8} style={{ padding: 8 }}>
+              <Icon name="trash-2" iosName="trash" size={16} color={colors.mutedForeground} />
             </Pressable>
           </View>
         ))}
+        {checked.length > 0 && (
+          <>
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>In cart</Text>
+            {checked.map((item) => (
+              <View key={item.id} style={[styles.itemRow, { borderBottomColor: colors.border, opacity: 0.5 }]}>
+                <Pressable style={styles.itemCheckArea} onPress={() => handleToggle(item.id, item.checked)}>
+                  <View style={[styles.checkboxDone, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                    <Icon name="check" iosName="checkmark" size={11} color="#fff" />
+                  </View>
+                </Pressable>
+                <Text style={[styles.itemText, { color: colors.mutedForeground, textDecorationLine: 'line-through' }]}>{item.name}</Text>
+                <Pressable onPress={() => handleDelete(item.id)} hitSlop={8} style={{ padding: 8 }}>
+                  <Icon name="trash-2" iosName="trash" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
+            ))}
+          </>
+        )}
       </ScrollView>
 
-      <View style={[styles.inlineInputContainer, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom || 24 }]}>
+      <View style={[styles.addBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom || 20 }]}>
         <TextInput
           ref={inputRef}
-          style={[styles.inlineInput, { backgroundColor: colors.secondary, color: colors.foreground }]}
+          style={[styles.addInput, { backgroundColor: colors.secondary, color: colors.foreground }]}
           value={newItemName}
           onChangeText={setNewItemName}
           placeholder="Add item..."
@@ -135,505 +152,644 @@ function GroceryListDetail({ listId, listName, onBack }: { listId: string, listN
           blurOnSubmit={false}
           autoFocus
         />
-        <Pressable 
-          style={[styles.inlineAddBtn, { backgroundColor: colors.primary }, !newItemName.trim() && { opacity: 0.5 }]}
+        <Pressable
+          style={[styles.addSendBtn, { backgroundColor: colors.primary }, !newItemName.trim() && { opacity: 0.4 }]}
           onPress={handleAdd}
           disabled={!newItemName.trim() || addItem.isPending}
         >
-          <IconComponent name="arrow-up" iosName="arrow.up" size={20} color={colors.primaryForeground} />
+          <Icon name="arrow-up" iosName="arrow.up" size={18} color={colors.primaryForeground} />
         </Pressable>
       </View>
     </View>
   );
 }
+
+// ─── AI Scan Sheet ────────────────────────────────────────────────────────────
+
+function ScanSheet({
+  visible,
+  onClose,
+  onAddToMealPlan,
+  onAddToGrocery,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onAddToMealPlan: (meal: MealSuggestion) => void;
+  onAddToGrocery: (items: string[]) => void;
+}) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [result, setResult] = useState<ScanResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const scanMutation = useScanPantry();
+  const suggestMutation = useSuggestMeals();
+
+  const scanning = scanMutation.isPending;
+  const suggesting = suggestMutation.isPending;
+
+  const reset = () => {
+    setImageUri(null);
+    setImageBase64(null);
+    setResult(null);
+    setError(null);
+    scanMutation.reset();
+    suggestMutation.reset();
+  };
+
+  const handleClose = () => { reset(); onClose(); };
+
+  const pickImage = async (useCamera: boolean) => {
+    const picker = useCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+    const picked = await picker({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.6,
+      base64: true,
+    });
+    if (!picked.canceled && picked.assets[0]) {
+      setImageUri(picked.assets[0].uri);
+      setImageBase64(picked.assets[0].base64 ?? null);
+      setResult(null);
+      setError(null);
+    }
+  };
+
+  const handleScan = () => {
+    if (!imageBase64) return;
+    setError(null);
+    scanMutation.mutate(
+      { data: { imageBase64 } },
+      {
+        onSuccess: (data) => setResult(data as ScanResult),
+        onError: () => setError('Could not analyze the photo. Please try again.'),
+      },
+    );
+  };
+
+  const handleSuggestOnly = () => {
+    setError(null);
+    suggestMutation.mutate(undefined, {
+      onSuccess: (data: any) => setResult({ ingredients: [], mealSuggestions: data.mealSuggestions }),
+      onError: () => setError('Could not get suggestions. Please try again.'),
+    });
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
+      <View style={styles.sheetOverlay}>
+        <View style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
+          {/* Handle + header */}
+          <View style={styles.sheetHandle}>
+            <View style={[styles.handleBar, { backgroundColor: colors.border }]} />
+          </View>
+          <View style={styles.sheetHeader}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>AI Kitchen</Text>
+            <Pressable onPress={handleClose} hitSlop={12}>
+              <Icon name="x" iosName="xmark" size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {/* Photo picker */}
+            {!result && (
+              <View style={styles.scanBody}>
+                {imageUri ? (
+                  <View style={styles.previewWrap}>
+                    <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="cover" />
+                    <Pressable style={styles.retakeBtn} onPress={() => { setImageUri(null); setImageBase64(null); }}>
+                      <Icon name="refresh-cw" iosName="arrow.clockwise" size={14} color={colors.primary} />
+                      <Text style={[styles.retakeBtnText, { color: colors.primary }]}>Retake</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View style={[styles.photoPlaceholder, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                    <Icon name="camera" iosName="camera.fill" size={32} color={colors.mutedForeground} />
+                    <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
+                      Take or upload a photo of your fridge or pantry
+                    </Text>
+                    <View style={styles.photoActions}>
+                      <Pressable
+                        style={[styles.photoBtn, { backgroundColor: colors.primary }]}
+                        onPress={() => pickImage(true)}
+                      >
+                        <Icon name="camera" iosName="camera" size={16} color="#fff" />
+                        <Text style={styles.photoBtnText}>Camera</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.photoBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
+                        onPress={() => pickImage(false)}
+                      >
+                        <Icon name="image" iosName="photo" size={16} color={colors.foreground} />
+                        <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Library</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                {error && (
+                  <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+                )}
+
+                {imageBase64 && (
+                  <Pressable
+                    style={[styles.scanBtn, { backgroundColor: colors.primary }, scanning && { opacity: 0.7 }]}
+                    onPress={handleScan}
+                    disabled={scanning}
+                  >
+                    {scanning
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <><Icon name="zap" iosName="bolt.fill" size={16} color="#fff" /><Text style={styles.scanBtnText}>Analyze & Suggest Meals</Text></>
+                    }
+                  </Pressable>
+                )}
+
+                <View style={styles.dividerRow}>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.dividerText, { color: colors.mutedForeground }]}>or</Text>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                </View>
+
+                <Pressable
+                  style={[styles.suggestBtn, { borderColor: colors.border }, suggesting && { opacity: 0.7 }]}
+                  onPress={handleSuggestOnly}
+                  disabled={suggesting}
+                >
+                  {suggesting
+                    ? <ActivityIndicator color={colors.primary} size="small" />
+                    : <><Icon name="sparkles" iosName="sparkles" size={16} color={colors.primary} /><Text style={[styles.suggestBtnText, { color: colors.primary }]}>Suggest meals from history</Text></>
+                  }
+                </Pressable>
+              </View>
+            )}
+
+            {/* Results */}
+            {result && (
+              <View style={styles.resultsBody}>
+                {result.ingredients.length > 0 && (
+                  <View style={[styles.ingredientsCard, { backgroundColor: colors.secondary }]}>
+                    <Text style={[styles.resultsLabel, { color: colors.foreground }]}>Found in your kitchen</Text>
+                    <View style={styles.chipRow}>
+                      {result.ingredients.map((ing) => (
+                        <View key={ing} style={[styles.chip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                          <Text style={[styles.chipText, { color: colors.foreground }]}>{ing}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                <Text style={[styles.resultsLabel, { color: colors.foreground, marginTop: 16 }]}>Meal suggestions</Text>
+
+                {result.mealSuggestions.map((meal) => (
+                  <View key={meal.name} style={[styles.mealCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.mealCardName, { color: colors.foreground }]}>{meal.name}</Text>
+                    <Text style={[styles.mealCardDesc, { color: colors.mutedForeground }]}>{meal.description}</Text>
+                    {meal.missingIngredients.length > 0 && (
+                      <Text style={[styles.mealCardMissing, { color: colors.mutedForeground }]}>
+                        Need: {meal.missingIngredients.join(', ')}
+                      </Text>
+                    )}
+                    <View style={styles.mealCardActions}>
+                      <Pressable
+                        style={[styles.mealActionBtn, { backgroundColor: colors.primary }]}
+                        onPress={() => { onAddToMealPlan(meal); handleClose(); }}
+                      >
+                        <Text style={[styles.mealActionText, { color: colors.primaryForeground }]}>Plan It</Text>
+                      </Pressable>
+                      {meal.missingIngredients.length > 0 && (
+                        <Pressable
+                          style={[styles.mealActionBtn, { backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.border }]}
+                          onPress={() => { onAddToGrocery(meal.missingIngredients); handleClose(); }}
+                        >
+                          <Text style={[styles.mealActionText, { color: colors.foreground }]}>Add to List</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
+                ))}
+
+                <Pressable onPress={reset} style={styles.scanAgainBtn}>
+                  <Text style={[styles.scanAgainText, { color: colors.primary }]}>← Scan again</Text>
+                </Pressable>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function KitchenScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const queryClient = useQueryClient();
   const { selectedProperty } = useProperty();
-  
+
   const [activeTab, setActiveTab] = useState<'groceries' | 'meals'>('groceries');
-  
-  // Groceries state
-  const [selectedList, setSelectedList] = useState<{id: string, name: string} | null>(null);
-  const [isAddListModalVisible, setIsAddListModalVisible] = useState(false);
+  const [selectedList, setSelectedList] = useState<{ id: string; name: string } | null>(null);
+  const [scanVisible, setScanVisible] = useState(false);
+  const [addListVisible, setAddListVisible] = useState(false);
   const [newListName, setNewListName] = useState('');
-  
+  const [addMealVisible, setAddMealVisible] = useState(false);
+  const [newMeal, setNewMeal] = useState<{ dayOfWeek: number; mealType: string; meal: string }>({ dayOfWeek: new Date().getDay(), mealType: 'dinner', meal: '' });
+
   const { data: properties } = useGetProperties();
-  const { data: allLists, isLoading: isLoadingLists } = useGetGroceryLists();
-  // Filter grocery lists to the selected property
+  const { data: allLists } = useGetGroceryLists();
   const lists = allLists?.filter((l: any) => !selectedProperty || l.propertyId === selectedProperty.id);
   const createList = useCreateGroceryList();
-  
-  // Meals state
+
   const [weekStart] = useState(() => format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd'));
-  const { data: meals, isLoading: isLoadingMeals } = useGetMealPlans({ weekStart });
+  const { data: meals } = useGetMealPlans({ weekStart });
   const createMeal = useCreateMealPlanEntry();
-  
-  const [isAddMealModalVisible, setIsAddMealModalVisible] = useState(false);
-  const [newMeal, setNewMeal] = useState<{dayOfWeek: number, mealType: string, meal: string}>({
-    dayOfWeek: 0,
-    mealType: 'dinner',
-    meal: ''
-  });
+
+  const addGroceryItem = useAddGroceryItem();
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
     setRefreshing(true);
-    if (activeTab === 'groceries') {
-      await queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
-    } else {
-      await queryClient.invalidateQueries({ queryKey: getGetMealPlansQueryKey({ weekStart }) });
-    }
+    await queryClient.invalidateQueries({ queryKey: activeTab === 'groceries' ? getGetGroceryListsQueryKey() : getGetMealPlansQueryKey({ weekStart }) });
     setRefreshing(false);
   };
 
   const handleCreateList = () => {
     if (!newListName.trim() || !properties?.length) return;
-    createList.mutate({ data: { name: newListName.trim(), propertyId: selectedProperty?.id ?? properties?.[0]?.id ?? '' } }, {
-      onSuccess: () => {
-        setNewListName('');
-        setIsAddListModalVisible(false);
-        queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
-      }
+    createList.mutate({ data: { name: newListName.trim(), propertyId: selectedProperty?.id ?? properties[0].id } }, {
+      onSuccess: () => { setNewListName(''); setAddListVisible(false); queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() }); },
     });
   };
 
   const handleCreateMeal = () => {
     if (!newMeal.meal.trim() || !properties?.length) return;
-    createMeal.mutate({
-      data: {
-        weekStart,
-        dayOfWeek: newMeal.dayOfWeek,
-        mealType: newMeal.mealType as any,
-        meal: newMeal.meal.trim(),
-        propertyId: selectedProperty?.id ?? properties?.[0]?.id ?? ''
-      }
-    }, {
+    createMeal.mutate({ data: { weekStart, dayOfWeek: newMeal.dayOfWeek, mealType: newMeal.mealType as any, meal: newMeal.meal.trim(), propertyId: selectedProperty?.id ?? properties[0].id } }, {
       onSuccess: () => {
-        setNewMeal({ dayOfWeek: 0, mealType: 'dinner', meal: '' });
-        setIsAddMealModalVisible(false);
+        setNewMeal({ dayOfWeek: new Date().getDay(), mealType: 'dinner', meal: '' });
+        setAddMealVisible(false);
         queryClient.invalidateQueries({ queryKey: getGetMealPlansQueryKey({ weekStart }) });
         queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
-      }
+      },
     });
+  };
+
+  // Add a meal suggestion to the plan
+  const handleAddToMealPlan = (suggestion: MealSuggestion) => {
+    if (!properties?.length) return;
+    // Find first empty dinner slot this week
+    const filledDays = new Set(meals?.filter((m) => m.mealType === 'dinner').map((m) => m.dayOfWeek) ?? []);
+    const emptyDay = [0, 1, 2, 3, 4, 5, 6].find((d) => !filledDays.has(d)) ?? new Date().getDay();
+    createMeal.mutate({ data: { weekStart, dayOfWeek: emptyDay, mealType: 'dinner', meal: suggestion.name, propertyId: selectedProperty?.id ?? properties[0].id } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetMealPlansQueryKey({ weekStart }) });
+        queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
+      },
+    });
+  };
+
+  // Add missing ingredients to first grocery list
+  const handleAddToGrocery = async (items: string[]) => {
+    if (!lists?.length || !items.length) return;
+    const listId = lists[0].id;
+    for (const name of items) {
+      await new Promise<void>((resolve) => {
+        addGroceryItem.mutate({ id: listId, data: { name } }, { onSettled: () => resolve() });
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(listId) });
+    queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
   };
 
   if (selectedList && activeTab === 'groceries') {
     return <GroceryListDetail listId={selectedList.id} listName={selectedList.name} onBack={() => setSelectedList(null)} />;
   }
 
-  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const fullDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const today = new Date().getDay();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Kitchen</Text>
-        <Pressable 
-          style={({pressed}) => [styles.addButton, pressed && { opacity: 0.7 }]}
-          onPress={() => activeTab === 'groceries' ? setIsAddListModalVisible(true) : setIsAddMealModalVisible(true)}
-        >
-          <IconComponent name="plus" iosName="plus" size={24} color={colors.primary} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            style={[styles.aiBtn, { backgroundColor: `${colors.primary}15`, borderColor: `${colors.primary}30` }]}
+            onPress={() => setScanVisible(true)}
+          >
+            <Icon name="zap" iosName="bolt.fill" size={14} color={colors.primary} />
+            <Text style={[styles.aiBtnText, { color: colors.primary }]}>AI</Text>
+          </Pressable>
+          <Pressable
+            style={styles.addBtn}
+            onPress={() => activeTab === 'groceries' ? setAddListVisible(true) : setAddMealVisible(true)}
+          >
+            <Icon name="plus" iosName="plus" size={22} color={colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.switcherRow}>
         <PropertySwitcher />
       </View>
 
-      <View style={styles.topTabs}>
-        <Pressable 
-          style={[styles.topTab, activeTab === 'groceries' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
-          onPress={() => setActiveTab('groceries')}
-        >
-          <Text style={[styles.topTabText, activeTab === 'groceries' ? { color: colors.primary, fontFamily: 'Inter_600SemiBold' } : { color: colors.mutedForeground }]}>Groceries</Text>
-        </Pressable>
-        <Pressable 
-          style={[styles.topTab, activeTab === 'meals' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
-          onPress={() => setActiveTab('meals')}
-        >
-          <Text style={[styles.topTabText, activeTab === 'meals' ? { color: colors.primary, fontFamily: 'Inter_600SemiBold' } : { color: colors.mutedForeground }]}>Meal Plan</Text>
-        </Pressable>
+      {/* Sub-tabs */}
+      <View style={[styles.subTabs, { borderBottomColor: colors.border }]}>
+        {(['groceries', 'meals'] as const).map((tab) => (
+          <Pressable
+            key={tab}
+            style={[styles.subTab, activeTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.subTabText, { color: activeTab === tab ? colors.primary : colors.mutedForeground }, activeTab === tab && { fontFamily: 'Inter_600SemiBold' }]}>
+              {tab === 'groceries' ? 'Groceries' : 'Meal Plan'}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
-      <ScrollView 
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {activeTab === 'groceries' ? (
-          lists?.map(list => (
-            <Pressable
-              key={list.id}
-              style={({pressed}) => [
-                styles.listCard, 
-                { backgroundColor: colors.card, borderColor: colors.border },
-                pressed && { backgroundColor: colors.secondary }
-              ]}
-              onPress={() => setSelectedList({ id: list.id, name: list.name })}
-            >
-              <View style={[styles.iconBox, { backgroundColor: colors.secondary }]}>
-                <IconComponent name="shopping-cart" iosName="cart" size={24} color={colors.primary} />
+          <>
+            {lists?.length === 0 && (
+              <View style={[styles.emptyCard, { backgroundColor: colors.secondary }]}>
+                <Icon name="shopping-cart" iosName="cart" size={28} color={colors.mutedForeground} />
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No lists yet. Tap + to create one.</Text>
               </View>
-              <View style={styles.listCardInfo}>
-                <Text style={[styles.listName, { color: colors.foreground }]}>{list.name}</Text>
-                {list.itemCount > 0 ? (
-                  <View style={styles.progressRow}>
-                    <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
-                      <View style={[
-                        styles.progressBarFill, 
-                        { backgroundColor: colors.primary, width: `${(list.checkedCount / list.itemCount) * 100}%` }
-                      ]} />
+            )}
+            {lists?.map((list) => (
+              <Pressable
+                key={list.id}
+                style={({ pressed }) => [styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }, pressed && { opacity: 0.8 }]}
+                onPress={() => setSelectedList({ id: list.id, name: list.name })}
+              >
+                <View style={[styles.listIconBox, { backgroundColor: `${colors.primary}15` }]}>
+                  <Icon name="shopping-cart" iosName="cart" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.listCardMeta}>
+                  <Text style={[styles.listCardName, { color: colors.foreground }]}>{list.name}</Text>
+                  {list.itemCount > 0 ? (
+                    <View style={styles.progressRow}>
+                      <View style={[styles.progressBg, { backgroundColor: colors.border }]}>
+                        <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.round((list.checkedCount / list.itemCount) * 100)}%` as any }]} />
+                      </View>
+                      <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>{list.checkedCount}/{list.itemCount}</Text>
                     </View>
-                    <Text style={[styles.progressText, { color: colors.mutedForeground }]}>
-                      {list.checkedCount}/{list.itemCount}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={[styles.progressText, { color: colors.mutedForeground }]}>Empty list</Text>
-                )}
-              </View>
-              <IconComponent name="chevron-right" iosName="chevron.right" size={20} color={colors.mutedForeground} />
-            </Pressable>
-          ))
-        ) : (
-          <View style={styles.mealsContainer}>
-            {daysOfWeek.map((dayName, idx) => {
-              const dayMeals = meals?.filter(m => m.dayOfWeek === idx) || [];
-              const dinner = dayMeals.find(m => m.mealType === 'dinner');
-              
-              return (
-                <View key={dayName} style={[styles.dayCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.dayName, { color: colors.foreground }]}>{dayName}</Text>
-                  {dinner ? (
-                    <Text style={[styles.mealName, { color: colors.primary }]}>{dinner.meal}</Text>
                   ) : (
-                    <Pressable 
-                      style={[styles.addMealBtn, { backgroundColor: colors.secondary }]}
-                      onPress={() => {
-                        setNewMeal({ dayOfWeek: idx, mealType: 'dinner', meal: '' });
-                        setIsAddMealModalVisible(true);
-                      }}
-                    >
-                      <Text style={[styles.addMealText, { color: colors.mutedForeground }]}>Plan dinner...</Text>
-                    </Pressable>
+                    <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>Empty</Text>
                   )}
                 </View>
+                <Icon name="chevron-right" iosName="chevron.right" size={16} color={colors.mutedForeground} />
+              </Pressable>
+            ))}
+          </>
+        ) : (
+          <View style={styles.weekGrid}>
+            {days.map((day, idx) => {
+              const dinner = meals?.find((m) => m.dayOfWeek === idx && m.mealType === 'dinner');
+              const isToday = idx === today;
+              return (
+                <Pressable
+                  key={day}
+                  style={[
+                    styles.dayCell,
+                    { backgroundColor: colors.card, borderColor: isToday ? colors.primary : colors.border },
+                    isToday && { borderWidth: 1.5 },
+                  ]}
+                  onPress={() => {
+                    setNewMeal({ dayOfWeek: idx, mealType: 'dinner', meal: '' });
+                    setAddMealVisible(true);
+                  }}
+                >
+                  <Text style={[styles.dayCellLabel, { color: isToday ? colors.primary : colors.mutedForeground }]}>{day}</Text>
+                  {dinner ? (
+                    <Text style={[styles.dayCellMeal, { color: colors.foreground }]} numberOfLines={2}>{dinner.meal}</Text>
+                  ) : (
+                    <Text style={[styles.dayCellEmpty, { color: colors.mutedForeground }]}>Plan...</Text>
+                  )}
+                </Pressable>
               );
             })}
           </View>
         )}
       </ScrollView>
 
-      {/* Add Grocery List Modal */}
-      <Modal visible={isAddListModalVisible} animationType="slide" transparent>
+      {/* AI Scan Sheet */}
+      <ScanSheet
+        visible={scanVisible}
+        onClose={() => setScanVisible(false)}
+        onAddToMealPlan={handleAddToMealPlan}
+        onAddToGrocery={handleAddToGrocery}
+      />
+
+      {/* Add List Modal */}
+      <Modal visible={addListVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Grocery List</Text>
-              <Pressable onPress={() => setIsAddListModalVisible(false)} style={styles.closeButton}>
-                <IconComponent name="x" iosName="xmark" size={24} color={colors.foreground} />
+          <View style={[styles.modalBox, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Grocery List</Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground }]}
+              value={newListName}
+              onChangeText={setNewListName}
+              placeholder="e.g. Target, Costco"
+              placeholderTextColor={colors.mutedForeground}
+              autoFocus
+              onSubmitEditing={handleCreateList}
+            />
+            <View style={styles.modalBtns}>
+              <Pressable style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setAddListVisible(false)}>
+                <Text style={[{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 15 }]}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.modalConfirmBtn, { backgroundColor: colors.primary }, !newListName.trim() && { opacity: 0.4 }]} onPress={handleCreateList} disabled={!newListName.trim()}>
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Create</Text>
               </Pressable>
             </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.foreground }]}>List Name</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                value={newListName}
-                onChangeText={setNewListName}
-                placeholder="e.g. Costco, Trader Joe's"
-                placeholderTextColor={colors.mutedForeground}
-                autoFocus
-              />
-            </View>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.submitButton,
-                { backgroundColor: colors.primary },
-                !newListName.trim() && { opacity: 0.5 },
-                pressed && { opacity: 0.8 }
-              ]}
-              onPress={handleCreateList}
-              disabled={!newListName.trim() || createList.isPending}
-            >
-              <Text style={[styles.submitButtonText, { color: colors.primaryForeground }]}>Create List</Text>
-            </Pressable>
           </View>
         </View>
       </Modal>
 
       {/* Add Meal Modal */}
-      <Modal visible={isAddMealModalVisible} animationType="slide" transparent>
+      <Modal visible={addMealVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Plan Meal</Text>
-              <Pressable onPress={() => setIsAddMealModalVisible(false)} style={styles.closeButton}>
-                <IconComponent name="x" iosName="xmark" size={24} color={colors.foreground} />
+          <View style={[styles.modalBox, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Plan Dinner — {fullDays[newMeal.dayOfWeek]}</Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground }]}
+              value={newMeal.meal}
+              onChangeText={(t) => setNewMeal((p) => ({ ...p, meal: t }))}
+              placeholder="e.g. Tacos, Pasta, Grilled chicken"
+              placeholderTextColor={colors.mutedForeground}
+              autoFocus
+              onSubmitEditing={handleCreateMeal}
+            />
+            <View style={styles.modalBtns}>
+              <Pressable style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setAddMealVisible(false)}>
+                <Text style={[{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 15 }]}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.modalConfirmBtn, { backgroundColor: colors.primary }, !newMeal.meal.trim() && { opacity: 0.4 }]} onPress={handleCreateMeal} disabled={!newMeal.meal.trim()}>
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Save</Text>
               </Pressable>
             </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.foreground }]}>Day</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {daysOfWeek.map((day, idx) => (
-                  <Pressable
-                    key={day}
-                    style={[styles.pill, newMeal.dayOfWeek === idx ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
-                    onPress={() => setNewMeal(prev => ({ ...prev, dayOfWeek: idx }))}
-                  >
-                    <Text style={[styles.pillText, newMeal.dayOfWeek === idx ? { color: colors.primaryForeground } : { color: colors.foreground }]}>{day.substring(0,3)}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.foreground }]}>Meal Name</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                value={newMeal.meal}
-                onChangeText={(text) => setNewMeal(prev => ({...prev, meal: text}))}
-                placeholder="e.g. Tacos, Spaghetti"
-                placeholderTextColor={colors.mutedForeground}
-              />
-            </View>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.submitButton,
-                { backgroundColor: colors.primary },
-                !newMeal.meal.trim() && { opacity: 0.5 },
-                pressed && { opacity: 0.8 }
-              ]}
-              onPress={handleCreateMeal}
-              disabled={!newMeal.meal.trim() || createMeal.isPending}
-            >
-              <Text style={[styles.submitButtonText, { color: colors.primaryForeground }]}>Save Meal</Text>
-            </Pressable>
           </View>
         </View>
       </Modal>
-
     </View>
   );
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: 24,
+    alignItems: 'center',
+    paddingHorizontal: 20,
     paddingBottom: 8,
   },
-  switcherRow: {
-    paddingHorizontal: 24,
-    paddingBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: -0.5,
-  },
-  addButton: {
-    width: 40, height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topTabs: {
+  headerTitle: { fontSize: 24, fontFamily: 'Inter_700Bold', letterSpacing: -0.3 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  aiBtn: {
     flexDirection: 'row',
-    paddingHorizontal: 24,
-    marginBottom: 16,
-  },
-  topTab: {
-    flex: 1,
-    paddingVertical: 12,
     alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
   },
-  topTabText: {
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-  },
-  listContent: {
-    paddingHorizontal: 24,
-    gap: 12,
-  },
+  aiBtnText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  addBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+
+  switcherRow: { paddingHorizontal: 20, paddingBottom: 8 },
+
+  // Sub-tabs
+  subTabs: { flexDirection: 'row', paddingHorizontal: 20, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: 12 },
+  subTab: { flex: 1, paddingVertical: 10, alignItems: 'center' },
+  subTabText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+
+  // Scroll content
+  scroll: { paddingHorizontal: 16, gap: 10 },
+
+  // Grocery list card
   listCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 16,
-  },
-  iconBox: {
-    width: 48, height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listCardInfo: {
-    flex: 1,
-    gap: 6,
-  },
-  listName: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  progressBarBg: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  progressText: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-  },
-  mealsContainer: {
     gap: 12,
-  },
-  dayCard: {
-    padding: 16,
-    borderRadius: 16,
+    padding: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    gap: 8,
   },
-  dayName: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
+  listIconBox: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  listCardMeta: { flex: 1, gap: 4 },
+  listCardName: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressBg: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 2 },
+  progressLabel: { fontSize: 11, fontFamily: 'Inter_500Medium' },
+
+  // Week grid (meal plan)
+  weekGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  dayCell: {
+    width: '30%',
+    minHeight: 80,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 4,
   },
-  mealName: {
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-  },
-  addMealBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  addMealText: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-  },
-  itemRow: {
+  dayCellLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  dayCellMeal: { fontSize: 13, fontFamily: 'Inter_500Medium', lineHeight: 18 },
+  dayCellEmpty: { fontSize: 12, fontFamily: 'Inter_400Regular', fontStyle: 'italic' },
+
+  // Grocery list detail
+  detailHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  itemCheckboxArea: {
-    padding: 8,
-    marginRight: 8,
-  },
-  checkbox: {
-    width: 24, height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  itemContent: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-  },
-  inlineInputContainer: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  backBtn: { padding: 4 },
+  detailTitle: { flex: 1, fontSize: 20, fontFamily: 'Inter_700Bold' },
+  listContent: { paddingHorizontal: 16, paddingTop: 4 },
+  sectionLabel: { fontSize: 12, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.5, paddingVertical: 10, paddingHorizontal: 4 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
+  itemCheckArea: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  checkbox: { width: 20, height: 20, borderRadius: 10, borderWidth: 2 },
+  checkboxDone: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  itemText: { flex: 1, fontSize: 15, fontFamily: 'Inter_400Regular' },
+  addBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
   },
-  inlineInput: {
-    flex: 1,
-    height: 44,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-  },
-  inlineAddBtn: {
-    width: 36, height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingTop: 32,
-    gap: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontFamily: 'Inter_700Bold',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  formGroup: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  input: {
-    height: 52,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-  },
-  pill: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  pillText: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-    textTransform: 'capitalize',
-  },
-  submitButton: {
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-  },
+  addInput: { flex: 1, height: 40, borderRadius: 20, paddingHorizontal: 14, fontSize: 15, fontFamily: 'Inter_400Regular' },
+  addSendBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+
+  // Empty
+  emptyCard: { padding: 32, borderRadius: 16, alignItems: 'center', gap: 10 },
+  emptyText: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+
+  // Scan sheet
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
+  sheetHandle: { alignItems: 'center', paddingTop: 10 },
+  handleBar: { width: 36, height: 4, borderRadius: 2 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
+  sheetTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+
+  scanBody: { padding: 20, gap: 14 },
+  photoPlaceholder: { borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center', padding: 28, gap: 10 },
+  photoHint: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  photoActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  photoBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  photoBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+  previewWrap: { borderRadius: 16, overflow: 'hidden', position: 'relative' },
+  previewImage: { width: '100%', height: 200 },
+  retakeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  retakeBtnText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  scanBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 14 },
+  scanBtnText: { fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  divider: { flex: 1, height: 1 },
+  dividerText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  suggestBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 14, borderWidth: 1 },
+  suggestBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  errorText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+
+  resultsBody: { padding: 20, gap: 6 },
+  ingredientsCard: { padding: 14, borderRadius: 14, gap: 8 },
+  resultsLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
+  chipText: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  mealCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 6, marginTop: 8 },
+  mealCardName: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
+  mealCardDesc: { fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 18 },
+  mealCardMissing: { fontSize: 12, fontFamily: 'Inter_400Regular', fontStyle: 'italic' },
+  mealCardActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  mealActionBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  mealActionText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  scanAgainBtn: { alignItems: 'center', paddingVertical: 12 },
+  scanAgainText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalBox: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 16 },
+  modalTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  modalInput: { height: 46, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, fontFamily: 'Inter_400Regular' },
+  modalBtns: { flexDirection: 'row', gap: 10 },
+  modalCancelBtn: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  modalConfirmBtn: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });

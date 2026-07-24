@@ -8,6 +8,7 @@ import groceryRouter from "./grocery";
 import mealsRouter from "./meals";
 import todosRouter from "./todos";
 import maintenanceRouter from "./maintenance";
+import aiRouter from "./ai";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(groceryRouter);
 router.use(mealsRouter);
 router.use(todosRouter);
 router.use(maintenanceRouter);
+router.use(aiRouter);
 
 export default router;

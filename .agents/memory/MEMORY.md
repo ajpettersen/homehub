@@ -1,0 +1,1 @@
+- [Orval barrel append bug](orval-barrel-append.md) — orval appends to barrel index files; patch-zod-index.js normalizes them after each codegen run.

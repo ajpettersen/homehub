@@ -25,7 +25,6 @@ import type {
   CreateChoreInput,
   CreateGroceryItemInput,
   CreateGroceryListInput,
-  CompleteMaintenanceTaskBody,
   CreateMaintenanceTaskInput,
   CreateMealPlanEntryInput,
   CreateTodoItemInput,
@@ -40,7 +39,10 @@ import type {
   HealthStatus,
   MaintenanceTask,
   MealPlanEntry,
+  PantryScanResult,
   Property,
+  ScanPantryBody,
+  SuggestMealsResult,
   TodoItem,
   TodoList,
   UpdateChoreInput,
@@ -75,6 +77,148 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getScanPantryUrl = () => {
+
+
+
+
+  return `/api/ai/scan-pantry`
+}
+
+/**
+ * @summary Scan a fridge/pantry photo and get ingredient list + meal suggestions
+ */
+export const scanPantry = async (scanPantryBody: ScanPantryBody, options?: RequestInit): Promise<PantryScanResult> => {
+
+  return customFetch<PantryScanResult>(getScanPantryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(scanPantryBody)
+  }
+);}
+
+
+
+
+
+export const getScanPantryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof scanPantry>>, TError,{data: BodyType<ScanPantryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof scanPantry>>, TError,{data: BodyType<ScanPantryBody>}, TContext> => {
+
+const mutationKey = ['scanPantry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof scanPantry>>, {data: BodyType<ScanPantryBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  scanPantry(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ScanPantryMutationResult = NonNullable<Awaited<ReturnType<typeof scanPantry>>>
+    export type ScanPantryMutationBody = BodyType<ScanPantryBody>
+    export type ScanPantryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Scan a fridge/pantry photo and get ingredient list + meal suggestions
+ */
+export const useScanPantry = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof scanPantry>>, TError,{data: BodyType<ScanPantryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof scanPantry>>,
+        TError,
+        {data: BodyType<ScanPantryBody>},
+        TContext
+      > => {
+      return useMutation(getScanPantryMutationOptions(options));
+    }
+
+export const getSuggestMealsUrl = () => {
+
+
+
+
+  return `/api/ai/suggest-meals`
+}
+
+/**
+ * @summary Get AI meal suggestions based on meal history
+ */
+export const suggestMeals = async ( options?: RequestInit): Promise<SuggestMealsResult> => {
+
+  return customFetch<SuggestMealsResult>(getSuggestMealsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSuggestMealsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suggestMeals>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof suggestMeals>>, TError,void, TContext> => {
+
+const mutationKey = ['suggestMeals'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof suggestMeals>>, void> = () => {
+
+
+          return  suggestMeals(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SuggestMealsMutationResult = NonNullable<Awaited<ReturnType<typeof suggestMeals>>>
+
+    export type SuggestMealsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Get AI meal suggestions based on meal history
+ */
+export const useSuggestMeals = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suggestMeals>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof suggestMeals>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSuggestMealsMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 
@@ -2311,14 +2455,14 @@ export const getCompleteMaintenanceTaskUrl = (id: string,) => {
 /**
  * @summary Mark a maintenance task as done (resets next due date)
  */
-export const completeMaintenanceTask = async (id: string, body?: CompleteMaintenanceTaskBody, options?: RequestInit): Promise<MaintenanceTask> => {
+export const completeMaintenanceTask = async (id: string, options?: RequestInit): Promise<MaintenanceTask> => {
 
   return customFetch<MaintenanceTask>(getCompleteMaintenanceTaskUrl(id),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(body ?? {})
+    method: 'POST'
+
+
   }
 );}
 
@@ -2340,10 +2484,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeMaintenanceTask>>, {id: string; data?: CompleteMaintenanceTaskBody}> = (props) => {
-          const {id, data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeMaintenanceTask>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
 
-          return  completeMaintenanceTask(id, data, requestOptions)
+          return  completeMaintenanceTask(id,requestOptions)
         }
 
 

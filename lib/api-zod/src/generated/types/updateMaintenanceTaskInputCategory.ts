@@ -16,4 +16,5 @@ export const UpdateMaintenanceTaskInputCategory = {
   appliance: 'appliance',
   yard: 'yard',
   other: 'other',
+  cleaning: 'cleaning',
 } as const;

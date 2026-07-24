@@ -15,7 +15,9 @@ export interface MaintenanceTask {
   propertyName: string;
   category: MaintenanceTaskCategory;
   frequencyDays: number;
+  isCleanerTask: boolean;
   lastCompletedAt?: Date | null;
+  lastCompletedBy?: string | null;
   nextDueDate: Date;
   isOverdue: boolean;
   isDueSoon: boolean;
