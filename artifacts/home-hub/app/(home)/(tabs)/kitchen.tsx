@@ -166,6 +166,9 @@ function GroceryListDetail({ listId, listName, onBack }: { listId: string; listN
 
 // ─── AI Scan Sheet ────────────────────────────────────────────────────────────
 
+const MAX_PHOTOS = 4;
+const PHOTO_LABELS = ['Fridge', 'Pantry', 'Pantry shelf', 'Freezer'];
+
 function ScanSheet({
   visible,
   onClose,
@@ -179,10 +182,10 @@ function ScanSheet({
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<Array<{ uri: string; base64: string }>>([]);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [addingPhoto, setAddingPhoto] = useState(false);
 
   const scanMutation = useScanPantry();
   const suggestMutation = useSuggestMeals();
@@ -191,39 +194,50 @@ function ScanSheet({
   const suggesting = suggestMutation.isPending;
 
   const reset = () => {
-    setImageUri(null);
-    setImageBase64(null);
+    setPhotos([]);
     setResult(null);
     setError(null);
+    setAddingPhoto(false);
     scanMutation.reset();
     suggestMutation.reset();
   };
 
   const handleClose = () => { reset(); onClose(); };
 
-  const pickImage = async (useCamera: boolean) => {
+  const addPhoto = async (useCamera: boolean) => {
+    if (photos.length >= MAX_PHOTOS) return;
+    setAddingPhoto(false);
     const picker = useCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
-    const picked = await picker({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.6,
-      base64: true,
-    });
-    if (!picked.canceled && picked.assets[0]) {
-      setImageUri(picked.assets[0].uri);
-      setImageBase64(picked.assets[0].base64 ?? null);
-      setResult(null);
-      setError(null);
+    try {
+      const picked = await picker({
+        mediaTypes: ImagePicker.MediaType.Images,
+        quality: 0.55,
+        base64: true,
+      });
+      if (!picked.canceled && picked.assets[0]?.base64) {
+        setPhotos(prev => [...prev, { uri: picked.assets[0].uri, base64: picked.assets[0].base64! }]);
+        setResult(null);
+        setError(null);
+      }
+    } catch (e) {
+      setError('Could not access camera or photos. Please check permissions.');
     }
   };
 
+  const removePhoto = (idx: number) => {
+    setPhotos(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const handleScan = () => {
-    if (!imageBase64) return;
+    if (photos.length === 0) return;
     setError(null);
     scanMutation.mutate(
-      { data: { imageBase64 } },
+      { data: { imagesBase64: photos.map(p => p.base64) } },
       {
         onSuccess: (data) => setResult(data as ScanResult),
-        onError: () => setError('Could not analyze the photo. Please try again.'),
+        onError: (err: any) => setError(
+          err?.response?.data?.error ?? 'Could not analyze the photos. Please try again.'
+        ),
       },
     );
   };
@@ -252,34 +266,27 @@ function ScanSheet({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Photo picker */}
             {!result && (
               <View style={styles.scanBody}>
-                {imageUri ? (
-                  <View style={styles.previewWrap}>
-                    <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="cover" />
-                    <Pressable style={styles.retakeBtn} onPress={() => { setImageUri(null); setImageBase64(null); }}>
-                      <Icon name="refresh-cw" iosName="arrow.clockwise" size={14} color={colors.primary} />
-                      <Text style={[styles.retakeBtnText, { color: colors.primary }]}>Retake</Text>
-                    </Pressable>
-                  </View>
-                ) : (
+
+                {/* ── Empty state ── */}
+                {photos.length === 0 && (
                   <View style={[styles.photoPlaceholder, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
                     <Icon name="camera" iosName="camera.fill" size={32} color={colors.mutedForeground} />
                     <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
-                      Take or upload a photo of your fridge or pantry
+                      Add up to {MAX_PHOTOS} photos — fridge, pantry, freezer, or shelves
                     </Text>
                     <View style={styles.photoActions}>
                       <Pressable
                         style={[styles.photoBtn, { backgroundColor: colors.primary }]}
-                        onPress={() => pickImage(true)}
+                        onPress={() => addPhoto(true)}
                       >
                         <Icon name="camera" iosName="camera" size={16} color="#fff" />
                         <Text style={styles.photoBtnText}>Camera</Text>
                       </Pressable>
                       <Pressable
                         style={[styles.photoBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
-                        onPress={() => pickImage(false)}
+                        onPress={() => addPhoto(false)}
                       >
                         <Icon name="image" iosName="photo" size={16} color={colors.foreground} />
                         <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Library</Text>
@@ -288,11 +295,63 @@ function ScanSheet({
                   </View>
                 )}
 
+                {/* ── Photo grid ── */}
+                {photos.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {photos.map((photo, idx) => (
+                      <View key={idx} style={[styles.photoGridItem, { borderColor: colors.border }]}>
+                        <Image source={{ uri: photo.uri }} style={styles.photoGridImage} resizeMode="cover" />
+                        <View style={[styles.photoGridLabel, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
+                          <Text style={styles.photoGridLabelText}>{PHOTO_LABELS[idx] ?? `Photo ${idx + 1}`}</Text>
+                        </View>
+                        <Pressable
+                          style={[styles.photoGridRemove, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
+                          onPress={() => removePhoto(idx)}
+                          hitSlop={6}
+                        >
+                          <Icon name="x" iosName="xmark" size={12} color="#fff" />
+                        </Pressable>
+                      </View>
+                    ))}
+
+                    {/* Add another slot */}
+                    {photos.length < MAX_PHOTOS && (
+                      <Pressable
+                        style={[styles.photoGridItem, styles.photoGridAdd, { borderColor: colors.border, backgroundColor: colors.secondary }]}
+                        onPress={() => setAddingPhoto(v => !v)}
+                      >
+                        <Icon name="plus" iosName="plus" size={22} color={colors.mutedForeground} />
+                        <Text style={[styles.photoGridAddText, { color: colors.mutedForeground }]}>Add photo</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
+
+                {/* Add photo picker (shown when tapping "Add photo" slot) */}
+                {addingPhoto && photos.length < MAX_PHOTOS && (
+                  <View style={[styles.addPhotoRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                    <Pressable style={[styles.photoBtn, { backgroundColor: colors.primary }]} onPress={() => addPhoto(true)}>
+                      <Icon name="camera" iosName="camera" size={15} color="#fff" />
+                      <Text style={styles.photoBtnText}>Camera</Text>
+                    </Pressable>
+                    <Pressable style={[styles.photoBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]} onPress={() => addPhoto(false)}>
+                      <Icon name="image" iosName="photo" size={15} color={colors.foreground} />
+                      <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Library</Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                {photos.length > 0 && (
+                  <Text style={[styles.photoCountHint, { color: colors.mutedForeground }]}>
+                    {photos.length} of {MAX_PHOTOS} photos · AI will find ingredients across all of them
+                  </Text>
+                )}
+
                 {error && (
                   <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
                 )}
 
-                {imageBase64 && (
+                {photos.length > 0 && (
                   <Pressable
                     style={[styles.scanBtn, { backgroundColor: colors.primary }, scanning && { opacity: 0.7 }]}
                     onPress={handleScan}
@@ -300,7 +359,7 @@ function ScanSheet({
                   >
                     {scanning
                       ? <ActivityIndicator color="#fff" size="small" />
-                      : <><Icon name="zap" iosName="bolt.fill" size={16} color="#fff" /><Text style={styles.scanBtnText}>Analyze & Suggest Meals</Text></>
+                      : <><Icon name="zap" iosName="bolt.fill" size={16} color="#fff" /><Text style={styles.scanBtnText}>Analyze {photos.length > 1 ? `${photos.length} Photos` : 'Photo'} & Suggest Meals</Text></>
                     }
                   </Pressable>
                 )}
@@ -755,6 +814,18 @@ const styles = StyleSheet.create({
   photoActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   photoBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
   photoBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+  // Multi-photo grid
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  photoGridItem: { width: '47%', aspectRatio: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 1, position: 'relative' },
+  photoGridImage: { width: '100%', height: '100%' },
+  photoGridLabel: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingVertical: 5, paddingHorizontal: 8 },
+  photoGridLabelText: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+  photoGridRemove: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  photoGridAdd: { alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', gap: 4 },
+  photoGridAddText: { fontSize: 11, fontFamily: 'Inter_500Medium' },
+  addPhotoRow: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
+  photoCountHint: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  // Legacy (kept for safety)
   previewWrap: { borderRadius: 16, overflow: 'hidden', position: 'relative' },
   previewImage: { width: '100%', height: 200 },
   retakeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },

@@ -41,10 +41,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [imageBase64]
+              required: [imagesBase64]
               properties:
-                imageBase64:
-                  type: string
+                imagesBase64:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
       responses:
         "200":
           description: Scan results

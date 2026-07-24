@@ -6,14 +6,31 @@ import { desc } from "drizzle-orm";
 
 const router = Router();
 
+/** Detect MIME type from a base64 string (with or without data-URI prefix). */
+function detectMimeType(b64: string): string {
+  if (b64.startsWith("data:")) {
+    const m = b64.match(/^data:([^;]+);base64,/);
+    return m?.[1] ?? "image/jpeg";
+  }
+  if (b64.startsWith("/9j/")) return "image/jpeg";
+  if (b64.startsWith("iVBOR")) return "image/png";
+  if (b64.startsWith("UklGR")) return "image/webp";
+  return "image/jpeg";
+}
+
+/** Strip a data-URI prefix if present, returning raw base64. */
+function stripPrefix(b64: string): string {
+  return b64.startsWith("data:") ? b64.replace(/^data:[^;]+;base64,/, "") : b64;
+}
+
 // POST /ai/scan-pantry
-// Accepts a base64 image of fridge/pantry, returns identified ingredients + meal suggestions
+// Accepts one or more base64 photos of fridge/pantry, returns ingredient list + meal suggestions
 router.post("/ai/scan-pantry", async (req, res) => {
   try {
-    const { imageBase64 } = req.body as { imageBase64: string };
+    const { imagesBase64 } = req.body as { imagesBase64: string[] };
 
-    if (!imageBase64) {
-      res.status(400).json({ error: "imageBase64 is required" });
+    if (!Array.isArray(imagesBase64) || imagesBase64.length === 0) {
+      res.status(400).json({ error: "imagesBase64 must be a non-empty array" });
       return;
     }
 
@@ -26,6 +43,17 @@ router.post("/ai/scan-pantry", async (req, res) => {
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))].slice(0, 20);
 
+    // Build one image_url entry per photo
+    const imageContent = imagesBase64.map((raw) => ({
+      type: "image_url" as const,
+      image_url: {
+        url: `data:${detectMimeType(raw)};base64,${stripPrefix(raw)}`,
+        detail: "low" as const,
+      },
+    }));
+
+    const photoWord = imagesBase64.length === 1 ? "photo" : `${imagesBase64.length} photos`;
+
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
       max_completion_tokens: 2048,
@@ -33,16 +61,10 @@ router.post("/ai/scan-pantry", async (req, res) => {
         {
           role: "user",
           content: [
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`,
-                detail: "low",
-              },
-            },
+            ...imageContent,
             {
               type: "text",
-              text: `You are a helpful family meal planner. Look at this photo of a fridge or pantry and identify the ingredients you can see.
+              text: `You are a helpful family meal planner. Look at ${photoWord === "1 photo" ? "this photo" : "these photos"} of a fridge or pantry and identify ALL the ingredients you can see across all images.
 
 Then suggest 4 family-friendly dinner ideas that use as many of these ingredients as possible. This is for a family with kids aged 5-10, so meals should be approachable.
 

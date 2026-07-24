@@ -7,5 +7,6 @@
  */
 
 export type ScanPantryBody = {
-  imageBase64: string;
+  /** @minItems 1 */
+  imagesBase64: string[];
 };

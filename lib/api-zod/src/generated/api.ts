@@ -11,8 +11,11 @@ import * as zod from 'zod';
 /**
  * @summary Scan a fridge/pantry photo and get ingredient list + meal suggestions
  */
+
+
+
 export const ScanPantryBody = zod.object({
-  "imageBase64": zod.string()
+  "imagesBase64": zod.array(zod.string()).min(1)
 })
 
 export const ScanPantryResponse = zod.object({
