@@ -30,6 +30,28 @@ export const ScanPantryResponse = zod.object({
 
 
 /**
+ * @summary Get full recipe details and an optional AI food photo for a named meal
+ */
+export const GetMealRecipeBody = zod.object({
+  "meal": zod.string(),
+  "generateImage": zod.boolean().optional()
+})
+
+export const GetMealRecipeResponse = zod.object({
+  "recipe": zod.object({
+  "prepTime": zod.string().optional(),
+  "cookTime": zod.string().optional(),
+  "servings": zod.number(),
+  "difficulty": zod.string().optional(),
+  "ingredients": zod.array(zod.string()),
+  "steps": zod.array(zod.string()),
+  "tips": zod.string().optional()
+}),
+  "imageBase64": zod.string().optional()
+})
+
+
+/**
  * @summary Get AI meal suggestions based on meal history
  */
 export const SuggestMealsResponse = zod.object({

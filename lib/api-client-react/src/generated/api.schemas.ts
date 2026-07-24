@@ -334,6 +334,21 @@ export interface PantryScanResult {
   mealSuggestions: MealSuggestion[];
 }
 
+export interface RecipeDetail {
+  prepTime?: string;
+  cookTime?: string;
+  servings: number;
+  difficulty?: string;
+  ingredients: string[];
+  steps: string[];
+  tips?: string;
+}
+
+export interface MealRecipeResult {
+  recipe: RecipeDetail;
+  imageBase64?: string;
+}
+
 export interface SuggestMealsResult {
   mealSuggestions: MealSuggestion[];
 }
@@ -341,6 +356,11 @@ export interface SuggestMealsResult {
 export type ScanPantryBody = {
   /** @minItems 1 */
   imagesBase64: string[];
+};
+
+export type GetMealRecipeBody = {
+  meal: string;
+  generateImage?: boolean;
 };
 
 export type GetChoresParams = {

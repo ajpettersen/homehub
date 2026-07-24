@@ -61,6 +61,8 @@
   },
   "dependencies": {
     "date-fns": "^3.6.0",
-    "expo-notifications": "^0.32.17"
+    "expo-notifications": "^0.32.17",
+    "expo-print": "^15.0.8",
+    "expo-sharing": "^14.0.8"
   }
 }

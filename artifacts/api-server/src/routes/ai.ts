@@ -105,6 +105,80 @@ Respond ONLY with valid JSON in this exact format:
   }
 });
 
+// POST /ai/meal-recipe
+// Returns a full recipe for a named meal, plus an optional AI-generated food photo
+router.post("/ai/meal-recipe", async (req, res) => {
+  try {
+    const { meal, generateImage } = req.body as { meal: string; generateImage?: boolean };
+
+    if (!meal || typeof meal !== "string") {
+      res.status(400).json({ error: "meal is required" });
+      return;
+    }
+
+    // Generate recipe via GPT
+    const recipeResp = await openai.chat.completions.create({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 1500,
+      messages: [
+        {
+          role: "user",
+          content: `You are a family meal planner for a family with kids aged 5-10 (Holden 10, Brody 8, Daphne 5).
+Generate a complete recipe for: "${meal}"
+
+Make it approachable, kid-friendly where possible, and realistic for a weeknight dinner.
+
+Respond ONLY with valid JSON:
+{
+  "prepTime": "15 mins",
+  "cookTime": "30 mins",
+  "servings": 5,
+  "difficulty": "Easy",
+  "ingredients": [
+    "2 lbs chicken breast",
+    "1 cup pasta sauce"
+  ],
+  "steps": [
+    "Preheat oven to 375°F.",
+    "Season chicken with salt and pepper."
+  ],
+  "tips": "Optional single tip for best results"
+}`,
+        },
+      ],
+    });
+
+    const recipeContent = recipeResp.choices[0]?.message?.content ?? "";
+    const recipeMatch = recipeContent.match(/\{[\s\S]*\}/);
+    if (!recipeMatch) {
+      res.status(500).json({ error: "Failed to parse recipe" });
+      return;
+    }
+    const recipe = JSON.parse(recipeMatch[0]);
+
+    // Optionally generate a food photo
+    let imageBase64: string | undefined;
+    if (generateImage) {
+      try {
+        const { generateImageBuffer } = await import("@workspace/integrations-openai-ai-server/image");
+        const buffer = await generateImageBuffer(
+          `Professional food photography of ${meal}, plated beautifully on a family dinner table, warm natural lighting, appetizing`,
+          "1024x1024"
+        );
+        imageBase64 = buffer.toString("base64");
+      } catch (imgErr) {
+        console.error("Image generation failed:", imgErr);
+        // Non-fatal — return recipe without image
+      }
+    }
+
+    res.json({ recipe, ...(imageBase64 ? { imageBase64 } : {}) });
+  } catch (err) {
+    console.error("Meal recipe error:", err);
+    res.status(500).json({ error: "Failed to get recipe" });
+  }
+});
+
 // POST /ai/suggest-meals
 // Returns meal suggestions based on meal history (no photo required)
 router.post("/ai/suggest-meals", async (req, res) => {

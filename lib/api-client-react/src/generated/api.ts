@@ -34,11 +34,13 @@ import type {
   GetChoresParams,
   GetMaintenanceTasksParams,
   GetMealPlansParams,
+  GetMealRecipeBody,
   GroceryItem,
   GroceryList,
   HealthStatus,
   MaintenanceTask,
   MealPlanEntry,
+  MealRecipeResult,
   PantryScanResult,
   Property,
   ScanPantryBody,
@@ -147,6 +149,77 @@ export const useScanPantry = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getScanPantryMutationOptions(options));
+    }
+
+export const getGetMealRecipeUrl = () => {
+
+
+
+
+  return `/api/ai/meal-recipe`
+}
+
+/**
+ * @summary Get full recipe details and an optional AI food photo for a named meal
+ */
+export const getMealRecipe = async (getMealRecipeBody: GetMealRecipeBody, options?: RequestInit): Promise<MealRecipeResult> => {
+
+  return customFetch<MealRecipeResult>(getGetMealRecipeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(getMealRecipeBody)
+  }
+);}
+
+
+
+
+
+export const getGetMealRecipeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getMealRecipe>>, TError,{data: BodyType<GetMealRecipeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getMealRecipe>>, TError,{data: BodyType<GetMealRecipeBody>}, TContext> => {
+
+const mutationKey = ['getMealRecipe'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getMealRecipe>>, {data: BodyType<GetMealRecipeBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  getMealRecipe(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetMealRecipeMutationResult = NonNullable<Awaited<ReturnType<typeof getMealRecipe>>>
+    export type GetMealRecipeMutationBody = BodyType<GetMealRecipeBody>
+    export type GetMealRecipeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Get full recipe details and an optional AI food photo for a named meal
+ */
+export const useGetMealRecipe = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getMealRecipe>>, TError,{data: BodyType<GetMealRecipeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getMealRecipe>>,
+        TError,
+        {data: BodyType<GetMealRecipeBody>},
+        TContext
+      > => {
+      return useMutation(getGetMealRecipeMutationOptions(options));
     }
 
 export const getSuggestMealsUrl = () => {
