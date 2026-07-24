@@ -9,6 +9,7 @@
 export * from './chore';
 export * from './choreFrequency';
 export * from './completeChoreInput';
+export * from './completeMaintenanceTaskInput';
 export * from './createChoreInput';
 export * from './createChoreInputFrequency';
 export * from './createGroceryItemInput';

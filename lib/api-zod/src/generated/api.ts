@@ -737,6 +737,10 @@ export const CompleteMaintenanceTaskParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const CompleteMaintenanceTaskBody = zod.object({
+  "completedBy": zod.string().nullish()
+})
+
 export const CompleteMaintenanceTaskResponse = zod.object({
   "id": zod.string(),
   "title": zod.string(),

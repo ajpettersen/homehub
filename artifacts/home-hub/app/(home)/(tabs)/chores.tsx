@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { StyleSheet, Text, View, ScrollView, RefreshControl, Pressable, Platform, Modal, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -16,6 +16,7 @@ import {
 } from '@workspace/api-client-react';
 import { PropertySwitcher } from '@/components/PropertySwitcher';
 import { useProperty } from '@/context/PropertyContext';
+import { useActiveMember } from '@/context/ActiveMemberContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
@@ -105,8 +106,12 @@ export default function ChoresScreen() {
     }
   }, [properties]);
 
+  const { activeMember, setActiveMemberId: setActiveMember } = useActiveMember();
+  const [memberPickerVisible, setMemberPickerVisible] = useState(false);
+  const humanMembers = (members ?? []).filter(m => m.role !== 'pet');
+
   const handleComplete = (id: string) => {
-    completeChore.mutate({ id, data: { completedBy: 'AJ' } });
+    completeChore.mutate({ id, data: { completedBy: activeMember?.name ?? 'Family' } });
   };
 
   const openEdit = (chore: Chore) => {
@@ -152,12 +157,23 @@ export default function ChoresScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Chores</Text>
-        <Pressable 
-          style={({pressed}) => [styles.addButton, pressed && { opacity: 0.7 }]}
-          onPress={() => setIsAddModalVisible(true)}
-        >
-          <IconComponent name="plus" iosName="plus" size={24} color={colors.primary} />
-        </Pressable>
+        <View style={styles.headerRight}>
+          {activeMember && (
+            <Pressable
+              style={[styles.activeMemberChip, { backgroundColor: activeMember.color + '22', borderColor: activeMember.color }]}
+              onPress={() => setMemberPickerVisible(true)}
+            >
+              <View style={[styles.activeMemberDot, { backgroundColor: activeMember.color }]} />
+              <Text style={[styles.activeMemberName, { color: activeMember.color }]}>{activeMember.name}</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={({pressed}) => [styles.addButton, pressed && { opacity: 0.7 }]}
+            onPress={() => setIsAddModalVisible(true)}
+          >
+            <IconComponent name="plus" iosName="plus" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.switcherRow}>
@@ -256,6 +272,32 @@ export default function ChoresScreen() {
           );
         })()}
       </ScrollView>
+
+      {/* Member Picker */}
+      <Modal visible={memberPickerVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Who are you?</Text>
+              <Pressable onPress={() => setMemberPickerVisible(false)} style={styles.closeButton}>
+                <IconComponent name="x" iosName="xmark" size={24} color={colors.foreground} />
+              </Pressable>
+            </View>
+            <View style={styles.pillRow}>
+              {humanMembers.map(m => (
+                <Pressable
+                  key={m.id}
+                  style={[styles.memberPickerOption, { backgroundColor: m.color + '22', borderColor: m.color, borderWidth: activeMember?.id === m.id ? 2 : 1 }]}
+                  onPress={() => { setActiveMember(m.id); setMemberPickerVisible(false); }}
+                >
+                  <View style={[styles.activeMemberDot, { backgroundColor: m.color }]} />
+                  <Text style={[styles.memberPickerName, { color: m.color, fontFamily: activeMember?.id === m.id ? 'Inter_700Bold' : 'Inter_500Medium' }]}>{m.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Edit Chore Modal */}
       <Modal visible={!!editingChore} animationType="slide" transparent>
@@ -669,5 +711,42 @@ const styles = StyleSheet.create({
   submitButtonText: {
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  activeMemberChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  activeMemberDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  activeMemberName: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  memberPickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 4,
+    flex: 1,
+    minWidth: '45%',
+  },
+  memberPickerName: {
+    fontSize: 15,
   },
 });

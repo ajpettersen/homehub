@@ -22,6 +22,7 @@ import type {
 import type {
   Chore,
   CompleteChoreInput,
+  CompleteMaintenanceTaskInput,
   CreateChoreInput,
   CreateGroceryItemInput,
   CreateGroceryListInput,
@@ -2757,14 +2758,15 @@ export const getCompleteMaintenanceTaskUrl = (id: string,) => {
 /**
  * @summary Mark a maintenance task as done (resets next due date)
  */
-export const completeMaintenanceTask = async (id: string, options?: RequestInit): Promise<MaintenanceTask> => {
+export const completeMaintenanceTask = async (id: string,
+    completeMaintenanceTaskInput?: CompleteMaintenanceTaskInput, options?: RequestInit): Promise<MaintenanceTask> => {
 
   return customFetch<MaintenanceTask>(getCompleteMaintenanceTaskUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(completeMaintenanceTaskInput)
   }
 );}
 
@@ -2773,8 +2775,8 @@ export const completeMaintenanceTask = async (id: string, options?: RequestInit)
 
 
 export const getCompleteMaintenanceTaskMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMaintenanceTask>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof completeMaintenanceTask>>, TError,{id: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMaintenanceTask>>, TError,{id: string;data?: BodyType<CompleteMaintenanceTaskInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeMaintenanceTask>>, TError,{id: string;data?: BodyType<CompleteMaintenanceTaskInput>}, TContext> => {
 
 const mutationKey = ['completeMaintenanceTask'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -2786,10 +2788,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeMaintenanceTask>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeMaintenanceTask>>, {id: string;data?: BodyType<CompleteMaintenanceTaskInput>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  completeMaintenanceTask(id,requestOptions)
+          return  completeMaintenanceTask(id,data,requestOptions)
         }
 
 
@@ -2800,18 +2802,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CompleteMaintenanceTaskMutationResult = NonNullable<Awaited<ReturnType<typeof completeMaintenanceTask>>>
-
+    export type CompleteMaintenanceTaskMutationBody = BodyType<CompleteMaintenanceTaskInput> | undefined
     export type CompleteMaintenanceTaskMutationError = ErrorType<unknown>
 
     /**
  * @summary Mark a maintenance task as done (resets next due date)
  */
 export const useCompleteMaintenanceTask = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMaintenanceTask>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMaintenanceTask>>, TError,{id: string;data?: BodyType<CompleteMaintenanceTaskInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof completeMaintenanceTask>>,
         TError,
-        {id: string},
+        {id: string;data?: BodyType<CompleteMaintenanceTaskInput>},
         TContext
       > => {
       return useMutation(getCompleteMaintenanceTaskMutationOptions(options));

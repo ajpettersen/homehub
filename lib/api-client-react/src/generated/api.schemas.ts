@@ -5,6 +5,10 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
+export interface CompleteMaintenanceTaskInput {
+  completedBy?: string | null;
+}
+
 export interface HealthStatus {
   status: string;
 }

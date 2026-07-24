@@ -67,6 +67,21 @@ router.get("/chores", async (req, res) => {
       );
     }
 
+    // Hide chores that were recently completed (they'll reappear after their frequency window)
+    const now = Date.now();
+    filtered = filtered.filter((r) => {
+      const completedAt = r.chore.completedAt;
+      if (!completedAt) return true;
+      const ageHours = (now - completedAt.getTime()) / (1000 * 60 * 60);
+      switch (r.chore.frequency) {
+        case 'daily':    return ageHours >= 20;
+        case 'weekly':   return ageHours >= 6 * 24;
+        case 'biweekly': return ageHours >= 13 * 24;
+        case 'monthly':  return ageHours >= 28 * 24;
+        default:         return ageHours >= 20;
+      }
+    });
+
     res.json(
       filtered.map((r) =>
         formatChore(r.chore, r.assigneeName ?? null, r.assigneeColor ?? null, r.propertyName ?? ""),

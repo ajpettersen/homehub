@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { PropertySwitcher } from '@/components/PropertySwitcher';
 import { useProperty } from '@/context/PropertyContext';
+import { useActiveMember } from '@/context/ActiveMemberContext';
 
 const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size: number; color: string }) => {
   if (Platform.OS === 'ios') return <SymbolView name={iosName} tintColor={color} size={size} />;
@@ -168,6 +169,7 @@ export default function MaintenanceScreen() {
   const queryClient = useQueryClient();
   const { selectedProperty } = useProperty();
   const { data: members } = useGetFamilyMembers();
+  const { activeMember } = useActiveMember();
 
   const { data: tasks, isLoading, refetch } = useGetMaintenanceTasks(
     selectedProperty ? { propertyId: selectedProperty.id } : undefined,
@@ -187,7 +189,7 @@ export default function MaintenanceScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: getMaintenanceTasksQueryKey() });
+    await queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
     setRefreshing(false);
   };
 
@@ -326,7 +328,7 @@ export default function MaintenanceScreen() {
                   key={who.id}
                   style={({ pressed }) => [
                     styles.whoOption,
-                    { backgroundColor: colors.card, borderColor: colors.border },
+                    { backgroundColor: colors.card, borderColor: activeMember?.name === who.name ? who.color : colors.border, borderWidth: activeMember?.name === who.name ? 2 : 1 },
                     pressed && { opacity: 0.8 },
                   ]}
                   onPress={() => whoSheet && handleConfirmDone(whoSheet.task, who.name)}

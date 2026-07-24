@@ -715,6 +715,12 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteMaintenanceTaskInput"
       responses:
         "200":
           description: Updated task
@@ -725,6 +731,13 @@ paths:
 
 components:
   schemas:
+    CompleteMaintenanceTaskInput:
+      type: object
+      properties:
+        completedBy:
+          type: string
+          nullable: true
+
     HealthStatus:
       type: object
       properties:

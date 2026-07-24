@@ -18,6 +18,7 @@ import { tokenCache } from "../utils/tokenCache"; // I'll provide tokenCache
 import { setBaseUrl } from "@workspace/api-client-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { ActiveMemberProvider } from "@/context/ActiveMemberContext";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -63,11 +64,13 @@ export default function RootLayout() {
           <SafeAreaProvider>
             <ErrorBoundary>
               <QueryClientProvider client={queryClient}>
-                <GestureHandlerRootView>
-                  <KeyboardProvider>
-                    <RootLayoutNav />
-                  </KeyboardProvider>
-                </GestureHandlerRootView>
+                <ActiveMemberProvider>
+                  <GestureHandlerRootView>
+                    <KeyboardProvider>
+                      <RootLayoutNav />
+                    </KeyboardProvider>
+                  </GestureHandlerRootView>
+                </ActiveMemberProvider>
               </QueryClientProvider>
             </ErrorBoundary>
           </SafeAreaProvider>
