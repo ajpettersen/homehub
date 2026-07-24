@@ -174,7 +174,7 @@ export default function ChoresScreen() {
               <Text style={[styles.avatarText, { color: colors.foreground }]}>All</Text>
             </View>
           </Pressable>
-          {members?.filter(m => m.role === 'child').map(member => (
+          {members?.map(member => (
             <Pressable 
               key={member.id}
               style={[styles.filterAvatar, selectedMemberId === member.id && { borderColor: member.color, borderWidth: 2 }]}
@@ -194,10 +194,8 @@ export default function ChoresScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {(() => {
-          const kidIds = new Set(members?.filter(m => m.role === 'child').map(m => m.id) ?? []);
-          const kidsChores = chores?.filter(c => !c.assigneeId || kidIds.has(c.assigneeId));
-          return kidsChores && kidsChores.length > 0 ? (
-          kidsChores.map(chore => {
+          return chores && chores.length > 0 ? (
+          chores.map(chore => {
             const assigneeColor = members?.find(m => m.id === chore.assigneeId)?.color || colors.muted;
             
             return (
@@ -306,7 +304,7 @@ export default function ChoresScreen() {
                 >
                   <Text style={[styles.pillText, !editForm.assigneeId ? { color: colors.primaryForeground } : { color: colors.foreground }]}>Anyone</Text>
                 </Pressable>
-                {members?.filter(m => m.role === 'child').map(member => (
+                {members?.map(member => (
                   <Pressable
                     key={member.id}
                     style={[styles.pill, editForm.assigneeId === member.id ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
@@ -408,7 +406,7 @@ export default function ChoresScreen() {
                 >
                   <Text style={[styles.pillText, !newChore.assigneeId ? { color: colors.primaryForeground } : { color: colors.foreground }]}>Anyone</Text>
                 </Pressable>
-                {members?.filter(m => m.role === 'child').map(member => (
+                {members?.map(member => (
                   <Pressable
                     key={member.id}
                     style={[styles.pill, newChore.assigneeId === member.id ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
