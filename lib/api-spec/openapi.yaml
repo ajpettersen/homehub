@@ -436,6 +436,70 @@ paths:
         "204":
           description: Deleted
 
+  /me:
+    get:
+      operationId: getMe
+      tags: [users]
+      summary: Get or create the current user's profile
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "201":
+          description: Newly created profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+
+  /admin/users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all user profiles (admin)
+      responses:
+        "200":
+          description: All user profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserProfile"
+
+  /admin/users/{clerkId}:
+    put:
+      operationId: updateUserProfile
+      tags: [users]
+      summary: Update a user's role / property / linked family member
+      parameters:
+        - name: clerkId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserProfileRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
   /todo-lists:
     get:
       operationId: getTodoLists
@@ -766,6 +830,9 @@ components:
         completedBy:
           type: string
           nullable: true
+        completionNote:
+          type: string
+          nullable: true
         isOverdue:
           type: boolean
         points:
@@ -828,6 +895,9 @@ components:
       properties:
         completedBy:
           type: string
+        note:
+          type: string
+          nullable: true
       required:
         - completedBy
 
@@ -1255,3 +1325,41 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MealSuggestion"
+
+    UserProfile:
+      type: object
+      required: [clerkId, role]
+      properties:
+        clerkId:
+          type: string
+        role:
+          type: string
+          enum: [family, cleaner, pending]
+        allowedPropertyId:
+          type: string
+          nullable: true
+        allowedPropertyName:
+          type: string
+          nullable: true
+        linkedFamilyMemberId:
+          type: string
+          nullable: true
+        linkedFamilyMemberName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          nullable: true
+
+    UpdateUserProfileRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [family, cleaner, pending]
+        allowedPropertyId:
+          type: string
+          nullable: true
+        linkedFamilyMemberId:
+          type: string
+          nullable: true

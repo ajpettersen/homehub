@@ -125,6 +125,7 @@ export interface Chore {
   dueDate?: string | null;
   completedAt?: string | null;
   completedBy?: string | null;
+  completionNote?: string | null;
   isOverdue: boolean;
   points: number;
 }
@@ -171,6 +172,7 @@ export interface UpdateChoreInput {
 
 export interface CompleteChoreInput {
   completedBy: string;
+  note?: string | null;
 }
 
 export interface GroceryList {
@@ -353,6 +355,40 @@ export interface SuggestMealsResult {
   mealSuggestions: MealSuggestion[];
 }
 
+export type UserProfileRole = typeof UserProfileRole[keyof typeof UserProfileRole];
+
+
+export const UserProfileRole = {
+  family: 'family',
+  cleaner: 'cleaner',
+  pending: 'pending',
+} as const;
+
+export interface UserProfile {
+  clerkId: string;
+  role: UserProfileRole;
+  allowedPropertyId?: string | null;
+  allowedPropertyName?: string | null;
+  linkedFamilyMemberId?: string | null;
+  linkedFamilyMemberName?: string | null;
+  createdAt?: string | null;
+}
+
+export type UpdateUserProfileRequestRole = typeof UpdateUserProfileRequestRole[keyof typeof UpdateUserProfileRequestRole];
+
+
+export const UpdateUserProfileRequestRole = {
+  family: 'family',
+  cleaner: 'cleaner',
+  pending: 'pending',
+} as const;
+
+export interface UpdateUserProfileRequest {
+  role?: UpdateUserProfileRequestRole;
+  allowedPropertyId?: string | null;
+  linkedFamilyMemberId?: string | null;
+}
+
 export type ScanPantryBody = {
   /** @minItems 1 */
   imagesBase64: string[];
@@ -370,6 +406,10 @@ propertyId?: string;
 
 export type GetMealPlansParams = {
 weekStart?: string;
+};
+
+export type UpdateUserProfile200 = {
+  ok?: boolean;
 };
 
 export type GetMaintenanceTasksParams = {

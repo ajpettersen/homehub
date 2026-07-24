@@ -49,3 +49,8 @@ export * from './updateGroceryItemInput';
 export * from './updateMaintenanceTaskInput';
 export * from './updateMaintenanceTaskInputCategory';
 export * from './updateTodoItemInput';
+export * from './updateUserProfile200';
+export * from './updateUserProfileRequest';
+export * from './updateUserProfileRequestRole';
+export * from './userProfile';
+export * from './userProfileRole';

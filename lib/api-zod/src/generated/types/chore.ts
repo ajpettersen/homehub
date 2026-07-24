@@ -18,6 +18,7 @@ export interface Chore {
   dueDate?: Date | null;
   completedAt?: Date | null;
   completedBy?: string | null;
+  completionNote?: string | null;
   isOverdue: boolean;
   points: number;
 }

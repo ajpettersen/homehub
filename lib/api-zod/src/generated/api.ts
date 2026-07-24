@@ -156,6 +156,7 @@ export const GetChoresResponseItem = zod.object({
   "dueDate": zod.coerce.date().nullish(),
   "completedAt": zod.coerce.date().nullish(),
   "completedBy": zod.string().nullish(),
+  "completionNote": zod.string().nullish(),
   "isOverdue": zod.boolean(),
   "points": zod.number()
 })
@@ -185,6 +186,7 @@ export const CreateChoreResponse = zod.object({
   "dueDate": zod.coerce.date().nullish(),
   "completedAt": zod.coerce.date().nullish(),
   "completedBy": zod.string().nullish(),
+  "completionNote": zod.string().nullish(),
   "isOverdue": zod.boolean(),
   "points": zod.number()
 })
@@ -217,6 +219,7 @@ export const UpdateChoreResponse = zod.object({
   "dueDate": zod.coerce.date().nullish(),
   "completedAt": zod.coerce.date().nullish(),
   "completedBy": zod.string().nullish(),
+  "completionNote": zod.string().nullish(),
   "isOverdue": zod.boolean(),
   "points": zod.number()
 })
@@ -240,7 +243,8 @@ export const CompleteChoreParams = zod.object({
 })
 
 export const CompleteChoreBody = zod.object({
-  "completedBy": zod.string()
+  "completedBy": zod.string(),
+  "note": zod.string().nullish()
 })
 
 export const CompleteChoreResponse = zod.object({
@@ -254,6 +258,7 @@ export const CompleteChoreResponse = zod.object({
   "dueDate": zod.coerce.date().nullish(),
   "completedAt": zod.coerce.date().nullish(),
   "completedBy": zod.string().nullish(),
+  "completionNote": zod.string().nullish(),
   "isOverdue": zod.boolean(),
   "points": zod.number()
 })
@@ -450,6 +455,53 @@ export const DeleteMealPlanEntryParams = zod.object({
 })
 
 export const DeleteMealPlanEntryResponse = zod.void()
+
+
+/**
+ * @summary Get or create the current user's profile
+ */
+export const GetMeResponse = zod.object({
+  "clerkId": zod.string(),
+  "role": zod.enum(['family', 'cleaner', 'pending']),
+  "allowedPropertyId": zod.string().nullish(),
+  "allowedPropertyName": zod.string().nullish(),
+  "linkedFamilyMemberId": zod.string().nullish(),
+  "linkedFamilyMemberName": zod.string().nullish(),
+  "createdAt": zod.string().nullish()
+})
+
+
+/**
+ * @summary List all user profiles (admin)
+ */
+export const ListUsersResponseItem = zod.object({
+  "clerkId": zod.string(),
+  "role": zod.enum(['family', 'cleaner', 'pending']),
+  "allowedPropertyId": zod.string().nullish(),
+  "allowedPropertyName": zod.string().nullish(),
+  "linkedFamilyMemberId": zod.string().nullish(),
+  "linkedFamilyMemberName": zod.string().nullish(),
+  "createdAt": zod.string().nullish()
+})
+export const ListUsersResponse = zod.array(ListUsersResponseItem)
+
+
+/**
+ * @summary Update a user's role / property / linked family member
+ */
+export const UpdateUserProfileParams = zod.object({
+  "clerkId": zod.coerce.string()
+})
+
+export const UpdateUserProfileBody = zod.object({
+  "role": zod.enum(['family', 'cleaner', 'pending']).optional(),
+  "allowedPropertyId": zod.string().nullish(),
+  "linkedFamilyMemberId": zod.string().nullish()
+})
+
+export const UpdateUserProfileResponse = zod.object({
+  "ok": zod.boolean().optional()
+})
 
 
 /**

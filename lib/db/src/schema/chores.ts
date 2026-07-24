@@ -14,6 +14,7 @@ export const choresTable = pgTable("chores", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
   completedBy: text("completed_by"),
   points: integer("points").notNull().default(10),
+  completionNote: text("completion_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -6,7 +6,7 @@
  */
 import React, { useState } from 'react';
 import {
-  StyleSheet, Text, View, ScrollView, Pressable,
+  StyleSheet, Text, View, ScrollView, Pressable, Modal,
   Platform, Switch, ActivityIndicator, Alert,
   TextInput, RefreshControl, Dimensions,
 } from 'react-native';
@@ -27,13 +27,17 @@ import {
   useUpdateMaintenanceTask,
   useDeleteChore,
   useDeleteMaintenanceTask,
+  useListUsers,
+  useUpdateUserProfile,
   getGetChoresQueryKey,
   getGetMaintenanceTasksQueryKey,
   Chore,
   FamilyMember,
   MaintenanceTask,
   ChoreFrequency,
+  type UserProfile,
 } from '@workspace/api-client-react';
+import { useClerk } from '@clerk/expo';
 import { useProperty } from '@/context/PropertyContext';
 import { PropertySwitcher } from '@/components/PropertySwitcher';
 
@@ -495,6 +499,14 @@ export default function SettingsScreen() {
   const [expandedChoreId, setExpandedChoreId] = useState<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [userRole, setUserRole] = useState<string>('family');
+  const [userPropertyId, setUserPropertyId] = useState<string | null>(null);
+  const [userMemberId, setUserMemberId] = useState<string | null>(null);
+
+  const { data: users, refetch: refetchUsers } = useListUsers();
+  const updateUserProfile = useUpdateUserProfile();
+  const { signOut } = useClerk();
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -520,7 +532,7 @@ export default function SettingsScreen() {
       member: m,
       chores: filteredChores.filter((c) => c.assigneeId === m.id),
     })).filter((g) => g.chores.length > 0);
-    if (unassigned.length) groups.push({ member: null, chores: unassigned });
+    if (unassigned.length) groups.push({ member: null as any, chores: unassigned });
     return groups;
   }, [filteredChores, members, activeMemberId]);
 
@@ -771,50 +783,161 @@ export default function SettingsScreen() {
           ))}
         </View>
 
+        {/* ── Users (admin) */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Users</Text>
+          <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>Manage app access and roles</Text>
+          {!users?.length ? (
+            <View style={[styles.emptyCard, { backgroundColor: colors.secondary }]}>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No user accounts yet. Users appear here after they first sign in.</Text>
+            </View>
+          ) : (
+            <View style={[styles.appSettingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {users.map((u, i) => {
+                const roleBadgeColor = u.role === 'family' ? colors.primary : u.role === 'cleaner' ? '#9B89C4' : '#F59E0B';
+                const roleLabel = u.role === 'family' ? 'Family' : u.role === 'cleaner' ? 'Cleaner' : 'Pending';
+                return (
+                  <React.Fragment key={u.clerkId}>
+                    {i > 0 && <View style={[styles.settingDivider, { backgroundColor: colors.border }]} />}
+                    <Pressable
+                      style={styles.settingRow}
+                      onPress={() => {
+                        setEditingUser(u);
+                        setUserRole(u.role);
+                        setUserPropertyId(u.allowedPropertyId ?? null);
+                        setUserMemberId(u.linkedFamilyMemberId ?? null);
+                        tap();
+                      }}
+                    >
+                      <View style={styles.settingLeft}>
+                        <View style={[styles.userAvatar, { backgroundColor: `${roleBadgeColor}20` }]}>
+                          <Icon name="user" iosName="person.fill" size={16} color={roleBadgeColor} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.settingTitle, { color: colors.foreground }]} numberOfLines={1}>
+                            {u.linkedFamilyMemberName ?? u.clerkId.slice(0, 16) + '…'}
+                          </Text>
+                          <Text style={[styles.settingDesc, { color: colors.mutedForeground }]} numberOfLines={1}>
+                            {u.allowedPropertyName ? `${u.allowedPropertyName} · ` : ''}{u.clerkId.slice(0, 12)}…
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={[styles.roleBadge, { backgroundColor: `${roleBadgeColor}18` }]}>
+                        <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleLabel}</Text>
+                      </View>
+                    </Pressable>
+                  </React.Fragment>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
         {/* ── App Settings */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>App</Text>
-          <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>Preferences</Text>
           <View style={[styles.appSettingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                <Icon name="users" iosName="person.2.fill" size={18} color={colors.primary} />
-                <View>
-                  <Text style={[styles.settingTitle, { color: colors.foreground }]}>Family members</Text>
-                  <Text style={[styles.settingDesc, { color: colors.mutedForeground }]}>
-                    {members?.length ?? 0} members in your household
-                  </Text>
-                </View>
-              </View>
-            </View>
-            <View style={[styles.settingDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                <Icon name="home" iosName="house.fill" size={18} color={colors.primary} />
-                <View>
-                  <Text style={[styles.settingTitle, { color: colors.foreground }]}>Properties</Text>
-                  <Text style={[styles.settingDesc, { color: colors.mutedForeground }]}>
-                    {properties?.length ?? 0} properties configured
-                  </Text>
-                </View>
-              </View>
-            </View>
-            <View style={[styles.settingDivider, { backgroundColor: colors.border }]} />
             <View style={styles.settingRow}>
               <View style={styles.settingLeft}>
                 <Icon name="info" iosName="info.circle.fill" size={18} color={colors.primary} />
                 <View>
                   <Text style={[styles.settingTitle, { color: colors.foreground }]}>HomeHub</Text>
-                  <Text style={[styles.settingDesc, { color: colors.mutedForeground }]}>
-                    Family household manager
-                  </Text>
+                  <Text style={[styles.settingDesc, { color: colors.mutedForeground }]}>Family household manager</Text>
                 </View>
               </View>
             </View>
+            <View style={[styles.settingDivider, { backgroundColor: colors.border }]} />
+            <Pressable style={styles.settingRow} onPress={() => signOut()}>
+              <View style={styles.settingLeft}>
+                <Icon name="log-out" iosName="rectangle.portrait.and.arrow.right" size={18} color="#EF4444" />
+                <Text style={[styles.settingTitle, { color: '#EF4444' }]}>Sign out</Text>
+              </View>
+            </Pressable>
           </View>
         </View>
 
       </ScrollView>
+
+      {/* ── Edit User Modal */}
+      {editingUser && (
+        <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditingUser(null)}>
+          <View style={[styles.modalRoot, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Edit User</Text>
+            <Text style={[styles.modalSub, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {editingUser.clerkId}
+            </Text>
+
+            <Text style={[styles.modalLabel, { color: colors.foreground }]}>Role</Text>
+            <View style={styles.chipRow}>
+              {(['family', 'cleaner', 'pending'] as const).map((r) => (
+                <Pressable
+                  key={r}
+                  style={[styles.chip, { backgroundColor: colors.secondary, borderColor: colors.border }, userRole === r && { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}
+                  onPress={() => setUserRole(r)}
+                >
+                  <Text style={[styles.chipText, { color: userRole === r ? colors.primary : colors.mutedForeground }]}>
+                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {userRole === 'cleaner' && (
+              <>
+                <Text style={[styles.modalLabel, { color: colors.foreground }]}>Allowed Property</Text>
+                <View style={styles.chipRow}>
+                  {(properties ?? []).map((p) => (
+                    <Pressable
+                      key={p.id}
+                      style={[styles.chip, { backgroundColor: colors.secondary, borderColor: colors.border }, userPropertyId === p.id && { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}
+                      onPress={() => setUserPropertyId(p.id)}
+                    >
+                      <Text style={[styles.chipText, { color: userPropertyId === p.id ? colors.primary : colors.mutedForeground }]}>{p.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={[styles.modalLabel, { color: colors.foreground }]}>Linked Family Member</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                  <View style={styles.chipRow}>
+                    {(members ?? []).filter(m => m.role !== 'pet').map((m) => (
+                      <Pressable
+                        key={m.id}
+                        style={[styles.chip, { backgroundColor: colors.secondary, borderColor: colors.border }, userMemberId === m.id && { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}
+                        onPress={() => setUserMemberId(m.id)}
+                      >
+                        <Text style={[styles.chipText, { color: userMemberId === m.id ? colors.primary : colors.mutedForeground }]}>{m.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </ScrollView>
+              </>
+            )}
+
+            <Pressable
+              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                updateUserProfile.mutate(
+                  {
+                    clerkId: editingUser.clerkId,
+                    data: {
+                      role: userRole as any,
+                      ...(userRole === 'cleaner' ? { allowedPropertyId: userPropertyId, linkedFamilyMemberId: userMemberId } : { allowedPropertyId: null, linkedFamilyMemberId: null }),
+                    },
+                  },
+                  { onSettled: () => { refetchUsers(); setEditingUser(null); } },
+                );
+              }}
+            >
+              <Text style={styles.saveBtnText}>Save Changes</Text>
+            </Pressable>
+            <Pressable style={{ alignItems: 'center', paddingVertical: 12 }} onPress={() => setEditingUser(null)}>
+              <Text style={{ color: colors.mutedForeground, fontSize: 15, fontFamily: 'Inter_400Regular' }}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -1274,4 +1397,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     textAlign: 'center',
   },
+
+  // ── Users section
+  userAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  roleBadgeText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+
+  // ── Edit user modal
+  modalRoot: { flex: 1, padding: 24 },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#ccc', alignSelf: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontFamily: 'Inter_700Bold', marginBottom: 4 },
+  modalSub: { fontSize: 13, fontFamily: 'Inter_400Regular', marginBottom: 24 },
+  modalLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold', marginBottom: 8, marginTop: 4 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  chipText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  saveBtn: { paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 8, marginBottom: 4 },
+  saveBtnText: { color: '#fff', fontSize: 16, fontFamily: 'Inter_600SemiBold' },
 });

@@ -8,3 +8,4 @@ export * from "./todoLists";
 export * from "./todoItems";
 export * from "./maintenanceTasks";
 export * from "./pushTokens";
+export * from "./userProfiles";

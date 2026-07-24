@@ -33,6 +33,7 @@ function formatChore(
     dueDate: chore.dueDate ?? null,
     completedAt: chore.completedAt?.toISOString() ?? null,
     completedBy: chore.completedBy ?? null,
+    completionNote: chore.completionNote ?? null,
     isOverdue,
     points: chore.points,
   };
@@ -170,11 +171,11 @@ router.delete("/chores/:id", async (req, res) => {
 router.post("/chores/:id/complete", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { completedBy } = req.body;
+    const { completedBy, note } = req.body;
 
     await db
       .update(choresTable)
-      .set({ completedAt: new Date(), completedBy: completedBy ?? "Family" })
+      .set({ completedAt: new Date(), completedBy: completedBy ?? "Family", completionNote: note ?? null })
       .where(eq(choresTable.id, id));
 
     const rows = await db

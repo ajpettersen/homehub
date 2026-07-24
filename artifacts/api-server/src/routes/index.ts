@@ -10,6 +10,7 @@ import todosRouter from "./todos";
 import maintenanceRouter from "./maintenance";
 import aiRouter from "./ai";
 import pushTokensRouter from "./pushTokens";
+import meRouter from "./me";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(todosRouter);
 router.use(maintenanceRouter);
 router.use(aiRouter);
 router.use(pushTokensRouter);
+router.use(meRouter);
 
 export default router;

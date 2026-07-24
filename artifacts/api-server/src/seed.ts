@@ -7,7 +7,7 @@ import {
   groceryListsTable,
   todoListsTable,
 } from "@workspace/db";
-import { sql, lt } from "drizzle-orm";
+import { sql, lt, eq } from "drizzle-orm";
 import { logger } from "./lib/logger";
 
 function addDays(date: Date, days: number): string {
@@ -450,5 +450,50 @@ export async function ensureHouseCleanerTasks() {
     logger.info("Cleaner tasks seeded successfully");
   } catch (err) {
     logger.error({ err }, "Failed to seed cleaner tasks");
+  }
+}
+
+/** Seed a "Cleaner" family member + cabin chores assigned to them (idempotent) */
+export async function seedCleanerIfEmpty() {
+  try {
+    // Check if Cleaner already exists
+    const existing = await db
+      .select()
+      .from(familyMembersTable)
+      .where(eq(familyMembersTable.name, "Cleaner"));
+    if (existing.length) return;
+
+    // Create Cleaner family member
+    const [cleaner] = await db
+      .insert(familyMembersTable)
+      .values({ name: "Cleaner", role: "cleaner", color: "#9B89C4", avatarInitials: "CL" })
+      .returning();
+
+    // Find Cabin property
+    const cabins = await db
+      .select()
+      .from(propertiesTable)
+      .where(eq(propertiesTable.name, "Cabin"));
+    if (!cabins.length) return;
+    const cabin = cabins[0];
+
+    const today = new Date();
+    const addD = (d: Date, n: number) => {
+      const r = new Date(d);
+      r.setDate(r.getDate() + n);
+      return r.toISOString().split("T")[0];
+    };
+
+    await db.insert(choresTable).values([
+      { title: "Clean bathrooms", assigneeId: cleaner.id, propertyId: cabin.id, frequency: "weekly", dueDate: addD(today, 0), points: 20 },
+      { title: "Vacuum all rooms", assigneeId: cleaner.id, propertyId: cabin.id, frequency: "weekly", dueDate: addD(today, 3), points: 15 },
+      { title: "Wipe kitchen counters & appliances", assigneeId: cleaner.id, propertyId: cabin.id, frequency: "weekly", dueDate: addD(today, 0), points: 15 },
+      { title: "Change bed linens", assigneeId: cleaner.id, propertyId: cabin.id, frequency: "biweekly", dueDate: addD(today, 7), points: 20 },
+      { title: "Sweep & mop floors", assigneeId: cleaner.id, propertyId: cabin.id, frequency: "weekly", dueDate: addD(today, 0), points: 15 },
+    ]);
+
+    logger.info("Cleaner family member and cabin chores seeded");
+  } catch (err) {
+    logger.error({ err }, "Failed to seed cleaner");
   }
 }
