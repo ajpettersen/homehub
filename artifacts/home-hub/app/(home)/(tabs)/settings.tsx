@@ -8,12 +8,14 @@ import React, { useState } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, Pressable,
   Platform, Switch, ActivityIndicator, Alert,
-  TextInput, RefreshControl,
+  TextInput, RefreshControl, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
 import { useColors } from '@/hooks/useColors';
+import { useTheme } from '@/context/ThemeContext';
+import { THEMES } from '@/constants/themes';
 import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -478,6 +480,7 @@ function MaintenanceRow({
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
+  const { themeId, setThemeId } = useTheme();
   const queryClient = useQueryClient();
   const { selectedProperty } = useProperty();
 
@@ -537,6 +540,50 @@ export default function SettingsScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
+
+        {/* ── Appearance */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Appearance</Text>
+          <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>Pick a look that feels like home</Text>
+          <View style={styles.themeGrid}>
+            {THEMES.map((t) => {
+              const active = themeId === t.id;
+              return (
+                <Pressable
+                  key={t.id}
+                  style={[
+                    styles.themeCard,
+                    { backgroundColor: t.card, borderColor: active ? t.primary : t.border },
+                    active && { borderWidth: 2.5 },
+                  ]}
+                  onPress={() => { tap(); setThemeId(t.id); }}
+                >
+                  {/* Color stripe */}
+                  <View style={[styles.themeStripe, { backgroundColor: t.primary }]}>
+                    <View style={[styles.themeStripeDot, { backgroundColor: t.accent }]} />
+                    <View style={[styles.themeStripeDot, { backgroundColor: t.primaryForeground, opacity: 0.4 }]} />
+                  </View>
+                  {/* Card body */}
+                  <View style={[styles.themeCardBody, { backgroundColor: t.background }]}>
+                    <Text style={[styles.themeEmoji]}>{t.emoji}</Text>
+                    <Text style={[styles.themeCardName, { color: t.foreground }]}>{t.name}</Text>
+                    {t.isDark && (
+                      <View style={[styles.darkBadge, { backgroundColor: `${t.primary}22` }]}>
+                        <Text style={[styles.darkBadgeText, { color: t.primary }]}>dark</Text>
+                      </View>
+                    )}
+                  </View>
+                  {/* Active check */}
+                  {active && (
+                    <View style={[styles.themeCheck, { backgroundColor: t.primary }]}>
+                      <Icon name="check" iosName="checkmark" size={10} color={t.primaryForeground} />
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
 
         {/* ── Your Family */}
         <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -1118,6 +1165,68 @@ const styles = StyleSheet.create({
   },
   propTypeBadgeText: {
     fontSize: 20,
+  },
+
+  // ── Theme picker
+  themeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  themeCard: {
+    width: (Dimensions.get('window').width - 40 - 30) / 4,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  themeStripe: {
+    height: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 6,
+    gap: 3,
+  },
+  themeStripeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  themeCardBody: {
+    padding: 8,
+    alignItems: 'center',
+    gap: 2,
+  },
+  themeEmoji: {
+    fontSize: 18,
+  },
+  themeCardName: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
+  },
+  darkBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginTop: 1,
+  },
+  darkBadgeText: {
+    fontSize: 8,
+    fontFamily: 'Inter_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  themeCheck: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ── App settings
