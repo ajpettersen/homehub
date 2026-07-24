@@ -211,10 +211,26 @@ function ScanSheet({
   const addPhoto = async (useCamera: boolean) => {
     if (photos.length >= MAX_PHOTOS) return;
     setAddingPhoto(false);
-    const picker = useCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+
+    // Request the right permission first
+    if (useCamera) {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Camera permission denied. Please allow camera access in your device Settings.');
+        return;
+      }
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Photo library permission denied. Please allow photo access in your device Settings.');
+        return;
+      }
+    }
+
     try {
+      const picker = useCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
       const picked = await picker({
-        mediaTypes: ImagePicker.MediaType.Images,
+        mediaTypes: 'images',
         quality: 0.55,
         base64: true,
       });
@@ -224,7 +240,7 @@ function ScanSheet({
         setError(null);
       }
     } catch (e) {
-      setError('Could not access camera or photos. Please check permissions.');
+      setError('Could not open camera or photo library. Please try again.');
     }
   };
 
