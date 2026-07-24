@@ -8,8 +8,11 @@ import {
   useGetProperties, 
   useCompleteChore,
   useCreateChore,
+  useUpdateChore,
+  useDeleteChore,
   getGetChoresQueryKey,
-  ChoreFrequency
+  ChoreFrequency,
+  type Chore,
 } from '@workspace/api-client-react';
 import { PropertySwitcher } from '@/components/PropertySwitcher';
 import { useProperty } from '@/context/PropertyContext';
@@ -33,6 +36,8 @@ export default function ChoresScreen() {
   
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [editingChore, setEditingChore] = useState<Chore | null>(null);
+  const [editForm, setEditForm] = useState<{ title: string; frequency: string; assigneeId?: string; propertyId: string }>({ title: '', frequency: 'weekly', propertyId: '' });
   
   const choreParams: any = {};
   if (selectedMemberId) choreParams.assigneeId = selectedMemberId;
@@ -61,6 +66,25 @@ export default function ChoresScreen() {
     }
   });
 
+  const updateChore = useUpdateChore({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
+        setEditingChore(null);
+      }
+    }
+  });
+
+  const deleteChore = useDeleteChore({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
+        setEditingChore(null);
+      }
+    }
+  });
+
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
     setRefreshing(true);
@@ -82,8 +106,34 @@ export default function ChoresScreen() {
   }, [properties]);
 
   const handleComplete = (id: string) => {
-    // In a real app we'd get the actual logged in user name
     completeChore.mutate({ id, data: { completedBy: 'AJ' } });
+  };
+
+  const openEdit = (chore: Chore) => {
+    setEditForm({
+      title: chore.title,
+      frequency: chore.frequency,
+      assigneeId: chore.assigneeId ?? undefined,
+      propertyId: chore.propertyId,
+    });
+    setEditingChore(chore);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingChore || !editForm.title || !editForm.propertyId) return;
+    updateChore.mutate({
+      id: editingChore.id,
+      data: {
+        title: editForm.title,
+        frequency: editForm.frequency as any,
+        assigneeId: editForm.assigneeId || undefined,
+        propertyId: editForm.propertyId,
+      },
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    deleteChore.mutate({ id });
   };
 
   const handleAddChore = () => {
@@ -172,17 +222,29 @@ export default function ChoresScreen() {
                         <Text style={[styles.badgeText, { color: colors.mutedForeground }]}>{chore.frequency}</Text>
                       </View>
                     </View>
-                    <Pressable
-                      style={({pressed}) => [
-                        styles.completeButton,
-                        { borderColor: colors.border },
-                        pressed && { backgroundColor: colors.secondary }
-                      ]}
-                      onPress={() => handleComplete(chore.id)}
-                      disabled={completeChore.isPending}
-                    >
-                      <IconComponent name="check" iosName="checkmark" size={16} color={colors.primary} />
-                    </Pressable>
+                    <View style={styles.cardActions}>
+                      <Pressable
+                        style={({pressed}) => [
+                          styles.cardActionBtn,
+                          { borderColor: colors.border },
+                          pressed && { backgroundColor: colors.secondary }
+                        ]}
+                        onPress={() => openEdit(chore)}
+                      >
+                        <IconComponent name="edit-2" iosName="pencil" size={14} color={colors.mutedForeground} />
+                      </Pressable>
+                      <Pressable
+                        style={({pressed}) => [
+                          styles.cardActionBtn,
+                          { borderColor: colors.border },
+                          pressed && { backgroundColor: colors.secondary }
+                        ]}
+                        onPress={() => handleComplete(chore.id)}
+                        disabled={completeChore.isPending}
+                      >
+                        <IconComponent name="check" iosName="checkmark" size={16} color={colors.primary} />
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -196,6 +258,109 @@ export default function ChoresScreen() {
           );
         })()}
       </ScrollView>
+
+      {/* Edit Chore Modal */}
+      <Modal visible={!!editingChore} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Edit Chore</Text>
+              <Pressable onPress={() => setEditingChore(null)} style={styles.closeButton}>
+                <IconComponent name="x" iosName="xmark" size={24} color={colors.foreground} />
+              </Pressable>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.foreground }]}>Chore Name</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+                value={editForm.title}
+                onChangeText={(text) => setEditForm(prev => ({ ...prev, title: text }))}
+                placeholder="e.g. Empty dishwasher"
+                placeholderTextColor={colors.mutedForeground}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.foreground }]}>Property</Text>
+              <View style={styles.pillRow}>
+                {properties?.map(prop => (
+                  <Pressable
+                    key={prop.id}
+                    style={[styles.pill, editForm.propertyId === prop.id ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+                    onPress={() => setEditForm(prev => ({ ...prev, propertyId: prop.id }))}
+                  >
+                    <Text style={[styles.pillText, editForm.propertyId === prop.id ? { color: colors.primaryForeground } : { color: colors.foreground }]}>{prop.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.foreground }]}>Assign To</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                <Pressable
+                  style={[styles.pill, !editForm.assigneeId ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+                  onPress={() => setEditForm(prev => ({ ...prev, assigneeId: undefined }))}
+                >
+                  <Text style={[styles.pillText, !editForm.assigneeId ? { color: colors.primaryForeground } : { color: colors.foreground }]}>Anyone</Text>
+                </Pressable>
+                {members?.filter(m => m.role === 'child').map(member => (
+                  <Pressable
+                    key={member.id}
+                    style={[styles.pill, editForm.assigneeId === member.id ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+                    onPress={() => setEditForm(prev => ({ ...prev, assigneeId: member.id }))}
+                  >
+                    <Text style={[styles.pillText, editForm.assigneeId === member.id ? { color: colors.primaryForeground } : { color: colors.foreground }]}>{member.name}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.foreground }]}>Frequency</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {Object.values(ChoreFrequency).map(freq => (
+                  <Pressable
+                    key={freq}
+                    style={[styles.pill, editForm.frequency === freq ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+                    onPress={() => setEditForm(prev => ({ ...prev, frequency: freq }))}
+                  >
+                    <Text style={[styles.pillText, editForm.frequency === freq ? { color: colors.primaryForeground } : { color: colors.foreground }]}>{freq}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.submitButton,
+                { backgroundColor: colors.primary },
+                (!editForm.title || !editForm.propertyId) && { opacity: 0.5 },
+                pressed && { opacity: 0.8 }
+              ]}
+              onPress={handleSaveEdit}
+              disabled={!editForm.title || !editForm.propertyId || updateChore.isPending}
+            >
+              <Text style={[styles.submitButtonText, { color: colors.primaryForeground }]}>
+                {updateChore.isPending ? 'Saving…' : 'Save Changes'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.deleteButton, pressed && { opacity: 0.7 }]}
+              onPress={() => editingChore && handleDelete(editingChore.id)}
+              disabled={deleteChore.isPending}
+            >
+              <IconComponent name="trash-2" iosName="trash" size={16} color={colors.danger} />
+              <Text style={[styles.deleteButtonText, { color: colors.danger }]}>
+                {deleteChore.isPending ? 'Deleting…' : 'Delete Chore'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Add Chore Modal */}
       <Modal visible={isAddModalVisible} animationType="slide" transparent>
@@ -408,13 +573,29 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     textTransform: 'capitalize',
   },
-  completeButton: {
+  cardActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  cardActionBtn: {
     width: 32, height: 32,
     borderRadius: 16,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+  },
+  deleteButtonText: {
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
   },
   emptyCard: {
     padding: 32,
