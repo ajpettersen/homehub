@@ -12,17 +12,7 @@ export default function HomeLayout() {
     setAuthTokenGetter(() => getToken());
   }, [getToken]);
 
-  // Web: bypass auth (Replit preview)
-  if (Platform.OS !== "web") {
-    if (!isLoaded) {
-      return (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator />
-        </View>
-      );
-    }
-    if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
-  }
+  // Auth temporarily bypassed for Expo Go testing
 
   return (
     <PropertyProvider>
@@ -36,10 +26,10 @@ export default function HomeLayout() {
 /** Redirect cleaners and pending users away from the family app */
 function RoleGuard({ children }: { children: React.ReactNode }) {
   const { isSignedIn } = useAuth();
-  const { data: me, isLoading } = useGetMe({ query: { enabled: !!isSignedIn && Platform.OS !== "web" } as any });
+  const { data: me, isLoading } = useGetMe({ query: { enabled: !!isSignedIn } as any });
 
-  // On web or still loading — just render normally
-  if (Platform.OS === "web" || !isSignedIn || isLoading) {
+  // Bypass role routing while auth is bypassed
+  if (!isSignedIn || isLoading) {
     return <>{children}</>;
   }
 
