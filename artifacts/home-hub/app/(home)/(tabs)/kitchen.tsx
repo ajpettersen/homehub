@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, RefreshControl,
   Pressable, Platform, Modal, TextInput, ActivityIndicator, Image,
@@ -29,9 +29,10 @@ import {
   useScanPantry,
   useSuggestMeals,
   useGetMealRecipe,
+  useDeleteMealPlanEntry,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { format, startOfWeek } from 'date-fns';
+import { format, startOfWeek, addWeeks } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 
 const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size: number; color: string }) => {
@@ -154,7 +155,6 @@ function GroceryListDetail({ listId, listName, onBack }: { listId: string; listN
           onSubmitEditing={handleAdd}
           returnKeyType="done"
           blurOnSubmit={false}
-          autoFocus
         />
         <Pressable
           style={[styles.addSendBtn, { backgroundColor: colors.primary }, !newItemName.trim() && { opacity: 0.4 }]}
@@ -575,37 +575,10 @@ function MealDetailSheet({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-            {/* Food photo */}
-            {imageB64 ? (
-              <Image
-                source={{ uri: `data:image/png;base64,${imageB64}` }}
-                style={styles.recipeFoodPhoto}
-                resizeMode="cover"
-              />
-            ) : (
-              <Pressable
-                style={[styles.recipePhotoPlaceholder, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-                onPress={handleGeneratePhoto}
-                disabled={generatingImage || loading}
-              >
-                {generatingImage ? (
-                  <>
-                    <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={[styles.recipePhotoHint, { color: colors.primary }]}>Generating photo…</Text>
-                  </>
-                ) : (
-                  <>
-                    <Icon name="image" iosName="photo" size={22} color={colors.mutedForeground} />
-                    <Text style={[styles.recipePhotoHint, { color: colors.mutedForeground }]}>Tap to generate a dish photo</Text>
-                  </>
-                )}
-              </Pressable>
-            )}
-
             {loading && (
               <View style={styles.recipeLoading}>
                 <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={[styles.recipeLoadingText, { color: colors.mutedForeground }]}>Fetching recipe…</Text>
+                <Text style={[styles.recipeLoadingText, { color: colors.mutedForeground }]}>Getting recipe…</Text>
               </View>
             )}
 
@@ -686,6 +659,33 @@ function MealDetailSheet({
                     <Text style={[styles.recipeTipText, { color: colors.foreground }]}>{recipe.tips}</Text>
                   </View>
                 )}
+
+                {/* Photo — below recipe so it doesn't block content */}
+                {imageB64 ? (
+                  <Image
+                    source={{ uri: `data:image/png;base64,${imageB64}` }}
+                    style={[styles.recipeFoodPhoto, { marginTop: 20, borderRadius: 16 }]}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Pressable
+                    style={[styles.recipePhotoPlaceholder, { backgroundColor: colors.secondary, borderColor: colors.border, marginTop: 20 }]}
+                    onPress={handleGeneratePhoto}
+                    disabled={generatingImage}
+                  >
+                    {generatingImage ? (
+                      <>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={[styles.recipePhotoHint, { color: colors.primary }]}>Generating dish photo…</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="image" iosName="photo" size={18} color={colors.mutedForeground} />
+                        <Text style={[styles.recipePhotoHint, { color: colors.mutedForeground }]}>Generate a dish photo</Text>
+                      </>
+                    )}
+                  </Pressable>
+                )}
               </View>
             )}
           </ScrollView>
@@ -710,17 +710,34 @@ export default function KitchenScreen() {
   const [newListName, setNewListName] = useState('');
   const [addMealVisible, setAddMealVisible] = useState(false);
   const [newMeal, setNewMeal] = useState<{ dayOfWeek: number; mealType: string; meal: string }>({ dayOfWeek: new Date().getDay(), mealType: 'dinner', meal: '' });
+  const [editingMealId, setEditingMealId] = useState<string | null>(null);
   const [recipeVisible, setRecipeVisible] = useState(false);
   const [recipeMeal, setRecipeMeal] = useState<string | null>(null);
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const { data: properties } = useGetProperties();
   const { data: allLists } = useGetGroceryLists();
   const lists = allLists?.filter((l: any) => !selectedProperty || l.propertyId === selectedProperty.id);
   const createList = useCreateGroceryList();
 
-  const [weekStart] = useState(() => format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd'));
+  const weekStart = useMemo(() => {
+    const base = startOfWeek(new Date(), { weekStartsOn: 0 });
+    return format(addWeeks(base, weekOffset), 'yyyy-MM-dd');
+  }, [weekOffset]);
+
+  const weekLabel = useMemo(() => {
+    const start = new Date(weekStart + 'T12:00:00');
+    const end = addWeeks(start, 1);
+    end.setDate(end.getDate() - 1);
+    if (weekOffset === 0) return 'This Week';
+    if (weekOffset === 1) return 'Next Week';
+    if (weekOffset === -1) return 'Last Week';
+    return `${format(start, 'MMM d')}–${format(end, 'MMM d')}`;
+  }, [weekStart, weekOffset]);
+
   const { data: meals } = useGetMealPlans({ weekStart });
   const createMeal = useCreateMealPlanEntry();
+  const deleteMeal = useDeleteMealPlanEntry();
 
   const addGroceryItem = useAddGroceryItem();
 
@@ -740,10 +757,30 @@ export default function KitchenScreen() {
 
   const handleCreateMeal = () => {
     if (!newMeal.meal.trim() || !properties?.length) return;
-    createMeal.mutate({ data: { weekStart, dayOfWeek: newMeal.dayOfWeek, mealType: newMeal.mealType as any, meal: newMeal.meal.trim(), propertyId: selectedProperty?.id ?? properties[0].id } }, {
+    const doCreate = () => {
+      createMeal.mutate({ data: { weekStart, dayOfWeek: newMeal.dayOfWeek, mealType: newMeal.mealType as any, meal: newMeal.meal.trim(), propertyId: selectedProperty?.id ?? properties[0].id } }, {
+        onSuccess: () => {
+          setNewMeal({ dayOfWeek: new Date().getDay(), mealType: 'dinner', meal: '' });
+          setEditingMealId(null);
+          setAddMealVisible(false);
+          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          queryClient.invalidateQueries({ queryKey: getGetMealPlansQueryKey({ weekStart }) });
+          queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
+        },
+      });
+    };
+    // If editing an existing meal, delete it first then create fresh
+    if (editingMealId) {
+      deleteMeal.mutate({ id: editingMealId }, { onSettled: doCreate });
+    } else {
+      doCreate();
+    }
+  };
+
+  const handleDeleteMeal = (id: string) => {
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    deleteMeal.mutate({ id }, {
       onSuccess: () => {
-        setNewMeal({ dayOfWeek: new Date().getDay(), mealType: 'dinner', meal: '' });
-        setAddMealVisible(false);
         queryClient.invalidateQueries({ queryKey: getGetMealPlansQueryKey({ weekStart }) });
         queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
       },
@@ -852,6 +889,22 @@ export default function KitchenScreen() {
         ))}
       </View>
 
+      {/* Week nav — only on meals tab */}
+      {activeTab === 'meals' && (
+        <View style={[styles.weekNavBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
+          <Pressable onPress={() => setWeekOffset(o => o - 1)} hitSlop={16} style={styles.weekNavArrow}>
+            <Icon name="chevron-left" iosName="chevron.left" size={18} color={colors.primary} />
+          </Pressable>
+          <Text style={[styles.weekNavLabel, { color: colors.foreground }]}>{weekLabel}</Text>
+          <Pressable onPress={() => setWeekOffset(o => o + 1)} hitSlop={16} style={styles.weekNavArrow}>
+            <Icon name="chevron-right" iosName="chevron.right" size={18} color={colors.primary} />
+          </Pressable>
+          <Pressable onPress={handlePrintPlan} hitSlop={12} style={[styles.weekNavPrint, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+            <Icon name="printer" iosName="printer" size={15} color={colors.mutedForeground} />
+          </Pressable>
+        </View>
+      )}
+
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
@@ -892,69 +945,65 @@ export default function KitchenScreen() {
           </>
         ) : (
           <>
-            {/* Print bar */}
-            <Pressable
-              style={[styles.printBar, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-              onPress={handlePrintPlan}
-            >
-              <Icon name="printer" iosName="printer" size={15} color={colors.primary} />
-              <Text style={[styles.printBarText, { color: colors.primary }]}>Print meal plan for the week</Text>
-            </Pressable>
-
-            {/* Day cards (vertical list) */}
             {fullDays.map((dayName, idx) => {
-              const dinner = meals?.find((m) => m.dayOfWeek === idx && m.mealType === 'dinner');
+              const dayMeals = (meals ?? []).filter((m) => m.dayOfWeek === idx)
+                .sort((a, b) => {
+                  const order: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+                  return (order[a.mealType] ?? 9) - (order[b.mealType] ?? 9);
+                });
               const isToday = idx === today;
+              const MEAL_EMOJI: Record<string, string> = { breakfast: '🍳', lunch: '🥗', dinner: '🍽️', snack: '🍎' };
+
               return (
                 <View
                   key={dayName}
                   style={[
                     styles.dayCard,
                     { backgroundColor: colors.card, borderColor: isToday ? colors.primary : colors.border },
-                    isToday && { borderWidth: 1.5 },
+                    isToday && { borderWidth: 2 },
                   ]}
                 >
-                  {/* Left: day label */}
-                  <View style={[styles.dayCardLeft, { backgroundColor: isToday ? `${colors.primary}15` : colors.secondary }]}>
+                  {/* Left: day column */}
+                  <View style={[styles.dayCardLeft, { backgroundColor: isToday ? `${colors.primary}18` : colors.secondary }]}>
                     <Text style={[styles.dayCardDay, { color: isToday ? colors.primary : colors.mutedForeground }]}>
                       {days[idx]}
                     </Text>
-                    {isToday && (
-                      <View style={[styles.dayCardTodayDot, { backgroundColor: colors.primary }]} />
-                    )}
+                    {isToday && <View style={[styles.dayCardTodayDot, { backgroundColor: colors.primary }]} />}
                   </View>
 
-                  {/* Right: meal content */}
-                  <View style={styles.dayCardContent}>
-                    {dinner ? (
-                      <>
-                        <Text style={[styles.dayCardMeal, { color: colors.foreground }]}>{dinner.meal}</Text>
-                        <View style={styles.dayCardActions}>
-                          <Pressable
-                            style={[styles.dayCardBtn, { backgroundColor: `${colors.primary}12`, borderColor: `${colors.primary}25` }]}
-                            onPress={() => handleViewRecipe(dinner.meal)}
-                          >
-                            <Icon name="book-open" iosName="book" size={12} color={colors.primary} />
-                            <Text style={[styles.dayCardBtnText, { color: colors.primary }]}>Recipe</Text>
-                          </Pressable>
-                          <Pressable
-                            style={[styles.dayCardBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-                            onPress={() => { setNewMeal({ dayOfWeek: idx, mealType: 'dinner', meal: '' }); setAddMealVisible(true); }}
-                          >
-                            <Icon name="edit-2" iosName="pencil" size={12} color={colors.mutedForeground} />
-                            <Text style={[styles.dayCardBtnText, { color: colors.mutedForeground }]}>Change</Text>
-                          </Pressable>
-                        </View>
-                      </>
-                    ) : (
+                  {/* Right: meals + add row */}
+                  <View style={[styles.dayCardContent, { paddingVertical: 8 }]}>
+                    {dayMeals.map((m) => (
                       <Pressable
-                        style={styles.dayCardEmpty}
-                        onPress={() => { setNewMeal({ dayOfWeek: idx, mealType: 'dinner', meal: '' }); setAddMealVisible(true); }}
+                        key={m.id}
+                        style={styles.dayMealRow}
+                        onPress={() => handleViewRecipe(m.meal)}
                       >
-                        <Icon name="plus" iosName="plus" size={14} color={colors.mutedForeground} />
-                        <Text style={[styles.dayCardEmptyText, { color: colors.mutedForeground }]}>Plan dinner</Text>
+                        <Text style={styles.dayMealEmoji}>{MEAL_EMOJI[m.mealType] ?? '🍴'}</Text>
+                        <Text style={[styles.dayMealName, { color: colors.foreground }]} numberOfLines={1}>{m.meal}</Text>
+                        <Pressable
+                          hitSlop={10}
+                          style={[styles.dayMealDelete, { backgroundColor: colors.secondary }]}
+                          onPress={() => handleDeleteMeal(m.id)}
+                        >
+                          <Icon name="x" iosName="xmark" size={10} color={colors.mutedForeground} />
+                        </Pressable>
                       </Pressable>
-                    )}
+                    ))}
+
+                    <Pressable
+                      style={styles.dayCardAddRow}
+                      onPress={() => {
+                        setNewMeal({ dayOfWeek: idx, mealType: 'dinner', meal: '' });
+                        setEditingMealId(null);
+                        setAddMealVisible(true);
+                      }}
+                    >
+                      <Icon name="plus" iosName="plus" size={13} color={colors.mutedForeground} />
+                      <Text style={[styles.dayCardEmptyText, { color: colors.mutedForeground }]}>
+                        {dayMeals.length === 0 ? 'Add meal' : 'Add another'}
+                      </Text>
+                    </Pressable>
                   </View>
                 </View>
               );
@@ -1259,22 +1308,26 @@ const styles = StyleSheet.create({
   scanAgainBtn: { alignItems: 'center', paddingVertical: 12 },
   scanAgainText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
 
-  // Print bar
-  printBar: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, marginHorizontal: 0, marginBottom: 12, borderRadius: 12, borderWidth: 1 },
-  printBarText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  // Week navigation bar
+  weekNavBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, gap: 12 },
+  weekNavArrow: { padding: 4 },
+  weekNavLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold', flex: 1, textAlign: 'center' },
+  weekNavPrint: { padding: 7, borderRadius: 10, borderWidth: 1, marginLeft: 4 },
 
   // Day cards (vertical meal plan)
   dayCard: { flexDirection: 'row', borderRadius: 14, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
-  dayCardLeft: { width: 54, alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 4 },
+  dayCardLeft: { width: 54, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 4 },
   dayCardDay: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
   dayCardTodayDot: { width: 5, height: 5, borderRadius: 3 },
-  dayCardContent: { flex: 1, padding: 14, justifyContent: 'center' },
-  dayCardMeal: { fontSize: 16, fontFamily: 'Inter_600SemiBold', lineHeight: 22 },
-  dayCardActions: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  dayCardBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
-  dayCardBtnText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-  dayCardEmpty: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
-  dayCardEmptyText: { fontSize: 14, fontFamily: 'Inter_400Regular', fontStyle: 'italic' },
+  dayCardContent: { flex: 1, paddingHorizontal: 12, justifyContent: 'center', gap: 4 },
+
+  // Individual meal rows inside a day card
+  dayMealRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  dayMealEmoji: { fontSize: 16, width: 22, textAlign: 'center' },
+  dayMealName: { flex: 1, fontSize: 15, fontFamily: 'Inter_500Medium' },
+  dayMealDelete: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  dayCardAddRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, opacity: 0.6 },
+  dayCardEmptyText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
 
   // Recipe sheet
   recipeSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%' },
