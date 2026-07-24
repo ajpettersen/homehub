@@ -1008,21 +1008,78 @@ export default function KitchenScreen() {
       <Modal visible={addMealVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalBox, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Plan Dinner — {fullDays[newMeal.dayOfWeek]}</Text>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Plan a Meal</Text>
+
+            {/* Day picker */}
+            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>Day</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 6 }}>
+              {fullDays.map((day, idx) => {
+                const active = newMeal.dayOfWeek === idx;
+                return (
+                  <Pressable
+                    key={day}
+                    style={[
+                      styles.dayPill,
+                      { backgroundColor: active ? colors.primary : colors.secondary, borderColor: active ? colors.primary : colors.border },
+                    ]}
+                    onPress={() => setNewMeal((p) => ({ ...p, dayOfWeek: idx }))}
+                  >
+                    <Text style={[styles.dayPillText, { color: active ? colors.primaryForeground : colors.mutedForeground }]}>
+                      {days[idx]}
+                    </Text>
+                    {idx === today && (
+                      <Text style={[styles.dayPillSub, { color: active ? `${colors.primaryForeground}99` : colors.mutedForeground }]}>Today</Text>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* Meal type */}
+            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>Meal</Text>
+            <View style={[styles.mealTypeRow, { marginBottom: 14 }]}>
+              {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map((type) => {
+                const active = newMeal.mealType === type;
+                const emoji = type === 'breakfast' ? '🍳' : type === 'lunch' ? '🥗' : type === 'dinner' ? '🍽️' : '🍎';
+                return (
+                  <Pressable
+                    key={type}
+                    style={[
+                      styles.mealTypeChip,
+                      { backgroundColor: active ? colors.primary : colors.secondary, borderColor: active ? colors.primary : colors.border },
+                    ]}
+                    onPress={() => setNewMeal((p) => ({ ...p, mealType: type }))}
+                  >
+                    <Text style={styles.mealTypeEmoji}>{emoji}</Text>
+                    <Text style={[styles.mealTypeLabel, { color: active ? colors.primaryForeground : colors.foreground }]}>
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Meal name */}
+            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>What are you making?</Text>
             <TextInput
-              style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground }]}
+              style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
               value={newMeal.meal}
               onChangeText={(t) => setNewMeal((p) => ({ ...p, meal: t }))}
-              placeholder="e.g. Tacos, Pasta, Grilled chicken"
+              placeholder="e.g. Tacos, Pasta, Grilled chicken…"
               placeholderTextColor={colors.mutedForeground}
-              autoFocus
+              returnKeyType="done"
               onSubmitEditing={handleCreateMeal}
             />
+
             <View style={styles.modalBtns}>
               <Pressable style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setAddMealVisible(false)}>
-                <Text style={[{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 15 }]}>Cancel</Text>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 15 }}>Cancel</Text>
               </Pressable>
-              <Pressable style={[styles.modalConfirmBtn, { backgroundColor: colors.primary }, !newMeal.meal.trim() && { opacity: 0.4 }]} onPress={handleCreateMeal} disabled={!newMeal.meal.trim()}>
+              <Pressable
+                style={[styles.modalConfirmBtn, { backgroundColor: colors.primary }, !newMeal.meal.trim() && { opacity: 0.4 }]}
+                onPress={handleCreateMeal}
+                disabled={!newMeal.meal.trim()}
+              >
                 <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Save</Text>
               </Pressable>
             </View>
@@ -1227,6 +1284,16 @@ const styles = StyleSheet.create({
   recipeTipBox: { marginTop: 20, padding: 14, borderRadius: 12, borderWidth: 1, gap: 4 },
   recipeTipLabel: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   recipeTipText: { fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 19 },
+
+  // Add-meal modal extras
+  modalLabel: { fontSize: 12, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  dayPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, alignItems: 'center', minWidth: 52 },
+  dayPillText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  dayPillSub: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  mealTypeRow: { flexDirection: 'row', gap: 8 },
+  mealTypeChip: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12, borderWidth: 1, gap: 4 },
+  mealTypeEmoji: { fontSize: 18 },
+  mealTypeLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
 
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
