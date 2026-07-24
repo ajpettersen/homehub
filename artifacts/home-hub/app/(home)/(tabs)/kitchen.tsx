@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, RefreshControl,
   Pressable, Platform, Modal, TextInput, ActivityIndicator, Image,
+  KeyboardAvoidingView,
 } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -979,112 +980,127 @@ export default function KitchenScreen() {
       />
 
       {/* Add List Modal */}
-      <Modal visible={addListVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Grocery List</Text>
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground }]}
-              value={newListName}
-              onChangeText={setNewListName}
-              placeholder="e.g. Target, Costco"
-              placeholderTextColor={colors.mutedForeground}
-              autoFocus
-              onSubmitEditing={handleCreateList}
-            />
-            <View style={styles.modalBtns}>
-              <Pressable style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setAddListVisible(false)}>
-                <Text style={[{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 15 }]}>Cancel</Text>
-              </Pressable>
-              <Pressable style={[styles.modalConfirmBtn, { backgroundColor: colors.primary }, !newListName.trim() && { opacity: 0.4 }]} onPress={handleCreateList} disabled={!newListName.trim()}>
-                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Create</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
+      <Modal visible={addListVisible} animationType="slide" transparent onRequestClose={() => setAddListVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.modalOverlay} onPress={() => setAddListVisible(false)}>
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={[styles.modalBox, { backgroundColor: colors.card, paddingBottom: insets.bottom + 24 }]}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Grocery List</Text>
+                <TextInput
+                  style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
+                  value={newListName}
+                  onChangeText={setNewListName}
+                  placeholder="e.g. Target, Costco, Whole Foods"
+                  placeholderTextColor={colors.mutedForeground}
+                  returnKeyType="done"
+                  onSubmitEditing={handleCreateList}
+                />
+                <View style={styles.modalBtns}>
+                  <Pressable style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setAddListVisible(false)}>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 15 }}>Cancel</Text>
+                  </Pressable>
+                  <Pressable style={[styles.modalConfirmBtn, { backgroundColor: colors.primary }, !newListName.trim() && { opacity: 0.4 }]} onPress={handleCreateList} disabled={!newListName.trim()}>
+                    <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Create</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Add Meal Modal */}
-      <Modal visible={addMealVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Plan a Meal</Text>
+      <Modal visible={addMealVisible} animationType="slide" transparent onRequestClose={() => setAddMealVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.modalOverlay} onPress={() => setAddMealVisible(false)}>
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={[styles.modalBox, { backgroundColor: colors.card }]}>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  bounces={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: insets.bottom + 8, gap: 14 }}
+                >
+                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Plan a Meal</Text>
 
-            {/* Day picker */}
-            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>Day</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 6 }}>
-              {fullDays.map((day, idx) => {
-                const active = newMeal.dayOfWeek === idx;
-                return (
-                  <Pressable
-                    key={day}
-                    style={[
-                      styles.dayPill,
-                      { backgroundColor: active ? colors.primary : colors.secondary, borderColor: active ? colors.primary : colors.border },
-                    ]}
-                    onPress={() => setNewMeal((p) => ({ ...p, dayOfWeek: idx }))}
-                  >
-                    <Text style={[styles.dayPillText, { color: active ? colors.primaryForeground : colors.mutedForeground }]}>
-                      {days[idx]}
-                    </Text>
-                    {idx === today && (
-                      <Text style={[styles.dayPillSub, { color: active ? `${colors.primaryForeground}99` : colors.mutedForeground }]}>Today</Text>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+                  {/* Day picker */}
+                  <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>Day</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                    {fullDays.map((day, idx) => {
+                      const active = newMeal.dayOfWeek === idx;
+                      return (
+                        <Pressable
+                          key={day}
+                          style={[
+                            styles.dayPill,
+                            { backgroundColor: active ? colors.primary : colors.secondary, borderColor: active ? colors.primary : colors.border },
+                          ]}
+                          onPress={() => setNewMeal((p) => ({ ...p, dayOfWeek: idx }))}
+                        >
+                          <Text style={[styles.dayPillText, { color: active ? colors.primaryForeground : colors.mutedForeground }]}>
+                            {days[idx]}
+                          </Text>
+                          {idx === today && (
+                            <Text style={[styles.dayPillSub, { color: active ? `${colors.primaryForeground}99` : colors.mutedForeground }]}>Today</Text>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
 
-            {/* Meal type */}
-            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>Meal</Text>
-            <View style={[styles.mealTypeRow, { marginBottom: 14 }]}>
-              {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map((type) => {
-                const active = newMeal.mealType === type;
-                const emoji = type === 'breakfast' ? '🍳' : type === 'lunch' ? '🥗' : type === 'dinner' ? '🍽️' : '🍎';
-                return (
-                  <Pressable
-                    key={type}
-                    style={[
-                      styles.mealTypeChip,
-                      { backgroundColor: active ? colors.primary : colors.secondary, borderColor: active ? colors.primary : colors.border },
-                    ]}
-                    onPress={() => setNewMeal((p) => ({ ...p, mealType: type }))}
-                  >
-                    <Text style={styles.mealTypeEmoji}>{emoji}</Text>
-                    <Text style={[styles.mealTypeLabel, { color: active ? colors.primaryForeground : colors.foreground }]}>
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                  {/* Meal type */}
+                  <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>Meal type</Text>
+                  <View style={styles.mealTypeRow}>
+                    {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map((type) => {
+                      const active = newMeal.mealType === type;
+                      const emoji = type === 'breakfast' ? '🍳' : type === 'lunch' ? '🥗' : type === 'dinner' ? '🍽️' : '🍎';
+                      return (
+                        <Pressable
+                          key={type}
+                          style={[
+                            styles.mealTypeChip,
+                            { backgroundColor: active ? colors.primary : colors.secondary, borderColor: active ? colors.primary : colors.border },
+                          ]}
+                          onPress={() => setNewMeal((p) => ({ ...p, mealType: type }))}
+                        >
+                          <Text style={styles.mealTypeEmoji}>{emoji}</Text>
+                          <Text style={[styles.mealTypeLabel, { color: active ? colors.primaryForeground : colors.foreground }]}>
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
 
-            {/* Meal name */}
-            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>What are you making?</Text>
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
-              value={newMeal.meal}
-              onChangeText={(t) => setNewMeal((p) => ({ ...p, meal: t }))}
-              placeholder="e.g. Tacos, Pasta, Grilled chicken…"
-              placeholderTextColor={colors.mutedForeground}
-              returnKeyType="done"
-              onSubmitEditing={handleCreateMeal}
-            />
+                  {/* Meal name */}
+                  <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>What are you making?</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
+                    value={newMeal.meal}
+                    onChangeText={(t) => setNewMeal((p) => ({ ...p, meal: t }))}
+                    placeholder="e.g. Tacos, Pasta, Grilled chicken…"
+                    placeholderTextColor={colors.mutedForeground}
+                    returnKeyType="done"
+                    onSubmitEditing={handleCreateMeal}
+                  />
 
-            <View style={styles.modalBtns}>
-              <Pressable style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setAddMealVisible(false)}>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 15 }}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.modalConfirmBtn, { backgroundColor: colors.primary }, !newMeal.meal.trim() && { opacity: 0.4 }]}
-                onPress={handleCreateMeal}
-                disabled={!newMeal.meal.trim()}
-              >
-                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Save</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
+                  <View style={styles.modalBtns}>
+                    <Pressable style={[styles.modalCancelBtn, { borderColor: colors.border }]} onPress={() => setAddMealVisible(false)}>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 15 }}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.modalConfirmBtn, { backgroundColor: colors.primary }, !newMeal.meal.trim() && { opacity: 0.4 }]}
+                      onPress={handleCreateMeal}
+                      disabled={!newMeal.meal.trim()}
+                    >
+                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Save</Text>
+                    </Pressable>
+                  </View>
+                </ScrollView>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1296,10 +1312,10 @@ const styles = StyleSheet.create({
   mealTypeLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
 
   // Modals
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalBox: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 16 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalBox: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 16, maxHeight: '90%' },
   modalTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
-  modalInput: { height: 46, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, fontFamily: 'Inter_400Regular' },
+  modalInput: { height: 50, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, fontFamily: 'Inter_400Regular', borderWidth: 1 },
   modalBtns: { flexDirection: 'row', gap: 10 },
   modalCancelBtn: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   modalConfirmBtn: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
