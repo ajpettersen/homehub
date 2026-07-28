@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { useActiveMember } from "@/context/ActiveMemberContext";
-import { CheckCircle2, Clock, Plus, Brush, Star, Trash2 } from "lucide-react";
+import { CheckCircle2, Clock, Plus, Brush, Star, Trash2, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -29,11 +29,24 @@ export default function Chores() {
   const createChore = useCreateChore();
   const deleteChore = useDeleteChore();
 
+  const [isSnoozing, setIsSnoozing] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newPropertyId, setNewPropertyId] = useState("");
   const [newFreq, setNewFreq] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [newPoints, setNewPoints] = useState("10");
+
+  const overdueChores = chores?.filter(c => !c.completedAt && c.isOverdue) || [];
+
+  const handleSnoozeOverdue = async () => {
+    setIsSnoozing(true);
+    try {
+      await fetch("/api/chores/snooze-overdue", { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
+    } finally {
+      setIsSnoozing(false);
+    }
+  };
 
   const handleComplete = (id: string) => {
     if (!activeMember) {
@@ -139,6 +152,28 @@ export default function Chores() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {overdueChores.length > 0 && (
+        <div className="flex items-center justify-between gap-4 bg-destructive/10 border border-destructive/30 rounded-2xl px-5 py-4">
+          <div>
+            <p className="font-semibold text-destructive">
+              {overdueChores.length} overdue {overdueChores.length === 1 ? "chore" : "chores"} from previous days
+            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Reschedule them to today or later so the list stays current.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground gap-2"
+            onClick={handleSnoozeOverdue}
+            disabled={isSnoozing}
+          >
+            <RefreshCw className={`w-4 h-4 ${isSnoozing ? "animate-spin" : ""}`} />
+            {isSnoozing ? "Rescheduling…" : "Reschedule All"}
+          </Button>
+        </div>
+      )}
 
       <div className="space-y-6">
         <h2 className="text-2xl font-serif font-semibold border-b-2 border-primary/20 pb-2">To Do</h2>

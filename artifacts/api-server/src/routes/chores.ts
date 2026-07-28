@@ -5,7 +5,7 @@ import {
   familyMembersTable,
   propertiesTable,
 } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, lt, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -169,6 +169,48 @@ router.put("/chores/:id", async (req, res) => {
     res.json(formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? ""));
   } catch (err) {
     req.log.error({ err }, "Failed to update chore");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Advance all overdue (incomplete) chore due dates to today or later
+router.post("/chores/snooze-overdue", async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const stale = await db
+      .select()
+      .from(choresTable)
+      .where(lt(choresTable.dueDate, today));
+
+    const overdue = stale.filter((c) => !c.completedAt);
+    if (!overdue.length) {
+      return res.json({ updated: 0 });
+    }
+
+    const freqDays: Record<string, number> = {
+      daily: 1,
+      weekly: 7,
+      biweekly: 14,
+      monthly: 30,
+    };
+
+    for (const chore of overdue) {
+      const days = freqDays[chore.frequency] ?? 7;
+      let d = new Date(chore.dueDate!);
+      const todayDate = new Date(today);
+      while (d < todayDate) {
+        d.setDate(d.getDate() + days);
+      }
+      const fixed = d.toISOString().split("T")[0];
+      await db
+        .update(choresTable)
+        .set({ dueDate: fixed })
+        .where(eq(choresTable.id, chore.id));
+    }
+
+    res.json({ updated: overdue.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to snooze overdue chores");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedIfEmpty, seedChoresIfEmpty, fixStaleMaintenanceDates, ensureHouseCleanerTasks, seedCleanerIfEmpty } from "./seed";
+import { seedIfEmpty, seedChoresIfEmpty, fixStaleMaintenanceDates, fixStaleChoreDates, ensureHouseCleanerTasks, seedCleanerIfEmpty } from "./seed";
 import { seedRecurringMaintenanceTasks } from "./seedMaintenance";
 import { startNotificationScheduler } from "./notifications";
 
@@ -28,6 +28,7 @@ app.listen(port, async (err) => {
   await seedIfEmpty();
   await seedChoresIfEmpty();
   await fixStaleMaintenanceDates();
+  await fixStaleChoreDates();
   await ensureHouseCleanerTasks();
   await seedCleanerIfEmpty();
   await seedRecurringMaintenanceTasks();

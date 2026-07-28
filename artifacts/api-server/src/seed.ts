@@ -351,6 +351,42 @@ export async function seedChoresIfEmpty() {
   }
 }
 
+/** Advance overdue chore due dates forward (by frequency) until they're today or in the future */
+export async function fixStaleChoreDates() {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const stale = await db
+      .select()
+      .from(choresTable)
+      .where(lt(choresTable.dueDate, today));
+
+    const overdue = stale.filter((c) => !c.completedAt);
+    if (!overdue.length) return;
+
+    logger.info({ count: overdue.length }, "Fixing stale chore due dates");
+
+    const freqDays: Record<string, number> = {
+      daily: 1,
+      weekly: 7,
+      biweekly: 14,
+      monthly: 30,
+    };
+
+    for (const chore of overdue) {
+      const days = freqDays[chore.frequency] ?? 7;
+      const fixed = advanceToFuture(chore.dueDate!, days);
+      await db
+        .update(choresTable)
+        .set({ dueDate: fixed })
+        .where(sql`id = ${chore.id}`);
+    }
+
+    logger.info("Chore dates fixed");
+  } catch (err) {
+    logger.error({ err }, "Failed to fix chore dates");
+  }
+}
+
 /** Fix any seasonal maintenance tasks whose nextDueDate is in the past */
 export async function fixStaleMaintenanceDates() {
   try {
