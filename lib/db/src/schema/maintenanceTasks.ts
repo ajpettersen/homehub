@@ -13,6 +13,7 @@ export const maintenanceTasksTable = pgTable("maintenance_tasks", {
   isCleanerTask: boolean("is_cleaner_task").notNull().default(false),
   lastCompletedAt: timestamp("last_completed_at", { withTimezone: true }),
   lastCompletedBy: text("last_completed_by"),
+  startDate: date("start_date", { mode: "string" }),
   nextDueDate: date("next_due_date", { mode: "string" }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

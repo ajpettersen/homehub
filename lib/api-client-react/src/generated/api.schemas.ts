@@ -59,6 +59,7 @@ export interface MaintenanceTask {
   category: MaintenanceTaskCategory;
   frequencyDays: number;
   isCleanerTask: boolean;
+  startDate?: string | null;
   lastCompletedAt?: string | null;
   lastCompletedBy?: string | null;
   nextDueDate: string;
@@ -303,6 +304,7 @@ export interface CreateMaintenanceTaskInput {
   category: CreateMaintenanceTaskInputCategory;
   frequencyDays: number;
   isCleanerTask?: boolean;
+  startDate?: string | null;
   nextDueDate: string;
 }
 
@@ -325,6 +327,7 @@ export interface UpdateMaintenanceTaskInput {
   category?: UpdateMaintenanceTaskInputCategory;
   isCleanerTask?: boolean;
   frequencyDays?: number;
+  startDate?: string | null;
   nextDueDate?: string;
 }
 

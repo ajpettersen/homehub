@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/home-hub-web/"
+title = "HomeHub Web"
+version = "1.0.0"
+id = "artifacts/home-hub-web"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/home-hub-web/" ]
+localPort = 21201
+
+[services.development]
+run = "pnpm --filter @workspace/home-hub-web run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/home-hub-web", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/home-hub-web/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21201"
+BASE_PATH = "/home-hub-web/"

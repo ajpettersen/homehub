@@ -1196,6 +1196,10 @@ components:
           type: integer
         isCleanerTask:
           type: boolean
+        startDate:
+          type: string
+          format: date
+          nullable: true
         lastCompletedAt:
           type: string
           format: date-time
@@ -1239,6 +1243,10 @@ components:
           type: integer
         isCleanerTask:
           type: boolean
+        startDate:
+          type: string
+          format: date
+          nullable: true
         nextDueDate:
           type: string
           format: date
@@ -1264,6 +1272,10 @@ components:
           type: boolean
         frequencyDays:
           type: integer
+        startDate:
+          type: string
+          format: date
+          nullable: true
         nextDueDate:
           type: string
           format: date

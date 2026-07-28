@@ -13,5 +13,6 @@ export interface UpdateMaintenanceTaskInput {
   category?: UpdateMaintenanceTaskInputCategory;
   isCleanerTask?: boolean;
   frequencyDays?: number;
+  startDate?: Date | null;
   nextDueDate?: Date;
 }

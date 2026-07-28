@@ -16,6 +16,7 @@ export interface MaintenanceTask {
   category: MaintenanceTaskCategory;
   frequencyDays: number;
   isCleanerTask: boolean;
+  startDate?: Date | null;
   lastCompletedAt?: Date | null;
   lastCompletedBy?: string | null;
   nextDueDate: Date;

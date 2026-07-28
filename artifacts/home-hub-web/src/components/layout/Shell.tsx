@@ -1,0 +1,93 @@
+import { Link, useLocation } from "wouter";
+import { Home, CheckSquare, Wrench, Settings, Utensils, Brush } from "lucide-react";
+import { useActiveMember } from "@/context/ActiveMemberContext";
+import { useGetFamilyMembers, getGetFamilyMembersQueryKey } from "@workspace/api-client-react";
+
+export function Shell({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const { activeMember, setActiveMember } = useActiveMember();
+  const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
+
+  const navItems = [
+    { href: "/", label: "Dashboard", icon: Home },
+    { href: "/chores", label: "Chores", icon: Brush },
+    { href: "/kitchen", label: "Kitchen", icon: Utensils },
+    { href: "/tasks", label: "Tasks", icon: CheckSquare },
+    { href: "/maintenance", label: "Maintenance", icon: Wrench },
+    { href: "/settings", label: "Settings", icon: Settings },
+  ];
+
+  return (
+    <div className="min-h-[100dvh] flex flex-col md:flex-row bg-background">
+      <aside className="w-full md:w-64 bg-card border-r border-border flex flex-col p-4 md:min-h-[100dvh] shadow-sm relative z-10 shrink-0">
+        <div className="flex items-center gap-3 px-2 mb-8 mt-2">
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-serif font-bold text-xl shadow-md rotate-[-3deg]">
+            H
+          </div>
+          <span className="text-2xl font-serif font-bold text-foreground">HomeHub</span>
+        </div>
+        
+        <nav className="flex-1 space-y-1">
+          {navItems.map((item) => {
+            const isActive = location === item.href;
+            return (
+              <Link 
+                key={item.href} 
+                href={item.href}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
+                  isActive 
+                    ? "bg-primary/10 text-primary" 
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+              >
+                <item.icon className={`w-5 h-5 ${isActive ? "text-primary" : ""}`} />
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        <div className="mt-8 p-4 bg-muted/30 rounded-2xl border border-border/50">
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
+            Who's here?
+          </label>
+          <div className="flex flex-col gap-2">
+            {familyMembers?.map(member => (
+              <button
+                key={member.id}
+                onClick={() => setActiveMember(member)}
+                className={`flex items-center gap-3 p-2 rounded-xl transition-all text-left ${
+                  activeMember?.id === member.id 
+                    ? "bg-white shadow-sm border border-border" 
+                    : "hover:bg-black/5 border border-transparent"
+                }`}
+              >
+                <div 
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner"
+                  style={{ backgroundColor: member.color || 'var(--color-primary)' }}
+                >
+                  {member.name.charAt(0)}
+                </div>
+                <span className="font-medium text-sm flex-1">{member.name}</span>
+                {activeMember?.id === member.id && (
+                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </aside>
+
+      <main className="flex-1 flex flex-col relative overflow-hidden h-[100dvh]">
+        <div className="fixed inset-0 pointer-events-none opacity-[0.03] z-50 mix-blend-overlay" 
+             style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")' }}>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="max-w-6xl mx-auto space-y-8 pb-20">
+            {children}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
