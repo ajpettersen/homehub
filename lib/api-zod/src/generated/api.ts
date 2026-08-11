@@ -65,6 +65,28 @@ export const SuggestMealsResponse = zod.object({
 
 
 /**
+ * @summary Get AI workout recommendation based on recent workout history
+ */
+export const RecommendWorkoutBody = zod.object({
+  "memberId": zod.string(),
+  "memberName": zod.string()
+})
+
+export const RecommendWorkoutResponse = zod.object({
+  "title": zod.string(),
+  "rationale": zod.string(),
+  "exercises": zod.array(zod.object({
+  "name": zod.string(),
+  "sets": zod.number().nullable(),
+  "reps": zod.number().nullable(),
+  "durationSeconds": zod.number().nullish(),
+  "weightLbs": zod.number().nullish(),
+  "notes": zod.string()
+}))
+})
+
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -631,6 +653,128 @@ export const DeleteTodoItemParams = zod.object({
 })
 
 export const DeleteTodoItemResponse = zod.void()
+
+
+/**
+ * @summary List workouts
+ */
+export const GetWorkoutsQueryParams = zod.object({
+  "memberId": zod.coerce.string().optional()
+})
+
+export const GetWorkoutsResponseItem = zod.object({
+  "id": zod.string(),
+  "memberId": zod.string(),
+  "memberName": zod.string(),
+  "workoutDate": zod.coerce.date(),
+  "title": zod.string(),
+  "durationMinutes": zod.number().nullish(),
+  "notes": zod.string().nullish(),
+  "exerciseCount": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+export const GetWorkoutsResponse = zod.array(GetWorkoutsResponseItem)
+
+
+/**
+ * @summary Log a new workout
+ */
+export const CreateWorkoutBody = zod.object({
+  "memberId": zod.string(),
+  "title": zod.string(),
+  "workoutDate": zod.coerce.date(),
+  "durationMinutes": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateWorkoutResponse = zod.object({
+  "id": zod.string(),
+  "memberId": zod.string(),
+  "memberName": zod.string(),
+  "workoutDate": zod.coerce.date(),
+  "title": zod.string(),
+  "durationMinutes": zod.number().nullish(),
+  "notes": zod.string().nullish(),
+  "exerciseCount": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get a workout with its exercises
+ */
+export const GetWorkoutParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetWorkoutResponse = zod.object({
+  "id": zod.string(),
+  "memberId": zod.string(),
+  "memberName": zod.string(),
+  "workoutDate": zod.coerce.date(),
+  "title": zod.string(),
+  "durationMinutes": zod.number().nullish(),
+  "notes": zod.string().nullish(),
+  "exercises": zod.array(zod.object({
+  "id": zod.string(),
+  "workoutId": zod.string(),
+  "name": zod.string(),
+  "sets": zod.number().nullish(),
+  "reps": zod.number().nullish(),
+  "weightLbs": zod.number().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a workout
+ */
+export const DeleteWorkoutParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteWorkoutResponse = zod.void()
+
+
+/**
+ * @summary Add an exercise to a workout
+ */
+export const AddExerciseParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const AddExerciseBody = zod.object({
+  "name": zod.string(),
+  "sets": zod.number().nullish(),
+  "reps": zod.number().nullish(),
+  "weightLbs": zod.number().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const AddExerciseResponse = zod.object({
+  "id": zod.string(),
+  "workoutId": zod.string(),
+  "name": zod.string(),
+  "sets": zod.number().nullish(),
+  "reps": zod.number().nullish(),
+  "weightLbs": zod.number().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+
+/**
+ * @summary Remove an exercise from a workout
+ */
+export const DeleteExerciseParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteExerciseResponse = zod.void()
 
 
 /**

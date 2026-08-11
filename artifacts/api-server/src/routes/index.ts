@@ -9,6 +9,7 @@ import mealsRouter from "./meals";
 import todosRouter from "./todos";
 import maintenanceRouter from "./maintenance";
 import aiRouter from "./ai";
+import workoutsRouter from "./workouts";
 import pushTokensRouter from "./pushTokens";
 import meRouter from "./me";
 
@@ -24,6 +25,7 @@ router.use(mealsRouter);
 router.use(todosRouter);
 router.use(maintenanceRouter);
 router.use(aiRouter);
+router.use(workoutsRouter);
 router.use(pushTokensRouter);
 router.use(meRouter);
 

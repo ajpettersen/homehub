@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Wrench, Settings, Utensils, Brush, ChevronDown } from "lucide-react";
+import { Home, CheckSquare, Wrench, Settings, Utensils, Brush, ChevronDown, Dumbbell } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useGetFamilyMembers, getGetFamilyMembersQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
@@ -9,6 +9,7 @@ const navItems = [
   { href: "/chores", label: "Chores", icon: Brush },
   { href: "/kitchen", label: "Kitchen", icon: Utensils },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/workouts", label: "Workouts", icon: Dumbbell },
   { href: "/maintenance", label: "Maintenance", icon: Wrench },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

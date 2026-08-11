@@ -5,6 +5,78 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
+export interface Workout {
+  id: string;
+  memberId: string;
+  memberName: string;
+  workoutDate: string;
+  title: string;
+  durationMinutes?: number | null;
+  notes?: string | null;
+  exerciseCount: number;
+  createdAt: string;
+}
+
+export interface Exercise {
+  id: string;
+  workoutId: string;
+  name: string;
+  sets?: number | null;
+  reps?: number | null;
+  weightLbs?: number | null;
+  durationSeconds?: number | null;
+  notes?: string | null;
+}
+
+export interface WorkoutDetail {
+  id: string;
+  memberId: string;
+  memberName: string;
+  workoutDate: string;
+  title: string;
+  durationMinutes?: number | null;
+  notes?: string | null;
+  exercises: Exercise[];
+  createdAt: string;
+}
+
+export interface CreateWorkoutInput {
+  memberId: string;
+  title: string;
+  workoutDate: string;
+  durationMinutes?: number | null;
+  notes?: string | null;
+}
+
+export interface CreateExerciseInput {
+  name: string;
+  sets?: number | null;
+  reps?: number | null;
+  weightLbs?: number | null;
+  durationSeconds?: number | null;
+  notes?: string | null;
+}
+
+export interface RecommendWorkoutInput {
+  memberId: string;
+  memberName: string;
+}
+
+export interface RecommendedExercise {
+  name: string;
+  sets: number | null;
+  reps: number | null;
+  durationSeconds?: number | null;
+  weightLbs?: number | null;
+  notes: string;
+}
+
+export interface WorkoutRecommendation {
+  title: string;
+  rationale: string;
+  exercises: RecommendedExercise[];
+}
+
 export interface CompleteMaintenanceTaskInput {
   completedBy?: string | null;
 }
@@ -417,6 +489,10 @@ weekStart?: string;
 
 export type UpdateUserProfile200 = {
   ok?: boolean;
+};
+
+export type GetWorkoutsParams = {
+memberId?: string;
 };
 
 export type GetMaintenanceTasksParams = {

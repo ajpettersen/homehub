@@ -8,6 +8,7 @@ import Dashboard from '@/pages/Dashboard';
 import Chores from '@/pages/Chores';
 import Kitchen from '@/pages/Kitchen';
 import Tasks from '@/pages/Tasks';
+import Workouts from '@/pages/Workouts';
 import Maintenance from '@/pages/Maintenance';
 import Settings from '@/pages/Settings';
 import NotFound from '@/pages/not-found';
@@ -22,6 +23,7 @@ function Router() {
         <Route path="/chores" component={Chores} />
         <Route path="/kitchen" component={Kitchen} />
         <Route path="/tasks" component={Tasks} />
+        <Route path="/workouts" component={Workouts} />
         <Route path="/maintenance" component={Maintenance} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />

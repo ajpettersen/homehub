@@ -10,6 +10,8 @@ servers:
 tags:
   - name: ai
     description: AI-powered meal suggestions and pantry scanning
+  - name: workouts
+    description: Workout logging and AI recommendations
   - name: health
     description: Health operations
   - name: dashboard
@@ -93,6 +95,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuggestMealsResult"
+
+  /ai/recommend-workout:
+    post:
+      operationId: recommendWorkout
+      tags: [ai]
+      summary: Get AI workout recommendation based on recent workout history
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendWorkoutInput"
+      responses:
+        "200":
+          description: Workout recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutRecommendation"
 
   /healthz:
     get:
@@ -629,6 +650,115 @@ paths:
         "204":
           description: Deleted
 
+  /workouts:
+    get:
+      operationId: getWorkouts
+      tags: [workouts]
+      summary: List workouts
+      parameters:
+        - name: memberId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of workouts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workout"
+    post:
+      operationId: createWorkout
+      tags: [workouts]
+      summary: Log a new workout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkoutInput"
+      responses:
+        "201":
+          description: Created workout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workout"
+
+  /workouts/{id}:
+    get:
+      operationId: getWorkout
+      tags: [workouts]
+      summary: Get a workout with its exercises
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workout with exercises
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutDetail"
+    delete:
+      operationId: deleteWorkout
+      tags: [workouts]
+      summary: Delete a workout
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /workouts/{id}/exercises:
+    post:
+      operationId: addExercise
+      tags: [workouts]
+      summary: Add an exercise to a workout
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExerciseInput"
+      responses:
+        "201":
+          description: Created exercise
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Exercise"
+
+  /workout-exercises/{id}:
+    delete:
+      operationId: deleteExercise
+      tags: [workouts]
+      summary: Remove an exercise from a workout
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
   /maintenance-tasks:
     get:
       operationId: getMaintenanceTasks
@@ -731,6 +861,194 @@ paths:
 
 components:
   schemas:
+    Workout:
+      type: object
+      properties:
+        id:
+          type: string
+        memberId:
+          type: string
+        memberName:
+          type: string
+        workoutDate:
+          type: string
+          format: date
+        title:
+          type: string
+        durationMinutes:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        exerciseCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - memberId
+        - memberName
+        - workoutDate
+        - title
+        - exerciseCount
+        - createdAt
+
+    Exercise:
+      type: object
+      properties:
+        id:
+          type: string
+        workoutId:
+          type: string
+        name:
+          type: string
+        sets:
+          type: integer
+          nullable: true
+        reps:
+          type: integer
+          nullable: true
+        weightLbs:
+          type: integer
+          nullable: true
+        durationSeconds:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - id
+        - workoutId
+        - name
+
+    WorkoutDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        memberId:
+          type: string
+        memberName:
+          type: string
+        workoutDate:
+          type: string
+          format: date
+        title:
+          type: string
+        durationMinutes:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/Exercise"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - memberId
+        - memberName
+        - workoutDate
+        - title
+        - exercises
+        - createdAt
+
+    CreateWorkoutInput:
+      type: object
+      properties:
+        memberId:
+          type: string
+        title:
+          type: string
+        workoutDate:
+          type: string
+          format: date
+        durationMinutes:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - memberId
+        - title
+        - workoutDate
+
+    CreateExerciseInput:
+      type: object
+      properties:
+        name:
+          type: string
+        sets:
+          type: integer
+          nullable: true
+        reps:
+          type: integer
+          nullable: true
+        weightLbs:
+          type: integer
+          nullable: true
+        durationSeconds:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - name
+
+    RecommendWorkoutInput:
+      type: object
+      properties:
+        memberId:
+          type: string
+        memberName:
+          type: string
+      required:
+        - memberId
+        - memberName
+
+    RecommendedExercise:
+      type: object
+      required: [name, sets, reps, notes]
+      properties:
+        name:
+          type: string
+        sets:
+          type: integer
+          nullable: true
+        reps:
+          type: integer
+          nullable: true
+        durationSeconds:
+          type: integer
+          nullable: true
+        weightLbs:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+
+    WorkoutRecommendation:
+      type: object
+      required: [title, rationale, exercises]
+      properties:
+        title:
+          type: string
+        rationale:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendedExercise"
+
     CompleteMaintenanceTaskInput:
       type: object
       properties:
