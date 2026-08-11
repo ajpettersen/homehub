@@ -25,6 +25,7 @@ import type {
   CompleteMaintenanceTaskInput,
   CreateChoreInput,
   CreateExerciseInput,
+  CreateFamilyMemberInput,
   CreateGroceryItemInput,
   CreateGroceryListInput,
   CreateMaintenanceTaskInput,
@@ -54,6 +55,7 @@ import type {
   TodoItem,
   TodoList,
   UpdateChoreInput,
+  UpdateFamilyMemberInput,
   UpdateGroceryItemInput,
   UpdateMaintenanceTaskInput,
   UpdateTodoItemInput,
@@ -606,6 +608,220 @@ export function useGetFamilyMembers<TData = Awaited<ReturnType<typeof getFamilyM
 
 
 
+
+export const getCreateFamilyMemberUrl = () => {
+
+
+
+
+  return `/api/family-members`
+}
+
+/**
+ * @summary Create a new family member
+ */
+export const createFamilyMember = async (createFamilyMemberInput: CreateFamilyMemberInput, options?: RequestInit): Promise<FamilyMember> => {
+
+  return customFetch<FamilyMember>(getCreateFamilyMemberUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createFamilyMemberInput)
+  }
+);}
+
+
+
+
+
+export const getCreateFamilyMemberMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFamilyMember>>, TError,{data: BodyType<CreateFamilyMemberInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createFamilyMember>>, TError,{data: BodyType<CreateFamilyMemberInput>}, TContext> => {
+
+const mutationKey = ['createFamilyMember'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createFamilyMember>>, {data: BodyType<CreateFamilyMemberInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createFamilyMember(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateFamilyMemberMutationResult = NonNullable<Awaited<ReturnType<typeof createFamilyMember>>>
+    export type CreateFamilyMemberMutationBody = BodyType<CreateFamilyMemberInput>
+    export type CreateFamilyMemberMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a new family member
+ */
+export const useCreateFamilyMember = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFamilyMember>>, TError,{data: BodyType<CreateFamilyMemberInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createFamilyMember>>,
+        TError,
+        {data: BodyType<CreateFamilyMemberInput>},
+        TContext
+      > => {
+      return useMutation(getCreateFamilyMemberMutationOptions(options));
+    }
+
+export const getUpdateFamilyMemberUrl = (id: string,) => {
+
+
+
+
+  return `/api/family-members/${id}`
+}
+
+/**
+ * @summary Update a family member
+ */
+export const updateFamilyMember = async (id: string,
+    updateFamilyMemberInput: UpdateFamilyMemberInput, options?: RequestInit): Promise<FamilyMember> => {
+
+  return customFetch<FamilyMember>(getUpdateFamilyMemberUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateFamilyMemberInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateFamilyMemberMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateFamilyMember>>, TError,{id: string;data: BodyType<UpdateFamilyMemberInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateFamilyMember>>, TError,{id: string;data: BodyType<UpdateFamilyMemberInput>}, TContext> => {
+
+const mutationKey = ['updateFamilyMember'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateFamilyMember>>, {id: string;data: BodyType<UpdateFamilyMemberInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateFamilyMember(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateFamilyMemberMutationResult = NonNullable<Awaited<ReturnType<typeof updateFamilyMember>>>
+    export type UpdateFamilyMemberMutationBody = BodyType<UpdateFamilyMemberInput>
+    export type UpdateFamilyMemberMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a family member
+ */
+export const useUpdateFamilyMember = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateFamilyMember>>, TError,{id: string;data: BodyType<UpdateFamilyMemberInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateFamilyMember>>,
+        TError,
+        {id: string;data: BodyType<UpdateFamilyMemberInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateFamilyMemberMutationOptions(options));
+    }
+
+export const getDeleteFamilyMemberUrl = (id: string,) => {
+
+
+
+
+  return `/api/family-members/${id}`
+}
+
+/**
+ * @summary Delete a family member
+ */
+export const deleteFamilyMember = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteFamilyMemberUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteFamilyMemberMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteFamilyMember>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteFamilyMember>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteFamilyMember'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteFamilyMember>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteFamilyMember(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteFamilyMemberMutationResult = NonNullable<Awaited<ReturnType<typeof deleteFamilyMember>>>
+
+    export type DeleteFamilyMemberMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a family member
+ */
+export const useDeleteFamilyMember = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteFamilyMember>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteFamilyMember>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteFamilyMemberMutationOptions(options));
+    }
 
 export const getGetPropertiesUrl = () => {
 

@@ -8,8 +8,10 @@ import {
   useAddExercise,
   useDeleteExercise,
   useRecommendWorkout,
+  useGetFamilyMembers,
   getGetWorkoutsQueryKey,
-  getGetWorkoutQueryKey
+  getGetWorkoutQueryKey,
+  getGetFamilyMembersQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -193,7 +195,7 @@ function AddExerciseForm({ workoutId, onAdded, onCancel }: { workoutId: string; 
   );
 }
 
-function WorkoutDetailCard({ workout }: { workout: any }) {
+function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [addingExercise, setAddingExercise] = useState(false);
   
@@ -264,6 +266,14 @@ function WorkoutDetailCard({ workout }: { workout: any }) {
               <span className="flex items-center gap-1.5">
                 <Clock className="w-4 h-4" />
                 {workout.durationMinutes} min
+              </span>
+            )}
+            {showMember && workout.memberName && (
+              <span
+                className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold text-white"
+                style={{ backgroundColor: workout.memberColor || "var(--color-primary)" }}
+              >
+                {workout.memberName}
               </span>
             )}
           </div>
@@ -338,10 +348,11 @@ function WorkoutDetailCard({ workout }: { workout: any }) {
 
 // --- Modals ---
 
-function CreateWorkoutModal({ onClose, activeMemberId }: { onClose: () => void, activeMemberId: string }) {
+function CreateWorkoutModal({ onClose, defaultMember, members }: { onClose: () => void; defaultMember: any | null; members: any[] }) {
   const queryClient = useQueryClient();
   const createWorkout = useCreateWorkout();
   
+  const [selectedMember, setSelectedMember] = useState<any>(defaultMember ?? members[0] ?? null);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [duration, setDuration] = useState("");
@@ -349,12 +360,12 @@ function CreateWorkoutModal({ onClose, activeMemberId }: { onClose: () => void, 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !activeMemberId) return;
+    if (!title.trim() || !selectedMember) return;
 
     createWorkout.mutate(
       {
         data: {
-          memberId: activeMemberId,
+          memberId: selectedMember.id,
           title,
           workoutDate: new Date(date).toISOString(),
           durationMinutes: duration ? parseInt(duration) : null,
@@ -384,6 +395,30 @@ function CreateWorkoutModal({ onClose, activeMemberId }: { onClose: () => void, 
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {members.length > 1 && (
+            <div>
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Logging For</label>
+              <div className="flex gap-2">
+                {members.map(m => {
+                  const active = selectedMember?.id === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setSelectedMember(m)}
+                      className={`flex-1 py-2 rounded-xl font-bold text-sm transition-all border-2 ${
+                        active ? "border-transparent text-white" : "border-border text-muted-foreground bg-background hover:border-border/80"
+                      }`}
+                      style={active ? { backgroundColor: m.color || "var(--color-primary)" } : {}}
+                    >
+                      {m.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Workout Title</label>
             <input
@@ -452,7 +487,12 @@ function CreateWorkoutModal({ onClose, activeMemberId }: { onClose: () => void, 
   );
 }
 
-function AIRecommendationModal({ onClose, activeMember }: { onClose: () => void, activeMember: any }) {
+function AIRecommendationModal({ onClose, activeMember, members, onMemberChange }: {
+  onClose: () => void;
+  activeMember: any;
+  members: any[];
+  onMemberChange: (m: any) => void;
+}) {
   const queryClient = useQueryClient();
   const recommendWorkout = useRecommendWorkout();
   const createWorkout = useCreateWorkout();
@@ -461,7 +501,7 @@ function AIRecommendationModal({ onClose, activeMember }: { onClose: () => void,
   const [recommendation, setRecommendation] = useState<any>(null);
   const [isLogging, setIsLogging] = useState(false);
 
-  // Auto-fetch on mount
+  // Auto-fetch on mount or when activeMember changes
   const hasFetched = useRef(false);
   if (!hasFetched.current && activeMember) {
     hasFetched.current = true;
@@ -472,6 +512,13 @@ function AIRecommendationModal({ onClose, activeMember }: { onClose: () => void,
       }
     );
   }
+
+  const handleSwitchMember = (m: any) => {
+    if (m.id === activeMember?.id) return;
+    onMemberChange(m);
+    hasFetched.current = false;
+    setRecommendation(null);
+  };
 
   const handleLogRecommendation = async () => {
     if (!recommendation || !activeMember) return;
@@ -520,9 +567,30 @@ function AIRecommendationModal({ onClose, activeMember }: { onClose: () => void,
               <Sparkles className="w-6 h-6" />
               AI Coach
             </h2>
-            <p className="text-sm font-medium text-muted-foreground mt-1">
-              Personalized for {activeMember?.name}
-            </p>
+            {members.length > 1 ? (
+              <div className="flex gap-1.5 mt-2">
+                {members.map(m => {
+                  const active = activeMember?.id === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleSwitchMember(m)}
+                      className={`px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                        active ? "border-transparent text-white shadow-sm" : "border-border/60 text-muted-foreground bg-white/40 hover:bg-white/60"
+                      }`}
+                      style={active ? { backgroundColor: m.color || "var(--color-primary)" } : {}}
+                    >
+                      {m.name}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm font-medium text-muted-foreground mt-1">
+                Personalized for {activeMember?.name}
+              </p>
+            )}
           </div>
           <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors bg-white/50 backdrop-blur-sm">
             <X className="w-5 h-5" />
@@ -604,46 +672,73 @@ function AIRecommendationModal({ onClose, activeMember }: { onClose: () => void,
 // --- Main Page ---
 
 export default function Workouts() {
-  const { activeMember } = useActiveMember();
-  
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showAIModal, setShowAIModal] = useState(false);
+  const { data: allMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
 
-  // Fetch workouts for active member
-  const { data: workouts, isLoading } = useGetWorkouts(
-    { memberId: activeMember?.id },
-    { query: { enabled: !!activeMember?.id, queryKey: getGetWorkoutsQueryKey({ memberId: activeMember?.id }) } }
+  // Only AJ and Emily (parents) can use workouts
+  const parents = allMembers?.filter(m => m.role === "parent") ?? [];
+
+  // Which parents are currently selected for viewing — default both once loaded
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // Once parents load, default-select both
+  React.useEffect(() => {
+    if (parents.length > 0 && selectedIds.length === 0) {
+      setSelectedIds(parents.map(p => p.id));
+    }
+  }, [parents.length]);
+
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [aiMember, setAiMember] = useState<any>(null); // which member to get AI rec for
+
+  const bothSelected = selectedIds.length === parents.length && parents.length > 1;
+  const singleSelected = selectedIds.length === 1 ? parents.find(p => p.id === selectedIds[0]) : null;
+
+  // When both selected fetch all; when one selected filter by that id
+  const queryMemberId = bothSelected ? undefined : (selectedIds[0] ?? undefined);
+  const { data: allWorkouts, isLoading } = useGetWorkouts(
+    queryMemberId ? { memberId: queryMemberId } : {},
+    { query: { queryKey: getGetWorkoutsQueryKey(queryMemberId ? { memberId: queryMemberId } : {}) } }
   );
 
-  if (!activeMember) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-6">
-          <Dumbbell className="w-10 h-10 text-muted-foreground" />
-        </div>
-        <h2 className="font-serif font-bold text-2xl mb-2">Who's working out?</h2>
-        <p className="text-muted-foreground max-w-sm">
-          Select a family member from the sidebar to view and log workouts.
-        </p>
-      </div>
-    );
-  }
+  // Filter to only selected parent IDs (guards against "all workouts" returning kids etc.)
+  const workouts = allWorkouts?.filter(w => selectedIds.includes(w.memberId)) ?? [];
+
+  const toggleMember = (id: string) => {
+    setSelectedIds(prev => {
+      if (prev.includes(id)) {
+        // Don't allow deselecting the last one
+        if (prev.length === 1) return prev;
+        return prev.filter(x => x !== id);
+      }
+      return [...prev, id];
+    });
+  };
+
+  // For "Log Workout" — default to single selected member; if both, user picks in modal
+  const defaultLogMember = singleSelected ?? null;
 
   return (
     <div className="pb-12 animate-in fade-in duration-500">
-      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <header className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="font-serif text-4xl md:text-5xl font-bold text-foreground tracking-tight">
             Training Journal
           </h1>
-          <p className="text-muted-foreground mt-2 font-medium">
-            Track progress and get AI coaching for {activeMember.name}.
+          <p className="text-muted-foreground mt-1 font-medium">
+            {bothSelected ? "Showing workouts for everyone" : singleSelected ? `Showing ${singleSelected.name}'s workouts` : "Select who to view"}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowAIModal(true)}
+            onClick={() => {
+              if (singleSelected) {
+                setAiMember(singleSelected);
+              } else {
+                // Both selected — default to first parent for AI
+                setAiMember(parents[0] ?? null);
+              }
+            }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary/10 text-primary font-bold hover:bg-primary/20 transition-colors border border-primary/20"
           >
             <Sparkles className="w-4 h-4" />
@@ -659,20 +754,49 @@ export default function Workouts() {
         </div>
       </header>
 
+      {/* Member toggle */}
+      {parents.length > 0 && (
+        <div className="flex gap-2 mb-6">
+          {parents.map(parent => {
+            const active = selectedIds.includes(parent.id);
+            return (
+              <button
+                key={parent.id}
+                onClick={() => toggleMember(parent.id)}
+                data-testid={`toggle-member-${parent.id}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all border-2 ${
+                  active
+                    ? "border-transparent text-white shadow-md"
+                    : "border-border text-muted-foreground bg-card hover:border-border/80"
+                }`}
+                style={active ? { backgroundColor: parent.color || "var(--color-primary)" } : {}}
+              >
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${active ? "bg-white/20" : "text-white"}`}
+                  style={!active ? { backgroundColor: parent.color || "var(--color-primary)" } : {}}
+                >
+                  {parent.name.charAt(0)}
+                </div>
+                {parent.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2, 3].map(i => (
             <div key={i} className="h-24 bg-muted rounded-2xl animate-pulse" />
           ))}
         </div>
-      ) : !workouts || workouts.length === 0 ? (
+      ) : workouts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center border-2 border-dashed border-border rounded-3xl bg-card">
           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
             <Dumbbell className="w-8 h-8 text-primary" />
           </div>
-          <h3 className="font-serif font-bold text-xl mb-2">No workouts logged</h3>
+          <h3 className="font-serif font-bold text-xl mb-2">No workouts logged yet</h3>
           <p className="text-muted-foreground max-w-md mb-6">
-            Time to get moving! Log your first workout manually or let the AI coach suggest one for you.
+            Time to get moving! Log a workout manually or let the AI coach suggest one.
           </p>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -684,22 +808,25 @@ export default function Workouts() {
       ) : (
         <div className="space-y-4">
           {workouts.map(workout => (
-            <WorkoutDetailCard key={workout.id} workout={workout} />
+            <WorkoutDetailCard key={workout.id} workout={workout} showMember={bothSelected} />
           ))}
         </div>
       )}
 
       {showCreateModal && (
-        <CreateWorkoutModal 
-          activeMemberId={activeMember.id} 
-          onClose={() => setShowCreateModal(false)} 
+        <CreateWorkoutModal
+          defaultMember={defaultLogMember}
+          members={parents}
+          onClose={() => setShowCreateModal(false)}
         />
       )}
 
-      {showAIModal && (
-        <AIRecommendationModal 
-          activeMember={activeMember} 
-          onClose={() => setShowAIModal(false)} 
+      {aiMember && (
+        <AIRecommendationModal
+          activeMember={aiMember}
+          members={parents}
+          onMemberChange={setAiMember}
+          onClose={() => setAiMember(null)}
         />
       )}
     </div>

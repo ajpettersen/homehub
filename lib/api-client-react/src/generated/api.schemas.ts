@@ -165,6 +165,36 @@ export interface FamilyMember {
   color: string;
 }
 
+export type CreateFamilyMemberInputRole = typeof CreateFamilyMemberInputRole[keyof typeof CreateFamilyMemberInputRole];
+
+
+export const CreateFamilyMemberInputRole = {
+  parent: 'parent',
+  child: 'child',
+  pet: 'pet',
+} as const;
+
+export interface CreateFamilyMemberInput {
+  name: string;
+  role: CreateFamilyMemberInputRole;
+  color: string;
+}
+
+export type UpdateFamilyMemberInputRole = typeof UpdateFamilyMemberInputRole[keyof typeof UpdateFamilyMemberInputRole];
+
+
+export const UpdateFamilyMemberInputRole = {
+  parent: 'parent',
+  child: 'child',
+  pet: 'pet',
+} as const;
+
+export interface UpdateFamilyMemberInput {
+  name?: string;
+  role?: UpdateFamilyMemberInputRole;
+  color?: string;
+}
+
 export type PropertyType = typeof PropertyType[keyof typeof PropertyType];
 
 

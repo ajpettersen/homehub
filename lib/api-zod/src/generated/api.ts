@@ -149,6 +149,54 @@ export const GetFamilyMembersResponse = zod.array(GetFamilyMembersResponseItem)
 
 
 /**
+ * @summary Create a new family member
+ */
+export const CreateFamilyMemberBody = zod.object({
+  "name": zod.string(),
+  "role": zod.enum(['parent', 'child', 'pet']),
+  "color": zod.string()
+})
+
+export const CreateFamilyMemberResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "role": zod.enum(['parent', 'child', 'pet']),
+  "color": zod.string()
+})
+
+
+/**
+ * @summary Update a family member
+ */
+export const UpdateFamilyMemberParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateFamilyMemberBody = zod.object({
+  "name": zod.string().optional(),
+  "role": zod.enum(['parent', 'child', 'pet']).optional(),
+  "color": zod.string().optional()
+})
+
+export const UpdateFamilyMemberResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "role": zod.enum(['parent', 'child', 'pet']),
+  "color": zod.string()
+})
+
+
+/**
+ * @summary Delete a family member
+ */
+export const DeleteFamilyMemberParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteFamilyMemberResponse = zod.void()
+
+
+/**
  * @summary List all properties
  */
 export const GetPropertiesResponseItem = zod.object({
