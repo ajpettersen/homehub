@@ -11,4 +11,5 @@ export interface CreateFamilyMemberInput {
   name: string;
   role: CreateFamilyMemberInputRole;
   color: string;
+  photoUrl?: string | null;
 }

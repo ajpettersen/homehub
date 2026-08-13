@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateMealPlanEntryInputMealType } from './createMealPlanEntryInputMealType';
+import type { CreateMealPlanEntryInputRating } from './createMealPlanEntryInputRating';
 
 export interface CreateMealPlanEntryInput {
   weekStart: Date;
@@ -17,5 +18,6 @@ export interface CreateMealPlanEntryInput {
   mealType: CreateMealPlanEntryInputMealType;
   meal: string;
   notes?: string | null;
+  rating?: CreateMealPlanEntryInputRating;
   propertyId: string;
 }

@@ -7,6 +7,7 @@ export const propertiesTable = pgTable("properties", {
   name: text("name").notNull(),
   type: text("type").notNull().default("house"), // house | cabin
   icon: text("icon").notNull().default("home"),
+  address: text("address"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

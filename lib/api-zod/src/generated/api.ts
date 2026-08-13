@@ -115,6 +115,7 @@ export const GetDashboardResponse = zod.object({
   "mealType": zod.enum(['breakfast', 'lunch', 'dinner', 'snack']),
   "meal": zod.string(),
   "notes": zod.string().nullish(),
+  "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
   "propertyId": zod.string()
 })),
   "upcomingMaintenance": zod.array(zod.object({
@@ -143,7 +144,8 @@ export const GetFamilyMembersResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "role": zod.enum(['parent', 'child', 'pet']),
-  "color": zod.string()
+  "color": zod.string(),
+  "photoUrl": zod.string().nullish()
 })
 export const GetFamilyMembersResponse = zod.array(GetFamilyMembersResponseItem)
 
@@ -154,14 +156,16 @@ export const GetFamilyMembersResponse = zod.array(GetFamilyMembersResponseItem)
 export const CreateFamilyMemberBody = zod.object({
   "name": zod.string(),
   "role": zod.enum(['parent', 'child', 'pet']),
-  "color": zod.string()
+  "color": zod.string(),
+  "photoUrl": zod.string().nullish()
 })
 
 export const CreateFamilyMemberResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "role": zod.enum(['parent', 'child', 'pet']),
-  "color": zod.string()
+  "color": zod.string(),
+  "photoUrl": zod.string().nullish()
 })
 
 
@@ -175,14 +179,16 @@ export const UpdateFamilyMemberParams = zod.object({
 export const UpdateFamilyMemberBody = zod.object({
   "name": zod.string().optional(),
   "role": zod.enum(['parent', 'child', 'pet']).optional(),
-  "color": zod.string().optional()
+  "color": zod.string().optional(),
+  "photoUrl": zod.string().nullish()
 })
 
 export const UpdateFamilyMemberResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "role": zod.enum(['parent', 'child', 'pet']),
-  "color": zod.string()
+  "color": zod.string(),
+  "photoUrl": zod.string().nullish()
 })
 
 
@@ -203,9 +209,43 @@ export const GetPropertiesResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.enum(['house', 'cabin']),
-  "icon": zod.string()
+  "icon": zod.string(),
+  "address": zod.string().nullish()
 })
 export const GetPropertiesResponse = zod.array(GetPropertiesResponseItem)
+
+
+/**
+ * @summary Update a property
+ */
+export const UpdatePropertyParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdatePropertyBody = zod.object({
+  "name": zod.string().optional(),
+  "address": zod.string().nullish(),
+  "icon": zod.string().optional(),
+  "type": zod.enum(['house', 'cabin']).optional()
+})
+
+export const UpdatePropertyResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.enum(['house', 'cabin']),
+  "icon": zod.string(),
+  "address": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get a Google Street View image for a property (proxied)
+ */
+export const GetPropertyStreetviewParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetPropertyStreetviewResponse = zod.unknown()
 
 
 /**
@@ -480,6 +520,7 @@ export const GetMealPlansResponseItem = zod.object({
   "mealType": zod.enum(['breakfast', 'lunch', 'dinner', 'snack']),
   "meal": zod.string(),
   "notes": zod.string().nullish(),
+  "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
   "propertyId": zod.string()
 })
 export const GetMealPlansResponse = zod.array(GetMealPlansResponseItem)
@@ -499,6 +540,7 @@ export const CreateMealPlanEntryBody = zod.object({
   "mealType": zod.enum(['breakfast', 'lunch', 'dinner', 'snack']),
   "meal": zod.string(),
   "notes": zod.string().nullish(),
+  "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
   "propertyId": zod.string()
 })
 
@@ -514,6 +556,36 @@ export const CreateMealPlanEntryResponse = zod.object({
   "mealType": zod.enum(['breakfast', 'lunch', 'dinner', 'snack']),
   "meal": zod.string(),
   "notes": zod.string().nullish(),
+  "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "propertyId": zod.string()
+})
+
+
+/**
+ * @summary Update rating or notes on a meal plan entry
+ */
+export const UpdateMealPlanEntryParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateMealPlanEntryBody = zod.object({
+  "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const updateMealPlanEntryResponseDayOfWeekMin = 0;
+export const updateMealPlanEntryResponseDayOfWeekMax = 6;
+
+
+
+export const UpdateMealPlanEntryResponse = zod.object({
+  "id": zod.string(),
+  "weekStart": zod.coerce.date(),
+  "dayOfWeek": zod.number().min(updateMealPlanEntryResponseDayOfWeekMin).max(updateMealPlanEntryResponseDayOfWeekMax),
+  "mealType": zod.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+  "meal": zod.string(),
+  "notes": zod.string().nullish(),
+  "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
   "propertyId": zod.string()
 })
 

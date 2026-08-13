@@ -12,4 +12,5 @@ export interface Property {
   name: string;
   type: PropertyType;
   icon: string;
+  address?: string | null;
 }

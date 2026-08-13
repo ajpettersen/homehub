@@ -10,6 +10,7 @@ export const mealPlansTable = pgTable("meal_plans", {
   mealType: text("meal_type").notNull().default("dinner"), // breakfast | lunch | dinner | snack
   meal: text("meal").notNull(),
   notes: text("notes"),
+  rating: text("rating"), // love | ok | skip
   propertyId: integer("property_id").notNull().references(() => propertiesTable.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

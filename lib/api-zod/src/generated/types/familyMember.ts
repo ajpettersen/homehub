@@ -12,4 +12,5 @@ export interface FamilyMember {
   name: string;
   role: FamilyMemberRole;
   color: string;
+  photoUrl?: string | null;
 }

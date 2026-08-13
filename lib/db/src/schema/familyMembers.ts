@@ -8,6 +8,7 @@ export const familyMembersTable = pgTable("family_members", {
   role: text("role").notNull().default("child"), // parent | child | pet
   color: text("color").notNull().default("#2D6A4F"),
   avatarInitials: text("avatar_initials").notNull(),
+  photoUrl: text("photo_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

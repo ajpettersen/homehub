@@ -95,6 +95,15 @@ export const MealPlanEntryMealType = {
   snack: 'snack',
 } as const;
 
+export type MealPlanEntryRating = typeof MealPlanEntryRating[keyof typeof MealPlanEntryRating] | null;
+
+
+export const MealPlanEntryRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
 export interface MealPlanEntry {
   id: string;
   weekStart: string;
@@ -106,6 +115,7 @@ export interface MealPlanEntry {
   mealType: MealPlanEntryMealType;
   meal: string;
   notes?: string | null;
+  rating?: MealPlanEntryRating;
   propertyId: string;
 }
 
@@ -163,6 +173,7 @@ export interface FamilyMember {
   name: string;
   role: FamilyMemberRole;
   color: string;
+  photoUrl?: string | null;
 }
 
 export type CreateFamilyMemberInputRole = typeof CreateFamilyMemberInputRole[keyof typeof CreateFamilyMemberInputRole];
@@ -178,6 +189,7 @@ export interface CreateFamilyMemberInput {
   name: string;
   role: CreateFamilyMemberInputRole;
   color: string;
+  photoUrl?: string | null;
 }
 
 export type UpdateFamilyMemberInputRole = typeof UpdateFamilyMemberInputRole[keyof typeof UpdateFamilyMemberInputRole];
@@ -193,6 +205,7 @@ export interface UpdateFamilyMemberInput {
   name?: string;
   role?: UpdateFamilyMemberInputRole;
   color?: string;
+  photoUrl?: string | null;
 }
 
 export type PropertyType = typeof PropertyType[keyof typeof PropertyType];
@@ -208,6 +221,22 @@ export interface Property {
   name: string;
   type: PropertyType;
   icon: string;
+  address?: string | null;
+}
+
+export type UpdatePropertyInputType = typeof UpdatePropertyInputType[keyof typeof UpdatePropertyInputType];
+
+
+export const UpdatePropertyInputType = {
+  house: 'house',
+  cabin: 'cabin',
+} as const;
+
+export interface UpdatePropertyInput {
+  name?: string;
+  address?: string | null;
+  icon?: string;
+  type?: UpdatePropertyInputType;
 }
 
 export type ChoreFrequency = typeof ChoreFrequency[keyof typeof ChoreFrequency];
@@ -332,6 +361,15 @@ export const CreateMealPlanEntryInputMealType = {
   snack: 'snack',
 } as const;
 
+export type CreateMealPlanEntryInputRating = typeof CreateMealPlanEntryInputRating[keyof typeof CreateMealPlanEntryInputRating] | null;
+
+
+export const CreateMealPlanEntryInputRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
 export interface CreateMealPlanEntryInput {
   weekStart: string;
   /**
@@ -342,7 +380,22 @@ export interface CreateMealPlanEntryInput {
   mealType: CreateMealPlanEntryInputMealType;
   meal: string;
   notes?: string | null;
+  rating?: CreateMealPlanEntryInputRating;
   propertyId: string;
+}
+
+export type UpdateMealPlanEntryInputRating = typeof UpdateMealPlanEntryInputRating[keyof typeof UpdateMealPlanEntryInputRating] | null;
+
+
+export const UpdateMealPlanEntryInputRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
+export interface UpdateMealPlanEntryInput {
+  rating?: UpdateMealPlanEntryInputRating;
+  notes?: string | null;
 }
 
 export interface TodoList {

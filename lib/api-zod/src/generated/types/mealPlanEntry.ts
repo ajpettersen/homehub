@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MealPlanEntryMealType } from './mealPlanEntryMealType';
+import type { MealPlanEntryRating } from './mealPlanEntryRating';
 
 export interface MealPlanEntry {
   id: string;
@@ -18,5 +19,6 @@ export interface MealPlanEntry {
   mealType: MealPlanEntryMealType;
   meal: string;
   notes?: string | null;
+  rating?: MealPlanEntryRating;
   propertyId: string;
 }

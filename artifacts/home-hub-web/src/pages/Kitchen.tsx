@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import {
   useGetMealPlans, getGetMealPlansQueryKey,
-  useCreateMealPlanEntry, useDeleteMealPlanEntry,
+  useCreateMealPlanEntry, useDeleteMealPlanEntry, useUpdateMealPlanEntry,
   useGetGroceryLists, getGetGroceryListsQueryKey,
   useCreateGroceryList, useDeleteGroceryList,
   useGetGroceryItems, getGetGroceryItemsQueryKey,
@@ -11,7 +11,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
-  ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown
+  ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown,
+  Link, MessageSquare, ThumbsUp, ThumbsDown, Minus
 } from "lucide-react";
 import { addWeeks, format, addDays } from "date-fns";
 
@@ -48,6 +49,70 @@ function apiDayToIndex(d: number): number {
   return d === 0 ? 6 : d - 1;
 }
 
+// ── rating config ─────────────────────────────────────────────────────────────
+
+const RATINGS = [
+  { key: "love", emoji: "❤️", label: "Love it",   active: "bg-red-50 border-red-300 text-red-600" },
+  { key: "ok",   emoji: "👍", label: "It's okay", active: "bg-amber-50 border-amber-300 text-amber-600" },
+  { key: "skip", emoji: "🙅", label: "Skip next time", active: "bg-muted border-border text-muted-foreground" },
+] as const;
+
+// ── URL import modal ──────────────────────────────────────────────────────────
+
+function UrlImportForm({ onImport, onCancel }: { onImport: (name: string) => void; onCancel: () => void }) {
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50); }, []);
+
+  const handle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!url.trim()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+      const res = await fetch(`${baseUrl}/api/ai/extract-recipe-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      onImport(data.name);
+    } catch (err: any) {
+      setError(err.message ?? "Couldn't read that page. Try a direct recipe URL.");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handle} className="space-y-2 p-2 bg-card border-2 border-primary/20 rounded-xl shadow-sm">
+      <div className="flex items-center gap-1.5 text-xs font-bold text-primary mb-1">
+        <Link className="w-3 h-3" /> Import from recipe URL
+      </div>
+      <div className="flex gap-1">
+        <input
+          ref={inputRef}
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="https://..."
+          className="flex-1 text-xs bg-background border border-border rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary min-w-0"
+        />
+        <button type="submit" disabled={loading} className="px-2.5 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold disabled:opacity-50 shrink-0">
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+        </button>
+        <button type="button" onClick={onCancel} className="px-2 py-1.5 text-muted-foreground hover:text-foreground rounded-lg">
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </form>
+  );
+}
+
 // ── inline meal slot ──────────────────────────────────────────────────────────
 
 function MealSlot({
@@ -56,19 +121,26 @@ function MealSlot({
   dayLabel,
   onAdd,
   onDelete,
+  onRate,
+  onNote,
 }: {
   meal?: any;
   mealType: { type: MealType; label: string; Icon: React.ComponentType<any>; color: string; bg: string };
   dayLabel: string;
   onAdd: (text: string) => void;
   onDelete: () => void;
+  onRate: (id: string, rating: string | null) => void;
+  onNote: (id: string, notes: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
+  const [showNotes, setShowNotes] = useState(false);
+  const [noteValue, setNoteValue] = useState("");
+  const [importingUrl, setImportingUrl] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const startEdit = () => {
-    if (meal) return; // already has a meal — click X to remove
+    if (meal) return;
     setEditing(true);
     setValue("");
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -80,40 +152,110 @@ function MealSlot({
     setValue("");
   };
 
+  const commitNote = () => {
+    if (meal) onNote(meal.id, noteValue);
+    setShowNotes(false);
+  };
+
+  const handleRate = (key: string) => {
+    if (!meal) return;
+    // Toggle off if already selected
+    onRate(meal.id, meal.rating === key ? null : key);
+  };
+
+  React.useEffect(() => {
+    if (meal?.notes !== undefined) setNoteValue(meal.notes ?? "");
+  }, [meal?.notes]);
+
   const { Icon, color, bg } = mealType;
 
   if (meal) {
     return (
-      <div className={`group relative flex items-center gap-2 px-3 py-2.5 rounded-xl border ${bg} min-h-[2.75rem]`}>
-        <Icon className={`w-3.5 h-3.5 shrink-0 ${color}`} />
-        <span className="text-sm font-medium text-foreground flex-1 leading-snug">{meal.meal}</span>
-        <button
-          onClick={onDelete}
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-destructive transition-all rounded-md shrink-0"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
+      <div className={`rounded-xl border ${bg} overflow-hidden`}>
+        {/* Meal name row */}
+        <div className="flex items-center gap-2 px-3 py-2">
+          <Icon className={`w-3.5 h-3.5 shrink-0 ${color}`} />
+          <span className="text-sm font-medium text-foreground flex-1 leading-snug">{meal.meal}</span>
+          <button onClick={onDelete} className="w-5 h-5 flex items-center justify-center text-muted-foreground/40 hover:text-destructive transition-all rounded-md shrink-0">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+
+        {/* Rating + notes row */}
+        <div className="flex items-center gap-1 px-2 pb-2">
+          {RATINGS.map(r => (
+            <button
+              key={r.key}
+              onClick={() => handleRate(r.key)}
+              title={r.label}
+              className={`flex-1 py-0.5 rounded-lg text-xs border transition-all ${meal.rating === r.key ? r.active : "border-transparent text-muted-foreground/50 hover:text-muted-foreground"}`}
+            >
+              {r.emoji}
+            </button>
+          ))}
+          <button
+            onClick={() => { setShowNotes(v => !v); setNoteValue(meal.notes ?? ""); }}
+            title="Add note"
+            className={`w-6 h-6 flex items-center justify-center rounded-lg border transition-all ${(meal.notes || showNotes) ? "border-primary/30 text-primary bg-primary/5" : "border-transparent text-muted-foreground/40 hover:text-muted-foreground"}`}
+          >
+            <MessageSquare className="w-3 h-3" />
+          </button>
+        </div>
+
+        {/* Note badge */}
+        {meal.notes && !showNotes && (
+          <p className="text-xs text-muted-foreground italic px-3 pb-2 leading-snug">{meal.notes}</p>
+        )}
+
+        {/* Notes editor */}
+        {showNotes && (
+          <div className="px-2 pb-2 flex gap-1">
+            <input
+              autoFocus
+              value={noteValue}
+              onChange={e => setNoteValue(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") commitNote(); if (e.key === "Escape") setShowNotes(false); }}
+              placeholder="Add a note…"
+              className="flex-1 text-xs bg-background border border-border rounded-lg px-2 py-1 focus:outline-none focus:border-primary"
+            />
+            <button onClick={commitNote} className="w-6 h-6 flex items-center justify-center bg-primary text-primary-foreground rounded-lg shrink-0">
+              <Check className="w-3 h-3" />
+            </button>
+          </div>
+        )}
       </div>
     );
   }
 
+  if (importingUrl) {
+    return <UrlImportForm onImport={name => { onAdd(name); setImportingUrl(false); }} onCancel={() => setImportingUrl(false)} />;
+  }
+
   if (editing) {
     return (
-      <div className="flex items-center gap-1 min-h-[2.75rem]">
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") { setEditing(false); setValue(""); }
-          }}
-          onBlur={commit}
-          placeholder={`${mealType.label}…`}
-          className="flex-1 text-sm bg-background border-2 border-primary/40 rounded-xl px-3 py-2 focus:outline-none focus:border-primary min-w-0"
-        />
-        <button onClick={commit} className="w-8 h-8 flex items-center justify-center bg-primary text-primary-foreground rounded-lg shrink-0">
-          <Check className="w-4 h-4" />
+      <div className="space-y-1">
+        <div className="flex items-center gap-1 min-h-[2.75rem]">
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") { setEditing(false); setValue(""); }
+            }}
+            onBlur={e => { if (!e.relatedTarget) commit(); }}
+            placeholder={`${mealType.label}…`}
+            className="flex-1 text-sm bg-background border-2 border-primary/40 rounded-xl px-3 py-2 focus:outline-none focus:border-primary min-w-0"
+          />
+          <button onClick={commit} className="w-8 h-8 flex items-center justify-center bg-primary text-primary-foreground rounded-lg shrink-0">
+            <Check className="w-4 h-4" />
+          </button>
+          <button type="button" onClick={() => setEditing(false)} className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground rounded-lg shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <button type="button" onClick={() => { setEditing(false); setImportingUrl(true); }} className="text-xs text-primary/60 hover:text-primary flex items-center gap-1 px-1 transition-colors">
+          <Link className="w-3 h-3" /> From URL instead
         </button>
       </div>
     );
@@ -122,7 +264,7 @@ function MealSlot({
   return (
     <button
       onClick={startEdit}
-      className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 transition-all text-muted-foreground min-h-[2.75rem] group`}
+      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 transition-all text-muted-foreground min-h-[2.75rem] group"
       title={`Add ${mealType.label} for ${dayLabel}`}
     >
       <Icon className="w-3.5 h-3.5 shrink-0 opacity-50" />
@@ -441,6 +583,7 @@ export default function Meals() {
   );
   const createMeal = useCreateMealPlanEntry();
   const deleteMeal = useDeleteMealPlanEntry();
+  const updateMeal = useUpdateMealPlanEntry();
 
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"meals" | "shopping">("meals");
@@ -470,6 +613,14 @@ export default function Meals() {
 
   const handleDelete = (id: string) => {
     deleteMeal.mutate({ id }, { onSuccess: invalidateMeals });
+  };
+
+  const handleRate = (id: string, rating: string | null) => {
+    updateMeal.mutate({ id, data: { rating: rating as any } }, { onSuccess: invalidateMeals });
+  };
+
+  const handleNote = (id: string, notes: string) => {
+    updateMeal.mutate({ id, data: { notes } }, { onSuccess: invalidateMeals });
   };
 
   const handleAISuggestWeek = async () => {
@@ -621,6 +772,8 @@ export default function Meals() {
                         const m = getMeal(idx, mt.type);
                         if (m) handleDelete(m.id);
                       }}
+                      onRate={handleRate}
+                      onNote={handleNote}
                     />
                   ))}
                 </div>

@@ -228,6 +228,57 @@ paths:
                 items:
                   $ref: "#/components/schemas/Property"
 
+  /properties/{id}:
+    put:
+      operationId: updateProperty
+      tags: [properties]
+      summary: Update a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePropertyInput"
+      responses:
+        "200":
+          description: Updated property
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+        "404":
+          description: Not found
+
+  /properties/{id}/streetview:
+    get:
+      operationId: getPropertyStreetview
+      tags: [properties]
+      summary: Get a Google Street View image for a property (proxied)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: JPEG image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: No address set or not found
+        "503":
+          description: Street view not configured
+
   /chores:
     get:
       operationId: getChores
@@ -500,6 +551,31 @@ paths:
                 $ref: "#/components/schemas/MealPlanEntry"
 
   /meal-plans/{id}:
+    patch:
+      operationId: updateMealPlanEntry
+      tags: [meals]
+      summary: Update rating or notes on a meal plan entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMealPlanEntryInput"
+      responses:
+        "200":
+          description: Updated meal plan entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MealPlanEntry"
+        "404":
+          description: Not found
     delete:
       operationId: deleteMealPlanEntry
       tags: [meals]
@@ -1163,6 +1239,9 @@ components:
           enum: [parent, child, pet]
         color:
           type: string
+        photoUrl:
+          type: string
+          nullable: true
       required:
         - id
         - name
@@ -1179,6 +1258,9 @@ components:
           enum: [parent, child, pet]
         color:
           type: string
+        photoUrl:
+          type: string
+          nullable: true
       required:
         - name
         - role
@@ -1194,6 +1276,9 @@ components:
           enum: [parent, child, pet]
         color:
           type: string
+        photoUrl:
+          type: string
+          nullable: true
 
     Property:
       type: object
@@ -1207,11 +1292,28 @@ components:
           enum: [house, cabin]
         icon:
           type: string
+        address:
+          type: string
+          nullable: true
       required:
         - id
         - name
         - type
         - icon
+
+    UpdatePropertyInput:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+          nullable: true
+        icon:
+          type: string
+        type:
+          type: string
+          enum: [house, cabin]
 
     Chore:
       type: object
@@ -1434,6 +1536,10 @@ components:
         notes:
           type: string
           nullable: true
+        rating:
+          type: string
+          enum: [love, ok, skip]
+          nullable: true
         propertyId:
           type: string
       required:
@@ -1462,6 +1568,10 @@ components:
         notes:
           type: string
           nullable: true
+        rating:
+          type: string
+          enum: [love, ok, skip]
+          nullable: true
         propertyId:
           type: string
       required:
@@ -1470,6 +1580,17 @@ components:
         - mealType
         - meal
         - propertyId
+
+    UpdateMealPlanEntryInput:
+      type: object
+      properties:
+        rating:
+          type: string
+          enum: [love, ok, skip]
+          nullable: true
+        notes:
+          type: string
+          nullable: true
 
     TodoList:
       type: object

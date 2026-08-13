@@ -11,4 +11,5 @@ export interface UpdateFamilyMemberInput {
   name?: string;
   role?: UpdateFamilyMemberInputRole;
   color?: string;
+  photoUrl?: string | null;
 }

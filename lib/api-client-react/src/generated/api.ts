@@ -58,6 +58,8 @@ import type {
   UpdateFamilyMemberInput,
   UpdateGroceryItemInput,
   UpdateMaintenanceTaskInput,
+  UpdateMealPlanEntryInput,
+  UpdatePropertyInput,
   UpdateTodoItemInput,
   UpdateUserProfile200,
   UpdateUserProfileRequest,
@@ -888,6 +890,155 @@ export function useGetProperties<TData = Awaited<ReturnType<typeof getProperties
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPropertiesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdatePropertyUrl = (id: string,) => {
+
+
+
+
+  return `/api/properties/${id}`
+}
+
+/**
+ * @summary Update a property
+ */
+export const updateProperty = async (id: string,
+    updatePropertyInput: UpdatePropertyInput, options?: RequestInit): Promise<Property> => {
+
+  return customFetch<Property>(getUpdatePropertyUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updatePropertyInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePropertyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProperty>>, TError,{id: string;data: BodyType<UpdatePropertyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProperty>>, TError,{id: string;data: BodyType<UpdatePropertyInput>}, TContext> => {
+
+const mutationKey = ['updateProperty'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProperty>>, {id: string;data: BodyType<UpdatePropertyInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateProperty(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePropertyMutationResult = NonNullable<Awaited<ReturnType<typeof updateProperty>>>
+    export type UpdatePropertyMutationBody = BodyType<UpdatePropertyInput>
+    export type UpdatePropertyMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a property
+ */
+export const useUpdateProperty = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProperty>>, TError,{id: string;data: BodyType<UpdatePropertyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProperty>>,
+        TError,
+        {id: string;data: BodyType<UpdatePropertyInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePropertyMutationOptions(options));
+    }
+
+export const getGetPropertyStreetviewUrl = (id: string,) => {
+
+
+
+
+  return `/api/properties/${id}/streetview`
+}
+
+/**
+ * @summary Get a Google Street View image for a property (proxied)
+ */
+export const getPropertyStreetview = async (id: string, options?: RequestInit): Promise<Blob> => {
+
+  return customFetch<Blob>(getGetPropertyStreetviewUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPropertyStreetviewQueryKey = (id: string,) => {
+    return [
+    `/api/properties/${id}/streetview`
+    ] as const;
+    }
+
+
+export const getGetPropertyStreetviewQueryOptions = <TData = Awaited<ReturnType<typeof getPropertyStreetview>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPropertyStreetview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPropertyStreetviewQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPropertyStreetview>>> = ({ signal }) => getPropertyStreetview(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPropertyStreetview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPropertyStreetviewQueryResult = NonNullable<Awaited<ReturnType<typeof getPropertyStreetview>>>
+export type GetPropertyStreetviewQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a Google Street View image for a property (proxied)
+ */
+
+export function useGetPropertyStreetview<TData = Awaited<ReturnType<typeof getPropertyStreetview>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPropertyStreetview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPropertyStreetviewQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1934,6 +2085,78 @@ export const useCreateMealPlanEntry = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateMealPlanEntryMutationOptions(options));
+    }
+
+export const getUpdateMealPlanEntryUrl = (id: string,) => {
+
+
+
+
+  return `/api/meal-plans/${id}`
+}
+
+/**
+ * @summary Update rating or notes on a meal plan entry
+ */
+export const updateMealPlanEntry = async (id: string,
+    updateMealPlanEntryInput: UpdateMealPlanEntryInput, options?: RequestInit): Promise<MealPlanEntry> => {
+
+  return customFetch<MealPlanEntry>(getUpdateMealPlanEntryUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateMealPlanEntryInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateMealPlanEntryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMealPlanEntry>>, TError,{id: string;data: BodyType<UpdateMealPlanEntryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMealPlanEntry>>, TError,{id: string;data: BodyType<UpdateMealPlanEntryInput>}, TContext> => {
+
+const mutationKey = ['updateMealPlanEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMealPlanEntry>>, {id: string;data: BodyType<UpdateMealPlanEntryInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMealPlanEntry(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMealPlanEntryMutationResult = NonNullable<Awaited<ReturnType<typeof updateMealPlanEntry>>>
+    export type UpdateMealPlanEntryMutationBody = BodyType<UpdateMealPlanEntryInput>
+    export type UpdateMealPlanEntryMutationError = ErrorType<void>
+
+    /**
+ * @summary Update rating or notes on a meal plan entry
+ */
+export const useUpdateMealPlanEntry = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMealPlanEntry>>, TError,{id: string;data: BodyType<UpdateMealPlanEntryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMealPlanEntry>>,
+        TError,
+        {id: string;data: BodyType<UpdateMealPlanEntryInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateMealPlanEntryMutationOptions(options));
     }
 
 export const getDeleteMealPlanEntryUrl = (id: string,) => {
