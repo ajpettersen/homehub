@@ -292,7 +292,10 @@ const ALL_CATEGORIES: Record<string, { label: string; emoji: string }> = {
   other:     { label: "Other",              emoji: "📦" },
 };
 
-// Legacy keys from old data → canonical key
+const GROCERY_CATEGORIES = Object.entries(ALL_CATEGORIES).map(([key, { label, emoji }]) => ({
+  key,
+  label: `${emoji} ${label}`,
+}));
 const LEGACY_MAP: Record<string, string> = {
   protein: "meat",
   bakery:  "bread",
@@ -338,12 +341,12 @@ function useActiveStore() {
   return { store, setStore };
 }
 
-function GrocerySection({ propertyId }: { propertyId: string }) {
+type MealForShopping = { dayName: string; mealType: string; meal: string };
+function GrocerySection({ propertyId, meals }: { propertyId: string; meals: MealForShopping[] }) {
   const queryClient = useQueryClient();
 
   const { data: lists } = useGetGroceryLists({ query: { queryKey: getGetGroceryListsQueryKey() } });
   const createList = useCreateGroceryList();
-  const deleteList = useDeleteGroceryList();
 
   const mainList = lists?.[0];
 
@@ -363,10 +366,10 @@ function GrocerySection({ propertyId }: { propertyId: string }) {
     </div>
   );
 
-  return <GroceryListDetail list={mainList} />;
+  return <GroceryListDetail list={mainList} meals={meals} />;
 }
 
-function GroceryListDetail({ list }: { list: any }) {
+function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[] }) {
   const queryClient = useQueryClient();
   const { store, setStore } = useActiveStore();
 
@@ -380,7 +383,53 @@ function GroceryListDetail({ list }: { list: any }) {
   const [newQty, setNewQty] = useState("");
   const [addingOpen, setAddingOpen] = useState(false);
   const [storePicker, setStorePicker] = useState(false);
+  const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
+  const [aiShoppingError, setAiShoppingError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleBuildFromMeals = async () => {
+    if (meals.length === 0) return;
+    setAiShoppingLoading(true);
+    setAiShoppingError(null);
+    try {
+      const baseUrl = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+      const res = await fetch(`${baseUrl}/api/ai/shopping-list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meals }),
+      });
+      if (!res.ok) throw new Error("AI request failed");
+      const data = await res.json() as { items: Array<{ name: string; quantity: string | null; category: string }> };
+      if (!Array.isArray(data?.items)) return;
+
+      // Deduplicate against existing unchecked items (case-insensitive)
+      // Track names as we insert to guard against any duplicates in the AI response
+      const seenNames = new Set(
+        (items ?? []).filter(i => !i.checked).map(i => i.name.toLowerCase().trim())
+      );
+
+      // Insert new items sequentially to preserve order
+      for (const item of data.items) {
+        const key = item.name.toLowerCase().trim();
+        if (seenNames.has(key)) continue;
+        seenNames.add(key); // mark as seen before the async insert to prevent races
+        await new Promise<void>((resolve) => {
+          addItem.mutate(
+            { id: list.id, data: { name: item.name, quantity: item.quantity ?? null, category: item.category } },
+            { onSuccess: () => resolve(), onError: () => resolve() }
+          );
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(list.id) });
+      queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
+    } catch (err) {
+      console.error("Build from meals error:", err);
+      setAiShoppingError("Failed to build list — please try again.");
+    } finally {
+      setAiShoppingLoading(false);
+    }
+  };
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(list.id) });
@@ -424,6 +473,25 @@ function GroceryListDetail({ list }: { list: any }) {
 
   return (
     <div className="space-y-4">
+
+      {/* Build from meal plan */}
+      <div className="flex flex-col gap-1.5">
+        <button
+          onClick={handleBuildFromMeals}
+          disabled={aiShoppingLoading || meals.length === 0}
+          title={meals.length === 0 ? "Add meals to your plan first" : "Generate a shopping list from this week's meals"}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors shadow-md shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {aiShoppingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          {aiShoppingLoading ? "Building list from meals…" : "Build list from meal plan"}
+        </button>
+        {aiShoppingError && (
+          <p className="text-xs text-destructive text-center">{aiShoppingError}</p>
+        )}
+        {meals.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center">Switch to Meal Plan tab and add meals first.</p>
+        )}
+      </div>
 
       {/* Store picker */}
       <div className="flex items-center justify-between">
@@ -795,7 +863,14 @@ export default function Meals() {
           </div>
 
           {houseProperty ? (
-            <GrocerySection propertyId={houseProperty.id} />
+            <GrocerySection
+              propertyId={houseProperty.id}
+              meals={(meals ?? []).map(m => ({
+                dayName: DAYS[apiDayToIndex(m.dayOfWeek)] ?? "Day",
+                mealType: m.mealType,
+                meal: m.meal,
+              }))}
+            />
           ) : (
             <div className="text-muted-foreground py-8 text-center animate-pulse">Loading…</div>
           )}
