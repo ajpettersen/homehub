@@ -1,12 +1,14 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useGetDashboard, getGetDashboardQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle2, Clock, Utensils, AlertTriangle, CheckSquare,
-  Sparkles, Send, Paperclip, X, Loader2, Image as ImageIcon,
+  Sparkles, Send, Paperclip, X, Loader2, Brain, ChevronDown,
 } from "lucide-react";
 import { format } from "date-fns";
+
+interface StoredMemory { id: number; content: string; createdAt: string; }
 
 // ── AI Chat ──────────────────────────────────────────────────────────────────
 
@@ -74,15 +76,35 @@ function ThinkingBubble() {
 function HouseholdChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [images, setImages] = useState<string[]>([]); // data URLs
+  const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [memories, setMemories] = useState<StoredMemory[]>([]);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const loadMemories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/ai/memories");
+      const data = await res.json();
+      setMemories(data.memories ?? []);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { loadMemories(); }, [loadMemories]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  const handleDeleteMemory = async (id: number) => {
+    setDeletingId(id);
+    await fetch(`/api/ai/memories/${id}`, { method: "DELETE" });
+    setMemories(prev => prev.filter(m => m.id !== id));
+    setDeletingId(null);
+  };
 
   const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -122,6 +144,7 @@ function HouseholdChat() {
         ...prev,
         { role: "assistant", content: data.reply, memorized: data.memorized ?? [] },
       ]);
+      if (data.memorized?.length > 0) loadMemories();
     } catch (err: any) {
       setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Try again in a moment." }]);
     } finally {
@@ -153,12 +176,59 @@ function HouseholdChat() {
           <h2 className="font-serif font-bold text-lg text-foreground leading-tight">HomeHub Assistant</h2>
           <p className="text-xs text-muted-foreground">Ask anything — workouts, meals, maintenance, family life</p>
         </div>
-        {messages.length > 0 && (
-          <button onClick={() => setMessages([])} className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-muted">
-            Clear
+        <div className="ml-auto flex items-center gap-2">
+          {/* Memory toggle */}
+          <button
+            onClick={() => setMemoryOpen(v => !v)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+              memoryOpen
+                ? "bg-primary/10 text-primary border-primary/20"
+                : "text-muted-foreground border-border hover:text-primary hover:border-primary/30 hover:bg-primary/5"
+            }`}
+            title="View what the assistant remembers"
+          >
+            <Brain className="w-3.5 h-3.5" />
+            {memories.length > 0 ? `${memories.length} memories` : "No memories yet"}
+            <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${memoryOpen ? "rotate-180" : ""}`} />
           </button>
-        )}
+          {messages.length > 0 && (
+            <button onClick={() => setMessages([])} className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-muted">
+              Clear
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Memory panel */}
+      {memoryOpen && (
+        <div className="border-b border-border bg-primary/3 px-5 py-3">
+          <p className="text-[11px] font-semibold text-primary/70 uppercase tracking-wider mb-2">
+            What I know about your family
+          </p>
+          {memories.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-1">
+              Nothing stored yet. Tell me your preferences and I'll remember them for next time.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {memories.map(m => (
+                <div key={m.id} className="group flex items-start gap-2">
+                  <Brain className="w-3 h-3 text-primary/50 mt-0.5 shrink-0" />
+                  <span className="text-xs text-foreground flex-1 leading-snug">{m.content}</span>
+                  <button
+                    onClick={() => handleDeleteMemory(m.id)}
+                    disabled={deletingId === m.id}
+                    className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-destructive rounded opacity-0 group-hover:opacity-100 transition-all disabled:opacity-30 shrink-0"
+                    title="Forget this"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div className={`overflow-y-auto px-5 transition-all ${isEmpty ? "h-0" : "max-h-[420px] py-4"}`}>

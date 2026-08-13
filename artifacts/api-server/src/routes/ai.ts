@@ -554,4 +554,28 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
   }
 });
 
+// ── GET /ai/memories ──────────────────────────────────────────────────────────
+router.get("/ai/memories", async (_req, res) => {
+  try {
+    const rows = await db.select().from(aiMemoriesTable).orderBy(aiMemoriesTable.createdAt);
+    res.json({ memories: rows });
+  } catch (err) {
+    console.error("Get memories error:", err);
+    res.status(500).json({ error: "Failed to load memories" });
+  }
+});
+
+// ── DELETE /ai/memories/:id ───────────────────────────────────────────────────
+router.delete("/ai/memories/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { eq } = await import("drizzle-orm");
+    await db.delete(aiMemoriesTable).where(eq(aiMemoriesTable.id, Number(id)));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Delete memory error:", err);
+    res.status(500).json({ error: "Failed to delete memory" });
+  }
+});
+
 export default router;
