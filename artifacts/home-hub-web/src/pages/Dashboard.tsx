@@ -15,13 +15,7 @@ interface StoredMemory { id: number; content: string; createdAt: string; }
 type Role = "user" | "assistant";
 interface Message { role: Role; content: string; images?: string[]; memorized?: string[]; }
 
-const SUGGESTED_PROMPTS = [
-  "Suggest a 25-minute workout for AJ using our space",
-  "Plan tonight's dinner for the family",
-  "What cabin maintenance should we do this month?",
-  "Give me a quick knees-over-toes routine I can do at home",
-  "Help me use up what's in the fridge this week",
-];
+const EXAMPLE_PROMPT = "What should we have for dinner tonight?";
 
 function ChatBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
@@ -239,15 +233,18 @@ function HouseholdChat() {
         </div>
       </div>
 
-      {/* Suggested prompts — only when empty */}
+      {/* Empty state hint */}
       {isEmpty && (
-        <div className="px-5 py-4 flex flex-wrap gap-2">
-          {SUGGESTED_PROMPTS.map(p => (
-            <button key={p} onClick={() => send(p)}
-              className="px-3 py-1.5 rounded-full border border-border bg-muted/50 text-xs font-medium text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-muted transition-all">
-              {p}
+        <div className="px-5 pb-3 pt-1">
+          <p className="text-xs text-muted-foreground">
+            Ask anything —{" "}
+            <button
+              onClick={() => send(EXAMPLE_PROMPT)}
+              className="text-primary/70 hover:text-primary underline underline-offset-2 transition-colors"
+            >
+              "{EXAMPLE_PROMPT}"
             </button>
-          ))}
+          </p>
         </div>
       )}
 

@@ -1,11 +1,10 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
-import { mealPlansTable, aiMemoriesTable } from "@workspace/db/schema";
-import { mealPlansTable, userProfilesTable, familyMembersTable, propertiesTable } from "@workspace/db/schema";
-
-// ── Memory helpers ───────────────────────────────────────────────────────────
+import { mealPlansTable, aiMemoriesTable, familyMembersTable, propertiesTable } from "@workspace/db/schema";
 import { desc, isNotNull, eq } from "drizzle-orm";
+
+// ── Memory helpers ────────────────────────────────────────────────────────────
 
 /** Load all stored memories from DB and format as a prompt section. */
 async function getMemoriesContext(): Promise<string> {
@@ -305,52 +304,54 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
   }
 });
 
-// ── POST /ai/shopping-list ───────────────────────────────────────────────────
+// ── POST /ai/shopping-list ────────────────────────────────────────────────────
 // Takes the current week's meal plan and returns a deduplicated, categorized ingredient list
 router.post("/ai/shopping-list", async (req, res) => {
-  // Require authenticated user — prevents unauthenticated OpenAI cost abuse
-  if (!req.auth?.userId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
   try {
     const { meals } = req.body as {
       meals: Array<{ dayName: string; mealType: string; meal: string }>;
     };
 
-    // Validate input bounds: at most 21 meals (3/day × 7 days), strings ≤ 200 chars
     if (!Array.isArray(meals) || meals.length === 0) {
       res.status(400).json({ error: "meals must be a non-empty array" });
       return;
-    }
-    if (meals.length > 21) {
-      res.status(400).json({ error: "meals must contain at most 21 entries" });
-      return;
-    }
-    for (const m of meals) {
-      if (
-        typeof m.dayName !== "string" || m.dayName.length > 200 ||
-        typeof m.mealType !== "string" || m.mealType.length > 200 ||
-        typeof m.meal !== "string" || m.meal.length > 200
-      ) {
-        res.status(400).json({ error: "Invalid meal entry" });
-        return;
-      }
     }
 
     const mealLines = meals
       .map((m) => `- ${m.dayName} ${m.mealType}: ${m.meal}`)
       .join("\n");
 
-    const response = await openai.chat.completions.create({
+    const shoppingResponse = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
       max_completion_tokens: 1024,
-      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
+      messages: [
+        {
+          role: "user",
+          content: `You are a helpful family grocery assistant. Given the following weekly meal plan, generate a complete shopping list.
+
+Meal plan:
+${mealLines}
+
+Rules:
+- Deduplicate ingredients (e.g. if chicken appears in multiple meals, list it once with combined quantity)
+- Categorize every item into one of these exact category keys: ${VALID_CATEGORIES.join(", ")}
+- Include realistic quantities (e.g. "2 lbs", "1 dozen", "1 bunch", "1 can")
+- Skip pantry staples like salt, pepper, oil unless a specific quantity is needed
+- Be practical for a family of 5 (2 adults, kids aged 5, 8, 10)
+
+Respond ONLY with valid JSON — no markdown, no extra text:
+{
+  "items": [
+    { "name": "Chicken breast", "quantity": "3 lbs", "category": "meat" },
+    { "name": "Broccoli", "quantity": "2 heads", "category": "produce" }
+  ]
+}`,
+        },
+      ],
     });
 
-    const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const shoppingContent = shoppingResponse.choices[0]?.message?.content ?? "";
+    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -358,7 +359,6 @@ router.post("/ai/shopping-list", async (req, res) => {
 
     const parsed = JSON.parse(jsonMatch[0]) as { items: Array<{ name: string; quantity: string; category: string }> };
 
-    // Server-side deduplication: normalize names and remove duplicates deterministically
     const seen = new Set<string>();
     const items = (parsed.items ?? [])
       .filter((item) => {
@@ -374,44 +374,70 @@ router.post("/ai/shopping-list", async (req, res) => {
         category: VALID_CATEGORIES.includes(item.category) ? item.category : "other",
       }));
 
-  const clerkId = (req as any).auth?.userId as string | undefined;
+    res.json({ items });
+  } catch (err) {
+    console.error("Shopping list error:", err);
+    res.status(500).json({ error: "Failed to generate shopping list" });
+  }
+});
+
+// ── POST /ai/chat ─────────────────────────────────────────────────────────────
+// Household assistant — multi-turn, vision-capable, memory-aware, live family context
+router.post("/ai/chat", async (req, res) => {
+  try {
     const { messages, images } = req.body as {
       messages: { role: "user" | "assistant"; content: string }[];
       images?: string[];
     };
 
-    const MAX_MESSAGES = 12;
-
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages required" });
     }
 
-    // Load stored memories and existing memory strings in parallel
-    const [memoriesCtx, existingRows] = await Promise.all([
+    const MAX_MESSAGES = 12;
+    const MAX_MSG_LEN = 2000;
+    const MAX_IMAGES = 4;
+
+    // Load live household context + memories in parallel
+    const [members, properties, memoriesCtx, existingRows] = await Promise.all([
+      db.select().from(familyMembersTable),
+      db.select().from(propertiesTable),
       getMemoriesContext(),
       db.select({ content: aiMemoriesTable.content }).from(aiMemoriesTable),
     ]);
-    const existingMemories = existingRows.map(r => r.content);
 
-    const SYSTEM = `You are HomeHub Assistant — a helpful household AI.
+    const existingMemories = existingRows.map(r => r.content);
+    const memberLines = members.length > 0
+      ? members.map(m => `- ${m.name} (${m.role ?? "member"})`).join("\n")
+      : "- AJ (parent)\n- Emily (parent)\n- Holden (age 10)\n- Brody (age 8)\n- Daphne (age 5)\n- Willa (dog)";
+    const propertyLines = properties.length > 0
+      ? properties.map(p => `- ${p.name}${p.address ? ` — ${p.address}` : ""}`).join("\n")
+      : "- Main House\n- Cabin";
+
+    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for AJ and Emily's family.
 
 Family members:
-${memberLines || "- (no members configured yet)"}
+${memberLines}
 
 Properties:
-${propertyLines || "- (no properties configured yet)"}
+${propertyLines}
 
 What you help with:
-- Meal planning & recipes: practical, family-friendly meals.
-- Grocery & shopping: organized lists, efficient shopping.
-- Household maintenance: reminders and seasonal checklists.
-- Chores & schedules: age-appropriate tasks.
-- General household advice, organization, seasonal planning.
-- Workout planning: practical home or gym routines.
+- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
+- Meal planning & recipes: family-friendly, kids ages 5/8/10, practical, low food waste.
+- Grocery & shopping: organized lists, pantry scanning.
+- Household maintenance: seasonal checklists for both properties.
+- Kids chores, schedules, organization, family planning.
 ${memoriesCtx}
-Tone: Friendly, direct, practical. Use bullet points and short paragraphs. If they share a photo, describe what you see and give specific, actionable advice based on it.`;
+Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
-    // Build messages with optional vision blocks on the last user message
+    const trimmedMessages = messages.slice(-MAX_MESSAGES).map(m => ({
+      role: m.role,
+      content: typeof m.content === "string" ? m.content.slice(0, MAX_MSG_LEN) : "",
+    }));
+
+    const trimmedImages = (images ?? []).slice(0, MAX_IMAGES);
+
     const builtMessages: any[] = trimmedMessages.map((m, idx, arr) => {
       const isLast = idx === arr.length - 1;
       if (isLast && m.role === "user" && trimmedImages.length > 0) {
@@ -427,22 +453,19 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. If th
       return { role: m.role, content: m.content };
     });
 
-    const response = await openai.chat.completions.create({
+    const chatResponse = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
       max_completion_tokens: 1024,
       messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
     });
 
-    const reply = response.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
+    const reply = chatResponse.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
 
-    // Fire-and-forget: extract and persist any new memories from this exchange
     const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-    const memorized = lastUserMsg
-      ? extractAndSaveMemories(lastUserMsg.content, reply, existingMemories)
-      : Promise.resolve([]);
+    const newMemories = lastUserMsg
+      ? await extractAndSaveMemories(lastUserMsg.content, reply, existingMemories)
+      : [];
 
-    // Return reply immediately; wait for memory extraction to complete
-    const newMemories = await memorized;
     res.json({ reply, memorized: newMemories });
   } catch (err) {
     console.error("Chat error:", err);
@@ -465,7 +488,6 @@ router.get("/ai/memories", async (_req, res) => {
 router.delete("/ai/memories/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { eq } = await import("drizzle-orm");
     await db.delete(aiMemoriesTable).where(eq(aiMemoriesTable.id, Number(id)));
     res.json({ ok: true });
   } catch (err) {
@@ -475,29 +497,3 @@ router.delete("/ai/memories/:id", async (req, res) => {
 });
 
 export default router;
-
-    const trimmedMessages = messages.slice(-MAX_MESSAGES).map(m => ({
-      role: m.role,
-      content: typeof m.content === "string" ? m.content.slice(0, MAX_MSG_LEN) : "",
-    }));
-
-    const propertyLines = properties.map(p => `- ${p.name}${p.address ? ` — ${p.address}` : ""}`).join("\n");
-
-    const memberLines = members.map(m => `- ${m.name} (${m.role ?? "member"})`).join("\n");
-
-    const [members, properties] = await Promise.all([
-      db.select().from(familyMembersTable),
-      db.select().from(propertiesTable),
-    ]);
-
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.clerkId, clerkId))
-    .limit(1);
-
-    const MAX_IMAGES = 4;
-
-    const MAX_MSG_LEN = 2000;
-
-    const trimmedImages = (images ?? []).slice(0, MAX_IMAGES);
