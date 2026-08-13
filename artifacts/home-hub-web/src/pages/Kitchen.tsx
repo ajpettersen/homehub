@@ -73,8 +73,7 @@ function UrlImportForm({ onImport, onCancel }: { onImport: (name: string) => voi
     setLoading(true);
     setError("");
     try {
-      const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
-      const res = await fetch(`${baseUrl}/api/ai/extract-recipe-url`, {
+      const res = await fetch(`/api/ai/extract-recipe-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
@@ -392,8 +391,7 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
     setAiShoppingLoading(true);
     setAiShoppingError(null);
     try {
-      const baseUrl = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-      const res = await fetch(`${baseUrl}/api/ai/shopping-list`, {
+      const res = await fetch(`/api/ai/shopping-list`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ meals }),
@@ -694,8 +692,7 @@ export default function Meals() {
   const handleAISuggestWeek = async () => {
     setAiLoading(true);
     try {
-      const baseUrl = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-      const res = await fetch(`${baseUrl}/api/ai/suggest-week`, { method: "POST" });
+      const res = await fetch(`/api/ai/suggest-week`, { method: "POST" });
       if (!res.ok) throw new Error("AI request failed");
       const data = await res.json();
 

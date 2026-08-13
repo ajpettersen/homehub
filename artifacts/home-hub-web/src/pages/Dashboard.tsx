@@ -71,8 +71,6 @@ function HouseholdChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
@@ -101,7 +99,7 @@ function HouseholdChat() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${baseUrl}/api/ai/chat`, {
+      const res = await fetch(`/api/ai/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
