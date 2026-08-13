@@ -11,9 +11,9 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
-  ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2
+  ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown
 } from "lucide-react";
-import { startOfWeek, addWeeks, subWeeks, format, addDays } from "date-fns";
+import { addWeeks, format, addDays } from "date-fns";
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -134,16 +134,67 @@ function MealSlot({
 
 // ── grocery list section ───────────────────────────────────────────────────────
 
-const GROCERY_CATEGORIES = [
-  { key: "produce",    label: "🥦 Produce" },
-  { key: "protein",    label: "🥩 Protein" },
-  { key: "dairy",      label: "🧀 Dairy" },
-  { key: "bakery",     label: "🍞 Bakery" },
-  { key: "pantry",     label: "🥫 Pantry" },
-  { key: "frozen",     label: "🧊 Frozen" },
-  { key: "beverages",  label: "🧃 Beverages" },
-  { key: "other",      label: "📦 Other" },
+// Master category definitions — keys are stored in the DB
+const ALL_CATEGORIES: Record<string, { label: string; emoji: string }> = {
+  produce:   { label: "Produce",            emoji: "🥦" },
+  deli:      { label: "Deli & Lunch Meat",  emoji: "🥪" },
+  meat:      { label: "Meat & Seafood",     emoji: "🥩" },
+  dairy:     { label: "Dairy & Eggs",       emoji: "🧀" },
+  bread:     { label: "Bread & Bakery",     emoji: "🍞" },
+  grains:    { label: "Grains & Pasta",     emoji: "🌾" },
+  canned:    { label: "Canned & Pantry",    emoji: "🥫" },
+  snacks:    { label: "Snacks",             emoji: "🍿" },
+  frozen:    { label: "Frozen",             emoji: "🧊" },
+  beverages: { label: "Beverages",          emoji: "🧃" },
+  household: { label: "Household",          emoji: "🧺" },
+  other:     { label: "Other",              emoji: "📦" },
+};
+
+// Legacy keys from old data → canonical key
+const LEGACY_MAP: Record<string, string> = {
+  protein: "meat",
+  bakery:  "bread",
+  pantry:  "canned",
+};
+
+function resolveCategory(raw: string | null | undefined): string {
+  const k = raw ?? "other";
+  return LEGACY_MAP[k] ?? (ALL_CATEGORIES[k] ? k : "other");
+}
+
+// Store profiles — ordered by physical store walk path
+type StoreProfile = { id: string; name: string; short: string; categoryOrder: string[] };
+
+const STORE_PROFILES: StoreProfile[] = [
+  {
+    id: "cub-minnetonka",
+    name: "Cub Foods – Minnetonka",
+    short: "Cub Minnetonka",
+    // Walk order: enter at produce, sweep around the perimeter, finish at frozen/beverage aisles
+    categoryOrder: ["produce", "deli", "meat", "dairy", "bread", "grains", "canned", "snacks", "frozen", "beverages", "household", "other"],
+  },
+  {
+    id: "generic",
+    name: "Generic / Other Store",
+    short: "Generic",
+    categoryOrder: ["produce", "meat", "deli", "dairy", "bread", "grains", "canned", "snacks", "frozen", "beverages", "household", "other"],
+  },
 ];
+
+const STORE_KEY = "homehub:grocery-store";
+
+function useActiveStore() {
+  const [storeId, setStoreId] = useState<string>(() => {
+    try { return localStorage.getItem(STORE_KEY) ?? STORE_PROFILES[0].id; }
+    catch { return STORE_PROFILES[0].id; }
+  });
+  const store = STORE_PROFILES.find(s => s.id === storeId) ?? STORE_PROFILES[0];
+  const setStore = (id: string) => {
+    setStoreId(id);
+    try { localStorage.setItem(STORE_KEY, id); } catch {}
+  };
+  return { store, setStore };
+}
 
 function GrocerySection({ propertyId }: { propertyId: string }) {
   const queryClient = useQueryClient();
@@ -175,15 +226,18 @@ function GrocerySection({ propertyId }: { propertyId: string }) {
 
 function GroceryListDetail({ list }: { list: any }) {
   const queryClient = useQueryClient();
+  const { store, setStore } = useActiveStore();
+
   const { data: items } = useGetGroceryItems(list.id, { query: { queryKey: getGetGroceryItemsQueryKey(list.id) } });
   const addItem = useAddGroceryItem();
   const updateItem = useUpdateGroceryItem();
   const deleteItem = useDeleteGroceryItem();
 
   const [newItem, setNewItem] = useState("");
-  const [newCategory, setNewCategory] = useState("other");
+  const [newCategory, setNewCategory] = useState("produce");
   const [newQty, setNewQty] = useState("");
   const [addingOpen, setAddingOpen] = useState(false);
+  const [storePicker, setStorePicker] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const invalidate = () => {
@@ -201,10 +255,7 @@ function GroceryListDetail({ list }: { list: any }) {
   };
 
   const handleCheck = (item: any) => {
-    updateItem.mutate(
-      { id: item.id, data: { checked: !item.checked } },
-      { onSuccess: invalidate }
-    );
+    updateItem.mutate({ id: item.id, data: { checked: !item.checked } }, { onSuccess: invalidate });
   };
 
   const handleDelete = (id: string) => {
@@ -212,16 +263,59 @@ function GroceryListDetail({ list }: { list: any }) {
   };
 
   const unchecked = items?.filter(i => !i.checked) ?? [];
-  const checked = items?.filter(i => i.checked) ?? [];
+  const checked   = items?.filter(i => i.checked)  ?? [];
 
-  // Group unchecked by category
-  const byCategory = GROCERY_CATEGORIES.map(cat => ({
-    ...cat,
-    items: unchecked.filter(i => (i.category || "other") === cat.key),
-  })).filter(g => g.items.length > 0);
+  // Group by category in store walk order, resolving legacy keys
+  const bySection = store.categoryOrder
+    .map(key => ({
+      key,
+      ...ALL_CATEGORIES[key],
+      items: unchecked.filter(i => resolveCategory(i.category) === key),
+    }))
+    .filter(g => g.items.length > 0);
+
+  // Category picker options in store walk order
+  const categoryOptions = store.categoryOrder.map(k => ({
+    key: k,
+    label: `${ALL_CATEGORIES[k].emoji} ${ALL_CATEGORIES[k].label}`,
+  }));
 
   return (
     <div className="space-y-4">
+
+      {/* Store picker */}
+      <div className="flex items-center justify-between">
+        <div className="relative">
+          <button
+            onClick={() => setStorePicker(v => !v)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 border border-border/60 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            <Store className="w-4 h-4 text-muted-foreground" />
+            <span className="text-foreground">{store.short}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+          {storePicker && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setStorePicker(false)} />
+              <div className="absolute left-0 top-full mt-1 z-40 bg-card border border-border rounded-2xl shadow-lg p-1.5 min-w-[220px]">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-3 py-1.5">Shopping at…</p>
+                {STORE_PROFILES.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => { setStore(s.id); setStorePicker(false); }}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${store.id === s.id ? "bg-primary/10 text-primary" : "hover:bg-muted/50 text-foreground"}`}
+                  >
+                    {s.name}
+                    {store.id === s.id && <span className="ml-1 text-xs">✓</span>}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">Aisle order: {store.short}</p>
+      </div>
+
       {/* Add item */}
       {addingOpen ? (
         <form onSubmit={handleAdd} className="bg-card border-2 border-primary/20 rounded-2xl p-4 space-y-3 shadow-sm">
@@ -241,13 +335,14 @@ function GroceryListDetail({ list }: { list: any }) {
               className="w-20 bg-background border-2 border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"
             />
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {GROCERY_CATEGORIES.map(cat => (
+          {/* Category chips in store walk order */}
+          <div className="flex gap-1.5 flex-wrap">
+            {categoryOptions.map(cat => (
               <button
                 key={cat.key}
                 type="button"
                 onClick={() => setNewCategory(cat.key)}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all border ${newCategory === cat.key ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${newCategory === cat.key ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}
               >
                 {cat.label}
               </button>
@@ -271,14 +366,16 @@ function GroceryListDetail({ list }: { list: any }) {
         </button>
       )}
 
-      {/* Grouped unchecked items */}
       {unchecked.length === 0 && checked.length === 0 && (
-        <p className="text-muted-foreground text-sm text-center py-8 italic">List is empty — add items above or plan your meals and add from there.</p>
+        <p className="text-muted-foreground text-sm text-center py-8 italic">List is empty — add items above or plan your meals first.</p>
       )}
 
-      {byCategory.map(group => (
+      {/* Sections in store walk order */}
+      {bySection.map(group => (
         <div key={group.key}>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-1">{group.label}</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-1">
+            {group.emoji} {group.label}
+          </p>
           <div className="space-y-1">
             {group.items.map(item => (
               <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 bg-card rounded-xl border border-border/60 group hover:border-border transition-colors">
@@ -297,7 +394,7 @@ function GroceryListDetail({ list }: { list: any }) {
         </div>
       ))}
 
-      {/* Checked/done items */}
+      {/* In-cart / checked items */}
       {checked.length > 0 && (
         <div>
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-1">✓ In Cart ({checked.length})</p>
