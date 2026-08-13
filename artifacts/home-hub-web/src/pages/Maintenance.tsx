@@ -1,257 +1,418 @@
-import { useState } from "react";
-import { 
-  useGetMaintenanceTasks, getGetMaintenanceTasksQueryKey, 
+import React, { useState } from "react";
+import {
+  useGetMaintenanceTasks, getGetMaintenanceTasksQueryKey,
   useCompleteMaintenanceTask,
   useCreateMaintenanceTask,
   useDeleteMaintenanceTask,
-  useGetProperties, getGetPropertiesQueryKey
+  useGetProperties, getGetPropertiesQueryKey,
 } from "@workspace/api-client-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { useActiveMember } from "@/context/ActiveMemberContext";
-import { CheckCircle2, Clock, Wrench, Calendar, AlertTriangle, Plus, Trash2 } from "lucide-react";
-import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  CheckCircle2, Clock, AlertTriangle, Plus, Trash2, X, Check,
+  TreePine, Home, CalendarDays, Repeat, Wrench, Droplets,
+  Leaf, Filter, ChevronDown, ChevronUp
+} from "lucide-react";
+import { format, parseISO, differenceInDays } from "date-fns";
 
-export default function Maintenance() {
-  const queryClient = useQueryClient();
-  const { activeMember } = useActiveMember();
-  
-  const { data: tasks, isLoading } = useGetMaintenanceTasks({}, { query: { queryKey: getGetMaintenanceTasksQueryKey() } });
-  const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
-  
-  const completeTask = useCompleteMaintenanceTask();
-  const createTask = useCreateMaintenanceTask();
-  const deleteTask = useDeleteMaintenanceTask();
+// ── category config ────────────────────────────────────────────────────────────
 
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newPropertyId, setNewPropertyId] = useState("");
-  const [newCategory, setNewCategory] = useState<"filter" | "water" | "seasonal" | "appliance" | "yard" | "other" | "cleaning">("other");
-  const [newFreq, setNewFreq] = useState("30");
-  const [newStartDate, setNewStartDate] = useState("");
+const CATEGORIES = [
+  { key: "seasonal",  label: "Seasonal",  Icon: CalendarDays, color: "text-orange-500" },
+  { key: "appliance", label: "Appliance", Icon: Wrench,       color: "text-blue-500" },
+  { key: "water",     label: "Water",     Icon: Droplets,     color: "text-cyan-500" },
+  { key: "filter",    label: "Filter",    Icon: Filter,       color: "text-purple-500" },
+  { key: "yard",      label: "Yard",      Icon: Leaf,         color: "text-green-500" },
+  { key: "cleaning",  label: "Cleaning",  Icon: Home,         color: "text-primary" },
+  { key: "other",     label: "Other",     Icon: Wrench,       color: "text-muted-foreground" },
+];
 
-  const handleComplete = (id: string) => {
-    if (!activeMember) {
-      alert("Please select who you are in the sidebar first!");
-      return;
-    }
-    completeTask.mutate(
-      { id, data: { completedBy: activeMember.name } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() }) }
-    );
-  };
+function getCategoryConfig(key: string) {
+  return CATEGORIES.find(c => c.key === key) ?? CATEGORIES[CATEGORIES.length - 1];
+}
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Remove this maintenance task entirely?")) return;
-    deleteTask.mutate({ id }, { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() }) });
-  };
+// ── task card ─────────────────────────────────────────────────────────────────
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle || !newPropertyId) return;
-    const today = new Date().toISOString().split("T")[0];
-    createTask.mutate(
-      { data: { 
-        title: newTitle, 
-        propertyId: newPropertyId, 
-        category: newCategory, 
-        frequencyDays: parseInt(newFreq) || 30,
-        startDate: newStartDate || null,
-        nextDueDate: newStartDate || today,
-      } },
-      { onSuccess: () => {
-        setIsCreateOpen(false);
-        setNewTitle("");
-        setNewStartDate("");
-        queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
-      }}
-    );
-  };
+function TaskCard({
+  task,
+  onComplete,
+  onDelete,
+}: {
+  task: any;
+  onComplete: () => void;
+  onDelete: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const cat = getCategoryConfig(task.category);
+  const CatIcon = cat.Icon;
 
-  if (isLoading) return <div className="p-8 font-serif text-xl text-muted-foreground animate-pulse">Loading maintenance tasks...</div>;
+  const daysUntil = differenceInDays(parseISO(task.nextDueDate), new Date());
+  const overdue = task.isOverdue;
+  const dueSoon = task.isDueSoon && !overdue;
 
-  const dueTasks = tasks?.filter(t => t.isDueSoon || t.isOverdue) || [];
-  const upcomingTasks = tasks?.filter(t => !t.isDueSoon && !t.isOverdue) || [];
+  const urgencyBorder = overdue
+    ? "border-destructive/40"
+    : dueSoon
+    ? "border-amber-400/60"
+    : "border-border/60";
+
+  const dueBadge = overdue
+    ? <span className="text-xs font-bold text-destructive flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Overdue</span>
+    : dueSoon
+    ? <span className="text-xs font-bold text-amber-600 flex items-center gap-1"><Clock className="w-3 h-3" />Due in {daysUntil}d</span>
+    : <span className="text-xs text-muted-foreground font-medium">Due {format(parseISO(task.nextDueDate), "MMM d")}</span>;
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-4xl font-serif font-bold flex items-center gap-3">
-            <Wrench className="w-8 h-8 text-orange-600" /> Maintenance
-          </h1>
-          <p className="text-muted-foreground mt-2">Keep the properties in top shape.</p>
+    <div className={`bg-card rounded-2xl border-2 ${urgencyBorder} overflow-hidden transition-all`}>
+      <div
+        className="flex items-start gap-3 p-4 cursor-pointer"
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div className={`w-9 h-9 rounded-xl bg-muted flex items-center justify-center shrink-0 ${cat.color}`}>
+          <CatIcon className="w-4.5 h-4.5" />
         </div>
-        
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 shadow-md bg-orange-600 hover:bg-orange-700 text-white"><Plus className="w-4 h-4"/> Add Task</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Maintenance Task</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4 pt-4">
-              <div>
-                <label className="text-sm font-medium mb-1 block">Title</label>
-                <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Property</label>
-                <select 
-                  value={newPropertyId} 
-                  onChange={e => setNewPropertyId(e.target.value)} 
-                  className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                  required
-                >
-                  <option value="">Select a property</option>
-                  {properties?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Category</label>
-                  <select 
-                    value={newCategory} 
-                    onChange={e => setNewCategory(e.target.value as any)} 
-                    className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                  >
-                    <option value="filter">Filter</option>
-                    <option value="water">Water</option>
-                    <option value="seasonal">Seasonal</option>
-                    <option value="appliance">Appliance</option>
-                    <option value="yard">Yard</option>
-                    <option value="cleaning">Cleaning</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Repeat every (Days)</label>
-                  <Input type="number" min="1" value={newFreq} onChange={e => setNewFreq(e.target.value)} required />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">
-                  First occurrence
-                  <span className="ml-1 font-normal text-muted-foreground">(optional — anchors the repeating schedule)</span>
-                </label>
-                <Input
-                  type="date"
-                  value={newStartDate}
-                  onChange={e => setNewStartDate(e.target.value)}
-                  data-testid="input-start-date"
-                />
-                {newStartDate && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Task will repeat every {newFreq || 30} days, always anchored to this date — not the completion date.
-                  </p>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit" disabled={createTask.isPending} className="bg-orange-600 hover:bg-orange-700 text-white">
-                  {createTask.isPending ? 'Saving...' : 'Add Task'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-foreground leading-snug">{task.title}</p>
+          <div className="flex items-center gap-3 mt-1">
+            {dueBadge}
+            <span className="text-xs text-muted-foreground">Every {task.frequencyDays}d</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={e => { e.stopPropagation(); onComplete(); }}
+            className="w-8 h-8 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground rounded-lg transition-all"
+            title="Mark done"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+          </button>
+          {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </div>
       </div>
 
-      {dueTasks.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-2xl font-serif font-semibold text-orange-700 dark:text-orange-400 flex items-center gap-2 border-b-2 border-orange-200 pb-2">
-            <AlertTriangle className="w-5 h-5" /> Requires Attention
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {dueTasks.map(task => (
-              <TaskCard key={task.id} task={task} onComplete={handleComplete} onDelete={handleDelete} />
-            ))}
-          </div>
+      {expanded && (
+        <div className="border-t border-border/50 px-4 py-3 bg-muted/20 flex items-start justify-between gap-3">
+          {task.description ? (
+            <p className="text-sm text-foreground/80 leading-relaxed flex-1">{task.description}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground italic flex-1">No notes.</p>
+          )}
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
-
-      <div className="space-y-4 pt-4">
-        <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2">Upcoming</h2>
-        {upcomingTasks.length === 0 ? (
-          <p className="text-muted-foreground italic">No upcoming tasks.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {upcomingTasks.map(task => (
-              <TaskCard key={task.id} task={task} onComplete={handleComplete} onDelete={handleDelete} />
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
-function TaskCard({ task, onComplete, onDelete }: { task: any, onComplete: (id: string) => void, onDelete: (id: string) => void }) {
-  const isUrgent = task.isOverdue;
-  const isSoon = task.isDueSoon && !task.isOverdue;
+// ── add task form ─────────────────────────────────────────────────────────────
+
+function AddTaskForm({
+  properties,
+  onSubmit,
+  onCancel,
+  saving,
+  defaultPropertyId,
+}: {
+  properties: any[];
+  onSubmit: (data: any) => void;
+  onCancel: () => void;
+  saving: boolean;
+  defaultPropertyId?: string;
+}) {
+  const [title, setTitle] = useState("");
+  const [propertyId, setPropertyId] = useState(defaultPropertyId ?? properties[0]?.id ?? "");
+  const [category, setCategory] = useState("other");
+  const [freqDays, setFreqDays] = useState("30");
+  const [description, setDescription] = useState("");
+  const [startDate, setStartDate] = useState("");
+
+  const handle = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !propertyId) return;
+    const today = new Date().toISOString().split("T")[0];
+    onSubmit({
+      title: title.trim(),
+      description: description || null,
+      propertyId,
+      category,
+      frequencyDays: parseInt(freqDays) || 30,
+      startDate: startDate || null,
+      nextDueDate: startDate || today,
+    });
+  };
 
   return (
-    <Card className={`group relative overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
-      isUrgent ? 'border-destructive/50 bg-destructive/5' : 
-      isSoon ? 'border-orange-500/50 bg-orange-500/5' : 'bg-card'
-    }`}>
-      <CardContent className="p-6">
-        <div className="flex justify-between items-start mb-4">
-          <Badge variant="outline" className={`text-[10px] uppercase tracking-wider ${
-            isUrgent ? 'border-destructive text-destructive' :
-            isSoon ? 'border-orange-500 text-orange-600' : 'text-muted-foreground'
-          }`}>
-            {task.category}
-          </Badge>
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-foreground flex items-center gap-1">
-              {task.propertyName}
-            </div>
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity" onClick={() => onDelete(task.id)}>
-              <Trash2 className="w-3 h-3" />
-            </Button>
-          </div>
+    <form onSubmit={handle} className="bg-card border-2 border-primary/20 rounded-2xl p-5 space-y-4 shadow-md">
+      <div>
+        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Task Name</label>
+        <input
+          autoFocus
+          required
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          className="w-full bg-background border-2 border-border rounded-xl px-4 py-2.5 font-medium focus:outline-none focus:border-primary"
+          placeholder="e.g. Pump septic tank"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Property</label>
+          <select
+            value={propertyId}
+            onChange={e => setPropertyId(e.target.value)}
+            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
+          >
+            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
         </div>
-        
-        <h3 className="font-serif text-xl font-bold mb-2 leading-tight">{task.title}</h3>
-        {task.description && (
-          <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{task.description}</p>
-        )}
-        
-        <div className="space-y-2 mb-6">
-          <div className="text-sm flex items-center gap-2">
-            <Clock className={`w-4 h-4 ${isUrgent ? 'text-destructive' : 'text-muted-foreground'}`} /> 
-            <span className={isUrgent ? "text-destructive font-semibold" : "text-muted-foreground"}>
-              Due {format(new Date(task.nextDueDate + "T00:00:00"), 'MMM d, yyyy')}
-            </span>
-          </div>
-          {task.startDate && (
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
-              <Calendar className="w-3 h-3 text-orange-500" />
-              <span>Anchored to {format(new Date(task.startDate + "T00:00:00"), 'MMM d')} · every {task.frequencyDays}d</span>
-            </div>
-          )}
-          {task.lastCompletedAt && (
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
-              <Calendar className="w-3 h-3" />
-              Last done {format(new Date(task.lastCompletedAt), 'MMM d')} {task.lastCompletedBy ? `by ${task.lastCompletedBy}` : ''}
-            </div>
-          )}
+        <div>
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Category</label>
+          <select
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
+          >
+            {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Repeat every (days)</label>
+          <input
+            type="number"
+            min="1"
+            value={freqDays}
+            onChange={e => setFreqDays(e.target.value)}
+            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Anchor date (optional)</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={e => setStartDate(e.target.value)}
+            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Notes (optional)</label>
+        <input
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          className="w-full bg-background border-2 border-border rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
+          placeholder="Any details…"
+        />
+      </div>
+
+      <div className="flex gap-3 pt-1">
+        <button type="button" onClick={onCancel} className="flex-1 py-2.5 font-bold rounded-xl border-2 border-border hover:bg-muted transition-colors flex items-center justify-center gap-2">
+          <X className="w-4 h-4" /> Cancel
+        </button>
+        <button type="submit" disabled={saving} className="flex-1 py-2.5 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-md shadow-primary/20 flex items-center justify-center gap-2">
+          <Check className="w-4 h-4" /> {saving ? "Saving…" : "Add Task"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ── main page ─────────────────────────────────────────────────────────────────
+
+export default function Properties() {
+  const queryClient = useQueryClient();
+  const { activeMember } = useActiveMember();
+
+  const { data: tasks, isLoading } = useGetMaintenanceTasks({}, { query: { queryKey: getGetMaintenanceTasksQueryKey() } });
+  const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
+
+  const completeTask = useCompleteMaintenanceTask();
+  const createTask = useCreateMaintenanceTask();
+  const deleteTask = useDeleteMaintenanceTask();
+
+  const house = properties?.find(p => p.type === "house");
+  const cabin = properties?.find(p => p.type === "cabin");
+
+  const [activeProperty, setActiveProperty] = useState<"house" | "cabin">("cabin");
+  const [adding, setAdding] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
+
+  const handleComplete = (id: string) => {
+    completeTask.mutate(
+      { id, data: { completedBy: activeMember?.name ?? "Someone" } },
+      { onSuccess: invalidate }
+    );
+  };
+
+  const handleDelete = (id: string) => {
+    if (!confirm("Remove this task?")) return;
+    deleteTask.mutate({ id }, { onSuccess: invalidate });
+  };
+
+  const handleCreate = (data: any) => {
+    createTask.mutate({ data }, {
+      onSuccess: () => { setAdding(false); invalidate(); }
+    });
+  };
+
+  const currentProperty = activeProperty === "cabin" ? cabin : house;
+
+  const propertyTasks = (tasks ?? []).filter(t => t.propertyId === currentProperty?.id);
+
+  const filteredTasks = categoryFilter === "all"
+    ? propertyTasks
+    : propertyTasks.filter(t => t.category === categoryFilter);
+
+  const overdue = filteredTasks.filter(t => t.isOverdue);
+  const dueSoon = filteredTasks.filter(t => t.isDueSoon && !t.isOverdue);
+  const upcoming = filteredTasks.filter(t => !t.isOverdue && !t.isDueSoon);
+
+  const usedCategories = [...new Set(propertyTasks.map(t => t.category))];
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-4xl md:text-5xl font-bold text-foreground tracking-tight">Properties</h1>
+          <p className="text-muted-foreground mt-1 font-medium">Maintenance schedules for your properties</p>
         </div>
 
-        <Button 
-          onClick={() => onComplete(task.id)}
-          className={`w-full gap-2 transition-colors ${!isUrgent && !isSoon ? 'bg-orange-100 text-orange-800 hover:bg-orange-200 dark:bg-orange-900/50 dark:text-orange-300' : ''}`}
-          variant={isUrgent ? "destructive" : isSoon ? "default" : "secondary"}
-        >
-          <CheckCircle2 className="w-4 h-4" /> Mark Complete
-        </Button>
-      </CardContent>
-    </Card>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background font-bold hover:bg-foreground/90 transition-colors shadow-md"
+          >
+            <Plus className="w-5 h-5" /> Add Task
+          </button>
+        )}
+      </div>
+
+      {/* Property tabs */}
+      <div className="flex gap-2">
+        {[
+          { key: "cabin",  label: "🏕 Cabin",      prop: cabin },
+          { key: "house",  label: "🏠 Main House",  prop: house },
+        ].map(({ key, label, prop }) => {
+          const propTasks = (tasks ?? []).filter(t => t.propertyId === prop?.id);
+          const urgent = propTasks.filter(t => t.isOverdue || t.isDueSoon).length;
+          return (
+            <button
+              key={key}
+              onClick={() => { setActiveProperty(key as any); setCategoryFilter("all"); setAdding(false); }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+                activeProperty === key
+                  ? "bg-card border-primary/40 text-foreground shadow-md"
+                  : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground"
+              }`}
+            >
+              {label}
+              {urgent > 0 && (
+                <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
+                  {urgent}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Add form */}
+      {adding && (
+        <AddTaskForm
+          properties={properties ?? []}
+          defaultPropertyId={currentProperty?.id}
+          onSubmit={handleCreate}
+          onCancel={() => setAdding(false)}
+          saving={createTask.isPending}
+        />
+      )}
+
+      {/* Category filter chips */}
+      {usedCategories.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setCategoryFilter("all")}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border ${categoryFilter === "all" ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:border-foreground/40"}`}
+          >
+            All
+          </button>
+          {usedCategories.map(cat => {
+            const config = getCategoryConfig(cat);
+            return (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border capitalize ${categoryFilter === cat ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:border-foreground/40"}`}
+              >
+                {config.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tasks */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1,2,3,4,5].map(i => <div key={i} className="h-20 bg-muted rounded-2xl animate-pulse" />)}
+        </div>
+      ) : filteredTasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-border rounded-3xl bg-card text-center px-4">
+          <TreePine className="w-12 h-12 text-primary/30 mb-3" />
+          <p className="font-serif font-bold text-xl mb-1">No tasks yet</p>
+          <p className="text-muted-foreground text-sm">Add your first maintenance task for {currentProperty?.name ?? "this property"}.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {overdue.length > 0 && (
+            <section>
+              <h2 className="text-xs font-bold text-destructive uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" /> Overdue ({overdue.length})
+              </h2>
+              <div className="space-y-2">
+                {overdue.map(t => <TaskCard key={t.id} task={t} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} />)}
+              </div>
+            </section>
+          )}
+
+          {dueSoon.length > 0 && (
+            <section>
+              <h2 className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" /> Coming Up ({dueSoon.length})
+              </h2>
+              <div className="space-y-2">
+                {dueSoon.map(t => <TaskCard key={t.id} task={t} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} />)}
+              </div>
+            </section>
+          )}
+
+          {upcoming.length > 0 && (
+            <section>
+              <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">
+                Scheduled ({upcoming.length})
+              </h2>
+              <div className="space-y-2">
+                {upcoming.map(t => <TaskCard key={t.id} task={t} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} />)}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

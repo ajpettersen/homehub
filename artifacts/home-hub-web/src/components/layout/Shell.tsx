@@ -1,17 +1,17 @@
 import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Wrench, Settings, Utensils, Brush, ChevronDown, Dumbbell } from "lucide-react";
+import { Home, CheckSquare, Wrench, Settings, Utensils, Brush, ChevronDown, Dumbbell, TreePine } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useGetFamilyMembers, getGetFamilyMembersQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: Home },
-  { href: "/chores", label: "Chores", icon: Brush },
-  { href: "/kitchen", label: "Kitchen", icon: Utensils },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/workouts", label: "Workouts", icon: Dumbbell },
-  { href: "/maintenance", label: "Maintenance", icon: Wrench },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/",           label: "Home",       icon: Home },
+  { href: "/chores",     label: "Chores",     icon: Brush },
+  { href: "/meals",      label: "Meals",      icon: Utensils },
+  { href: "/tasks",      label: "Tasks",      icon: CheckSquare },
+  { href: "/workouts",   label: "Workouts",   icon: Dumbbell },
+  { href: "/properties", label: "Properties", icon: TreePine },
+  { href: "/settings",   label: "Settings",   icon: Settings },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -54,11 +54,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
+        {/* Who's Here */}
         <div className="mt-8 p-4 bg-muted/30 rounded-2xl border border-border/50">
           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
             Who's here?
           </label>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             {familyMembers?.map(member => (
               <button
                 key={member.id}
@@ -70,14 +71,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner shrink-0"
                   style={{ backgroundColor: member.color || "var(--color-primary)" }}
                 >
                   {member.name.charAt(0)}
                 </div>
-                <span className="font-medium text-sm flex-1">{member.name}</span>
+                <span className="font-medium text-sm flex-1 truncate">{member.name}</span>
                 {activeMember?.id === member.id && (
-                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm" />
+                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm shrink-0" />
                 )}
               </button>
             ))}
@@ -107,7 +108,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               {activeMember ? (
                 <>
                   <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-white font-bold text-xs"
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
                     style={{ backgroundColor: activeMember.color || "var(--color-primary)" }}
                   >
                     {activeMember.name.charAt(0)}
@@ -122,10 +123,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
             {memberPickerOpen && (
               <>
-                <div
-                  className="fixed inset-0 z-30"
-                  onClick={() => setMemberPickerOpen(false)}
-                />
+                <div className="fixed inset-0 z-30" onClick={() => setMemberPickerOpen(false)} />
                 <div className="absolute right-0 top-full mt-2 z-40 bg-card border border-border rounded-2xl shadow-lg p-2 min-w-[160px]">
                   {humanMembers.map(member => (
                     <button
@@ -155,7 +153,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {/* Page content — extra bottom padding on mobile to clear the tab bar */}
+        {/* Page content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className="max-w-6xl mx-auto">
             {children}

@@ -21,10 +21,10 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/chores" component={Chores} />
-        <Route path="/kitchen" component={Kitchen} />
+        <Route path="/meals" component={Kitchen} />
         <Route path="/tasks" component={Tasks} />
         <Route path="/workouts" component={Workouts} />
-        <Route path="/maintenance" component={Maintenance} />
+        <Route path="/properties" component={Maintenance} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

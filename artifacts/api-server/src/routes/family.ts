@@ -2,9 +2,10 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { familyMembersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
 
 const router = Router();
+
+const VALID_ROLES = ["parent", "child", "pet"] as const;
 
 router.get("/family-members", async (req, res) => {
   try {
@@ -27,22 +28,21 @@ router.get("/family-members", async (req, res) => {
   }
 });
 
-const createMemberSchema = z.object({
-  name: z.string().min(1),
-  role: z.enum(["parent", "child", "pet"]),
-  color: z.string().min(1),
-});
-
 router.post("/family-members", async (req, res) => {
   try {
-    const parsed = createMemberSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    const { name, role, color } = req.body ?? {};
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ error: "name is required" });
     }
-    const { name, role, color } = parsed.data;
+    if (!VALID_ROLES.includes(role)) {
+      return res.status(400).json({ error: "role must be parent | child | pet" });
+    }
+    if (!color || typeof color !== "string") {
+      return res.status(400).json({ error: "color is required" });
+    }
     const [member] = await db
       .insert(familyMembersTable)
-      .values({ name, role, color, avatarInitials: name.charAt(0).toUpperCase() })
+      .values({ name: name.trim(), role, color, avatarInitials: name.trim().charAt(0).toUpperCase() })
       .returning();
     res.status(201).json({
       id: String(member.id),
@@ -56,26 +56,20 @@ router.post("/family-members", async (req, res) => {
   }
 });
 
-const updateMemberSchema = z.object({
-  name: z.string().min(1).optional(),
-  role: z.enum(["parent", "child", "pet"]).optional(),
-  color: z.string().min(1).optional(),
-});
-
 router.put("/family-members/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
-    const parsed = updateMemberSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    const { name, role, color } = req.body ?? {};
+    if (role !== undefined && !VALID_ROLES.includes(role)) {
+      return res.status(400).json({ error: "role must be parent | child | pet" });
     }
 
-    const updates: Record<string, unknown> = { ...parsed.data };
-    if (parsed.data.name) {
-      updates.avatarInitials = parsed.data.name.charAt(0).toUpperCase();
-    }
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) { updates.name = String(name).trim(); updates.avatarInitials = String(name).trim().charAt(0).toUpperCase(); }
+    if (role !== undefined) updates.role = role;
+    if (color !== undefined) updates.color = color;
 
     const [member] = await db
       .update(familyMembersTable)
@@ -101,7 +95,6 @@ router.delete("/family-members/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
-
     await db.delete(familyMembersTable).where(eq(familyMembersTable.id, id));
     res.status(204).send();
   } catch (err) {

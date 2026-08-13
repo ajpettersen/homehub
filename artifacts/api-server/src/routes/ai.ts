@@ -232,4 +232,63 @@ Respond ONLY with valid JSON:
   }
 });
 
+// POST /ai/suggest-week
+// Returns a full week of meal suggestions (breakfast, lunch, dinner × 7 days)
+router.post("/ai/suggest-week", async (req, res) => {
+  try {
+    const recentMeals = await db
+      .select({ meal: mealPlansTable.meal })
+      .from(mealPlansTable)
+      .orderBy(desc(mealPlansTable.createdAt))
+      .limit(60);
+
+    const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 2048,
+      messages: [
+        {
+          role: "user",
+          content: `You are a family meal planner for AJ and Emily, who have 3 kids (ages 5, 8, 10). 
+Plan a full week of meals (Monday–Sunday) covering breakfast, lunch, and dinner each day.
+
+Goals:
+- Reduce food waste: reuse ingredients across multiple meals where sensible
+- Variety: don't repeat the same protein two days in a row
+- Practical: breakfasts and lunches should be quick; dinners can be more involved
+- Kid-friendly dinners that adults will also enjoy
+
+${mealHistory.length > 0 ? `Recent meals to avoid: ${mealHistory.slice(0, 20).join(", ")}` : ""}
+
+Respond ONLY with valid JSON — no markdown, no extra text:
+{
+  "days": [
+    {
+      "dayName": "Monday",
+      "breakfast": "Scrambled eggs & toast",
+      "lunch": "Turkey sandwiches",
+      "dinner": "Sheet pan chicken thighs & roasted veggies"
+    },
+    ...7 items total, Monday through Sunday
+  ]
+}`,
+        },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content ?? "";
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      res.status(500).json({ error: "Failed to parse AI response" });
+      return;
+    }
+
+    res.json(JSON.parse(jsonMatch[0]));
+  } catch (err) {
+    console.error("Suggest week error:", err);
+    res.status(500).json({ error: "Failed to suggest week" });
+  }
+});
+
 export default router;
