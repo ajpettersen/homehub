@@ -10,3 +10,4 @@ export * from "./maintenanceTasks";
 export * from "./pushTokens";
 export * from "./userProfiles";
 export * from "./workouts";
+export * from "./aiMemories";

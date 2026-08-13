@@ -1,8 +1,67 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
-import { mealPlansTable } from "@workspace/db/schema";
+import { mealPlansTable, aiMemoriesTable } from "@workspace/db/schema";
 import { desc, isNotNull } from "drizzle-orm";
+
+// ── Memory helpers ───────────────────────────────────────────────────────────
+
+/** Load all stored memories from DB and format as a prompt section. */
+async function getMemoriesContext(): Promise<string> {
+  try {
+    const rows = await db.select().from(aiMemoriesTable).orderBy(aiMemoriesTable.createdAt);
+    if (rows.length === 0) return "";
+    const lines = rows.map(r => `- ${r.content}`).join("\n");
+    return `\nThings already known about this family (use these to personalize every response):\n${lines}\n`;
+  } catch {
+    return "";
+  }
+}
+
+/** Extract and persist new memory facts from a conversation exchange (fire-and-forget). */
+function extractAndSaveMemories(
+  userMessage: string,
+  assistantReply: string,
+  existingMemories: string[]
+): Promise<string[]> {
+  return (async () => {
+    try {
+      const existingList = existingMemories.length > 0
+        ? `Already known:\n${existingMemories.map(m => `- ${m}`).join("\n")}`
+        : "Nothing stored yet.";
+
+      const res = await openai.chat.completions.create({
+        model: "gpt-5.6-luna",
+        max_completion_tokens: 256,
+        messages: [
+          {
+            role: "system",
+            content: `You extract durable household preferences and facts from conversations. Be concise. Only save truly useful personalisation facts (preferences, dislikes, goals, constraints). Do NOT save one-off questions or generic chat.`,
+          },
+          {
+            role: "user",
+            content: `User said: "${userMessage}"\nAssistant replied: "${assistantReply.slice(0, 400)}"\n\n${existingList}\n\nList 0–3 NEW facts worth remembering (not already in the list above). Each on its own line starting with "-". If nothing new, reply exactly: NONE`,
+          },
+        ],
+      });
+
+      const text = res.choices[0]?.message?.content ?? "NONE";
+      if (text.trim() === "NONE") return [];
+
+      const newFacts = text
+        .split("\n")
+        .map(l => l.replace(/^[-•*]\s*/, "").trim())
+        .filter(l => l.length > 4 && l.length < 200);
+
+      for (const content of newFacts) {
+        await db.insert(aiMemoriesTable).values({ content, category: "general" });
+      }
+      return newFacts;
+    } catch {
+      return [];
+    }
+  })();
+}
 
 // Valid grocery categories (must match client-side ALL_CATEGORIES keys)
 const VALID_CATEGORIES = [
@@ -134,6 +193,8 @@ router.post("/ai/meal-recipe", async (req, res) => {
       return;
     }
 
+    const memoriesCtx = await getMemoriesContext();
+
     const recipeResp = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
       max_completion_tokens: 1500,
@@ -142,7 +203,7 @@ router.post("/ai/meal-recipe", async (req, res) => {
           role: "user",
           content: `You are a family meal planner for a family with kids aged 5-10 (Holden 10, Brody 8, Daphne 5).
 Generate a complete recipe for: "${meal}"
-
+${memoriesCtx}
 Make it approachable, kid-friendly where possible, and realistic for a weeknight dinner.
 
 Respond ONLY with valid JSON:
@@ -195,24 +256,16 @@ Respond ONLY with valid JSON:
 });
 
 // ── POST /ai/suggest-week ────────────────────────────────────────────────────
-// Returns Mon–Sun meal suggestions, informed by past ratings
+// Returns Mon–Sun meal suggestions, informed by past ratings + stored memories
 router.post("/ai/suggest-week", async (req, res) => {
   try {
-    const recentMeals = await db
-      .select({ meal: mealPlansTable.meal })
-      .from(mealPlansTable)
-      .orderBy(desc(mealPlansTable.createdAt))
-      .limit(60);
+    const [recentMeals, ratedMeals, memoriesCtx] = await Promise.all([
+      db.select({ meal: mealPlansTable.meal }).from(mealPlansTable).orderBy(desc(mealPlansTable.createdAt)).limit(60),
+      db.select({ meal: mealPlansTable.meal, rating: mealPlansTable.rating }).from(mealPlansTable).where(isNotNull(mealPlansTable.rating)).orderBy(desc(mealPlansTable.createdAt)).limit(100),
+      getMemoriesContext(),
+    ]);
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
-
-    const ratedMeals = await db
-      .select({ meal: mealPlansTable.meal, rating: mealPlansTable.rating })
-      .from(mealPlansTable)
-      .where(isNotNull(mealPlansTable.rating))
-      .orderBy(desc(mealPlansTable.createdAt))
-      .limit(100);
-
     const loved = [...new Set(ratedMeals.filter(m => m.rating === "love").map(m => m.meal))].slice(0, 15);
     const skipped = [...new Set(ratedMeals.filter(m => m.rating === "skip").map(m => m.meal))].slice(0, 15);
 
@@ -226,9 +279,9 @@ router.post("/ai/suggest-week", async (req, res) => {
       messages: [
         {
           role: "user",
-          content: `You are a family meal planner for AJ and Emily, who have 3 kids (ages 5, 8, 10).
+          content: `You are a family meal planner for AJ and Emily, who have 3 kids (Holden 10, Brody 8, Daphne 5).
 Plan a full week of meals (Monday–Sunday) covering breakfast, lunch, and dinner each day.
-
+${memoriesCtx}
 Goals:
 - Reduce food waste: reuse ingredients across multiple meals where sensible
 - Variety: don't repeat the same protein two days in a row
@@ -421,24 +474,31 @@ Respond ONLY with valid JSON — no markdown, no extra text:
 });
 
 // ── POST /ai/chat ─────────────────────────────────────────────────────────────
-// Household assistant — multi-turn, vision-capable
+// Household assistant — multi-turn, vision-capable, memory-aware
 router.post("/ai/chat", async (req, res) => {
   try {
     const { messages, images } = req.body as {
       messages: { role: "user" | "assistant"; content: string }[];
-      images?: string[]; // base64, attached to the final user message
+      images?: string[];
     };
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages required" });
     }
 
+    // Load stored memories and existing memory strings in parallel
+    const [memoriesCtx, existingRows] = await Promise.all([
+      getMemoriesContext(),
+      db.select({ content: aiMemoriesTable.content }).from(aiMemoriesTable),
+    ]);
+    const existingMemories = existingRows.map(r => r.content);
+
     const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for AJ and Emily's family.
 
 Family members:
 - AJ (parent) and Emily (parent)
 - Holden (age 10, boy)
-- Brody (age 8, boy)  
+- Brody (age 8, boy)
 - Daphne (age 5, girl)
 - Willa (dog)
 
@@ -447,16 +507,15 @@ Properties:
 - Cabin (seasonal/vacation property, ongoing maintenance)
 
 What you help with:
-- Workout planning: AJ and Emily like 20–30 minute workouts. They enjoy knees-over-toes (KOT) style training (ATG/Ben Patrick methodology). If they share a photo of their workout space, analyze the equipment and suggest appropriate routines.
-- Meal planning & recipes: family-friendly meals for kids ages 5, 8, and 10. Practical, not too complex. Reducing food waste.
-- Grocery & shopping: organized lists, efficient shopping, pantry scanning.
-- Household maintenance: reminders, seasonal checklists for both properties, especially the cabin.
-- Kids chores & schedules: age-appropriate tasks.
-- General household advice, organization, seasonal planning.
+- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
+- Meal planning & recipes: family-friendly, kids ages 5/8/10, practical, low food waste.
+- Grocery & shopping: organized lists, pantry scanning.
+- Household maintenance: seasonal checklists for both properties.
+- Kids chores, schedules, organization, family planning.
+${memoriesCtx}
+Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
-Tone: Friendly, direct, practical. Use bullet points and short paragraphs. If they share a photo, describe what you see and give specific, actionable advice based on it. Never be generic when you have context to be specific.`;
-
-    // Build the messages array, injecting images into the last user message if provided
+    // Build messages with optional vision blocks on the last user message
     const builtMessages: any[] = messages.slice(-12).map((m, idx, arr) => {
       const isLast = idx === arr.length - 1;
       if (isLast && m.role === "user" && images && images.length > 0) {
@@ -467,13 +526,7 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. If th
             detail: "low" as const,
           },
         }));
-        return {
-          role: "user",
-          content: [
-            ...imgBlocks,
-            { type: "text", text: m.content },
-          ],
-        };
+        return { role: "user", content: [...imgBlocks, { type: "text", text: m.content }] };
       }
       return { role: m.role, content: m.content };
     });
@@ -485,7 +538,16 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. If th
     });
 
     const reply = response.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
-    res.json({ reply });
+
+    // Fire-and-forget: extract and persist any new memories from this exchange
+    const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+    const memorized = lastUserMsg
+      ? extractAndSaveMemories(lastUserMsg.content, reply, existingMemories)
+      : Promise.resolve([]);
+
+    // Return reply immediately; wait for memory extraction to complete
+    const newMemories = await memorized;
+    res.json({ reply, memorized: newMemories });
   } catch (err) {
     console.error("Chat error:", err);
     res.status(500).json({ error: "Failed to generate response" });

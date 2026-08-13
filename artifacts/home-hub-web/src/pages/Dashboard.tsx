@@ -11,7 +11,7 @@ import { format } from "date-fns";
 // ── AI Chat ──────────────────────────────────────────────────────────────────
 
 type Role = "user" | "assistant";
-interface Message { role: Role; content: string; images?: string[]; }
+interface Message { role: Role; content: string; images?: string[]; memorized?: string[]; }
 
 const SUGGESTED_PROMPTS = [
   "Suggest a 25-minute workout for AJ using our space",
@@ -41,6 +41,15 @@ function ChatBubble({ msg }: { msg: Message }) {
         }`}>
           {msg.content}
         </div>
+        {msg.memorized && msg.memorized.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-0.5">
+            {msg.memorized.map((fact, i) => (
+              <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/8 border border-primary/20 text-primary text-[10px] font-semibold rounded-full">
+                💭 Remembered: {fact}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -109,7 +118,10 @@ function HouseholdChat() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
-      setMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
+      setMessages(prev => [
+        ...prev,
+        { role: "assistant", content: data.reply, memorized: data.memorized ?? [] },
+      ]);
     } catch (err: any) {
       setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Try again in a moment." }]);
     } finally {
