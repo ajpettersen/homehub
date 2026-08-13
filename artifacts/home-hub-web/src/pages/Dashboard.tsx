@@ -247,6 +247,9 @@ export default function Dashboard() {
         <p className="text-muted-foreground text-lg">Here's what's happening around the house today.</p>
       </div>
 
+      {/* HomeHub Assistant */}
+      <HouseholdChat />
+
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="bg-primary/10 border-primary/20 shadow-sm relative overflow-hidden">
@@ -351,9 +354,6 @@ export default function Dashboard() {
           )}
         </div>
       </div>
-
-      {/* HomeHub Assistant */}
-      <HouseholdChat />
     </div>
   );
 }
