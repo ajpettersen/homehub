@@ -420,4 +420,76 @@ Respond ONLY with valid JSON — no markdown, no extra text:
   }
 });
 
+// ── POST /ai/chat ─────────────────────────────────────────────────────────────
+// Household assistant — multi-turn, vision-capable
+router.post("/ai/chat", async (req, res) => {
+  try {
+    const { messages, images } = req.body as {
+      messages: { role: "user" | "assistant"; content: string }[];
+      images?: string[]; // base64, attached to the final user message
+    };
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "messages required" });
+    }
+
+    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for AJ and Emily's family.
+
+Family members:
+- AJ (parent) and Emily (parent)
+- Holden (age 10, boy)
+- Brody (age 8, boy)  
+- Daphne (age 5, girl)
+- Willa (dog)
+
+Properties:
+- Main House (primary residence, school year focus)
+- Cabin (seasonal/vacation property, ongoing maintenance)
+
+What you help with:
+- Workout planning: AJ and Emily like 20–30 minute workouts. They enjoy knees-over-toes (KOT) style training (ATG/Ben Patrick methodology). If they share a photo of their workout space, analyze the equipment and suggest appropriate routines.
+- Meal planning & recipes: family-friendly meals for kids ages 5, 8, and 10. Practical, not too complex. Reducing food waste.
+- Grocery & shopping: organized lists, efficient shopping, pantry scanning.
+- Household maintenance: reminders, seasonal checklists for both properties, especially the cabin.
+- Kids chores & schedules: age-appropriate tasks.
+- General household advice, organization, seasonal planning.
+
+Tone: Friendly, direct, practical. Use bullet points and short paragraphs. If they share a photo, describe what you see and give specific, actionable advice based on it. Never be generic when you have context to be specific.`;
+
+    // Build the messages array, injecting images into the last user message if provided
+    const builtMessages: any[] = messages.slice(-12).map((m, idx, arr) => {
+      const isLast = idx === arr.length - 1;
+      if (isLast && m.role === "user" && images && images.length > 0) {
+        const imgBlocks = images.map(raw => ({
+          type: "image_url" as const,
+          image_url: {
+            url: raw.startsWith("data:") ? raw : `data:${detectMimeType(raw)};base64,${raw}`,
+            detail: "low" as const,
+          },
+        }));
+        return {
+          role: "user",
+          content: [
+            ...imgBlocks,
+            { type: "text", text: m.content },
+          ],
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 1024,
+      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
+    });
+
+    const reply = response.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
+    res.json({ reply });
+  } catch (err) {
+    console.error("Chat error:", err);
+    res.status(500).json({ error: "Failed to generate response" });
+  }
+});
+
 export default router;
