@@ -1,0 +1,17 @@
+{
+  "name": "HomeHub",
+  "short_name": "HomeHub",
+  "description": "Your family household manager — meals, chores, workouts, and home maintenance in one place.",
+  "start_url": "/home-hub-web/",
+  "display": "standalone",
+  "background_color": "#FAF9F7",
+  "theme_color": "#C1440E",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
