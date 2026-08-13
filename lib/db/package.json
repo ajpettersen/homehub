@@ -9,7 +9,8 @@
   },
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "migrate": "node -e \"const{Client}=require('pg');const fs=require('fs');const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>c.query(fs.readFileSync('./migrations/0001_add_recipes.sql','utf8'))).then(()=>{console.log('Migration applied');c.end()}).catch(e=>{console.error(e);c.end(1)});\""
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

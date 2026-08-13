@@ -7,12 +7,15 @@ import {
   useGetGroceryItems, getGetGroceryItemsQueryKey,
   useUpdateGroceryItem, useAddGroceryItem, useDeleteGroceryItem,
   useGetProperties, getGetPropertiesQueryKey,
+  useGetRecipes, getGetRecipesQueryKey,
+  useCreateRecipe, useUpdateRecipe, useDeleteRecipe,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
   ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown,
-  Link, MessageSquare, ThumbsUp, ThumbsDown, Minus
+  Link, MessageSquare, ThumbsUp, ThumbsDown, Minus, Bookmark, BookOpen,
+  ExternalLink, Star,
 } from "lucide-react";
 import { addWeeks, format, addDays } from "date-fns";
 
@@ -59,7 +62,13 @@ const RATINGS = [
 
 // ── URL import modal ──────────────────────────────────────────────────────────
 
-function UrlImportForm({ onImport, onCancel }: { onImport: (name: string) => void; onCancel: () => void }) {
+function UrlImportForm({
+  onImport,
+  onCancel,
+}: {
+  onImport: (name: string, url: string) => void;
+  onCancel: () => void;
+}) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -80,7 +89,7 @@ function UrlImportForm({ onImport, onCancel }: { onImport: (name: string) => voi
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
-      onImport(data.name);
+      onImport(data.name, url.trim());
     } catch (err: any) {
       setError(err.message ?? "Couldn't read that page. Try a direct recipe URL.");
       setLoading(false);
@@ -112,8 +121,33 @@ function UrlImportForm({ onImport, onCancel }: { onImport: (name: string) => voi
   );
 }
 
-// ── inline meal slot ──────────────────────────────────────────────────────────
-
+function SaveToCookbookPrompt({
+  mealName,
+  sourceUrl,
+  onSave,
+  onDismiss,
+}: {
+  mealName: string;
+  sourceUrl?: string;
+  onSave: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-2 pb-2">
+      <Bookmark className="w-3 h-3 text-primary shrink-0" />
+      <span className="text-xs text-muted-foreground flex-1">Save to cookbook?</span>
+      <button
+        onClick={onSave}
+        className="text-xs font-bold text-primary hover:underline"
+      >
+        Save
+      </button>
+      <button onClick={onDismiss} className="text-muted-foreground/50 hover:text-muted-foreground">
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
 function MealSlot({
   meal,
   mealType,
@@ -122,24 +156,38 @@ function MealSlot({
   onDelete,
   onRate,
   onNote,
+  onSaveToCookbook,
+  cookbookNames,
+  pendingFill,
 }: {
   meal?: any;
   mealType: { type: MealType; label: string; Icon: React.ComponentType<any>; color: string; bg: string };
   dayLabel: string;
-  onAdd: (text: string) => void;
+  onAdd: (text: string, sourceUrl?: string) => void;
   onDelete: () => void;
   onRate: (id: string, rating: string | null) => void;
   onNote: (id: string, notes: string) => void;
+  onSaveToCookbook: (name: string, sourceUrl?: string) => void;
+  cookbookNames: Set<string>;
+  /** When set and the slot is empty, clicking directly adds this recipe name without opening the editor */
+  pendingFill?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
   const [showNotes, setShowNotes] = useState(false);
   const [noteValue, setNoteValue] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
+  const [pendingUrl, setPendingUrl] = useState<string | undefined>();
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const startEdit = () => {
     if (meal) return;
+    // If a recipe is pending, fill directly without opening the editor
+    if (pendingFill) {
+      onAdd(pendingFill);
+      return;
+    }
     setEditing(true);
     setValue("");
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -168,6 +216,9 @@ function MealSlot({
 
   const { Icon, color, bg } = mealType;
 
+  // Whether this meal is already in the cookbook (case-insensitive)
+  const inCookbook = meal ? cookbookNames.has(meal.meal.toLowerCase().trim()) : false;
+
   if (meal) {
     return (
       <div className={`rounded-xl border ${bg} overflow-hidden`}>
@@ -175,6 +226,21 @@ function MealSlot({
         <div className="flex items-center gap-2 px-3 py-2">
           <Icon className={`w-3.5 h-3.5 shrink-0 ${color}`} />
           <span className="text-sm font-medium text-foreground flex-1 leading-snug">{meal.meal}</span>
+          {/* Bookmark button */}
+          <button
+            onClick={() => {
+              if (inCookbook) return;
+              setShowSavePrompt(v => !v);
+            }}
+            title={inCookbook ? "Already in cookbook" : "Save to cookbook"}
+            className={`w-5 h-5 flex items-center justify-center rounded-md transition-all shrink-0 ${
+              inCookbook
+                ? "text-primary opacity-70 cursor-default"
+                : "text-muted-foreground/40 hover:text-primary"
+            }`}
+          >
+            <Bookmark className={`w-3 h-3 ${inCookbook ? "fill-current" : ""}`} />
+          </button>
           <button onClick={onDelete} className="w-5 h-5 flex items-center justify-center text-muted-foreground/40 hover:text-destructive transition-all rounded-md shrink-0">
             <X className="w-3 h-3" />
           </button>
@@ -222,12 +288,35 @@ function MealSlot({
             </button>
           </div>
         )}
+
+        {/* Save-to-cookbook prompt */}
+        {showSavePrompt && !inCookbook && (
+          <SaveToCookbookPrompt
+            mealName={meal.meal}
+            onSave={() => {
+              onSaveToCookbook(meal.meal, pendingUrl);
+              setShowSavePrompt(false);
+            }}
+            onDismiss={() => setShowSavePrompt(false)}
+          />
+        )}
       </div>
     );
   }
 
   if (importingUrl) {
-    return <UrlImportForm onImport={name => { onAdd(name); setImportingUrl(false); }} onCancel={() => setImportingUrl(false)} />;
+    return (
+      <UrlImportForm
+        onImport={(name, url) => {
+          onAdd(name, url);
+          setImportingUrl(false);
+          // After adding from URL, auto-prompt to save to cookbook
+          setPendingUrl(url);
+          setShowSavePrompt(true);
+        }}
+        onCancel={() => setImportingUrl(false)}
+      />
+    );
   }
 
   if (editing) {
@@ -273,9 +362,11 @@ function MealSlot({
   );
 }
 
-// ── grocery list section ───────────────────────────────────────────────────────
-
-// Master category definitions — keys are stored in the DB
+const RATING_BADGE: Record<string, { label: string; emoji: string; cls: string }> = {
+  love: { label: "Love it",        emoji: "❤️", cls: "bg-red-50 text-red-600 border-red-200" },
+  ok:   { label: "It's okay",      emoji: "👍", cls: "bg-amber-50 text-amber-600 border-amber-200" },
+  skip: { label: "Skip next time", emoji: "🙅", cls: "bg-muted text-muted-foreground border-border" },
+};
 const ALL_CATEGORIES: Record<string, { label: string; emoji: string }> = {
   produce:   { label: "Produce",            emoji: "🥦" },
   deli:      { label: "Deli & Lunch Meat",  emoji: "🥪" },
@@ -651,17 +742,40 @@ export default function Meals() {
   const deleteMeal = useDeleteMealPlanEntry();
   const updateMeal = useUpdateMealPlanEntry();
 
+  // Tab + UI state — declared before the recipe query so `activeTab` is in scope
   const [aiLoading, setAiLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"meals" | "shopping">("meals");
+  const [activeTab, setActiveTab] = useState<"meals" | "shopping" | "recipes">("meals");
+  const [pendingRecipeName, setPendingRecipeName] = useState<string | null>(null);
+
+  // Recipes (cookbook) — scoped to house property.
+  // Only fetched when the Cookbook tab is active so that the Clerk session
+  // is fully established before the first authenticated request fires.
+  const propertyIdStr = houseProperty ? String(houseProperty.id) : "";
+  const recipesParams = houseProperty ? { propertyId: propertyIdStr } : null;
+  const { data: recipes } = useGetRecipes(
+    recipesParams ?? { propertyId: "" },
+    {
+      query: {
+        queryKey: getGetRecipesQueryKey(recipesParams ?? undefined),
+        enabled: !!houseProperty && activeTab === "recipes",
+        staleTime: 30_000,
+      },
+    }
+  );
+  const createRecipe = useCreateRecipe();
+  const updateRecipe = useUpdateRecipe();
+
+  const cookbookNames = new Set((recipes ?? []).map(r => r.name.toLowerCase().trim()));
 
   const invalidateMeals = () => queryClient.invalidateQueries({ queryKey: getGetMealPlansQueryKey({ weekStart }) });
+  const invalidateRecipes = () => queryClient.invalidateQueries({ queryKey: getGetRecipesQueryKey(recipesParams ?? undefined) });
 
   const getMeal = (dayIndex: number, type: MealType) => {
     const apiDay = dayIndexToApi(dayIndex);
     return meals?.find(m => m.dayOfWeek === apiDay && m.mealType === type);
   };
 
-  const handleAdd = (dayIndex: number, type: MealType, text: string) => {
+  const handleAdd = (dayIndex: number, type: MealType, text: string, sourceUrl?: string) => {
     if (!houseProperty) return;
     createMeal.mutate(
       {
@@ -687,6 +801,15 @@ export default function Meals() {
 
   const handleNote = (id: string, notes: string) => {
     updateMeal.mutate({ id, data: { notes } }, { onSuccess: invalidateMeals });
+  };
+
+  const handleSaveToCookbook = (name: string, sourceUrl?: string) => {
+    if (!houseProperty) return;
+    if (cookbookNames.has(name.toLowerCase().trim())) return;
+    createRecipe.mutate(
+      { data: { name, propertyId: String(houseProperty.id), sourceUrl: sourceUrl ?? null, notes: null } },
+      { onSuccess: invalidateRecipes }
+    );
   };
 
   const handleAISuggestWeek = async () => {
@@ -728,6 +851,12 @@ export default function Meals() {
 
   const isCurrentWeek = weekOffset === 0;
   const isPastWeek = weekOffset < 0;
+
+  // When user taps "use in meal plan" from cookbook — switch to meal tab with a pending recipe
+  const handleUseRecipe = (name: string) => {
+    setPendingRecipeName(name);
+    setActiveTab("meals");
+  };
 
   return (
     <div className="animate-in fade-in duration-300">
@@ -778,8 +907,9 @@ export default function Meals() {
       {/* Tabs */}
       <div className="flex gap-1 bg-muted/50 rounded-xl p-1 mb-6 w-fit">
         {[
-          { key: "meals", label: "Meal Plan" },
+          { key: "meals",    label: "Meal Plan" },
           { key: "shopping", label: "Shopping List" },
+          { key: "recipes",  label: "Cookbook" },
         ].map(tab => (
           <button
             key={tab.key}
@@ -790,6 +920,19 @@ export default function Meals() {
           </button>
         ))}
       </div>
+
+      {/* Pending recipe banner */}
+      {pendingRecipeName && activeTab === "meals" && (
+        <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-primary/5 border border-primary/20 rounded-2xl">
+          <Bookmark className="w-4 h-4 text-primary shrink-0" />
+          <p className="text-sm font-medium flex-1">
+            Tap an empty meal slot to add <span className="text-primary">{pendingRecipeName}</span>
+          </p>
+          <button onClick={() => setPendingRecipeName(null)} className="text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {activeTab === "meals" ? (
         isLoading ? (
@@ -826,27 +969,36 @@ export default function Meals() {
                   </div>
 
                   {/* Meal slots */}
-                  {MEAL_TYPES.map(mt => (
-                    <MealSlot
-                      key={mt.type}
-                      meal={getMeal(idx, mt.type)}
-                      mealType={mt}
-                      dayLabel={day}
-                      onAdd={text => handleAdd(idx, mt.type, text)}
-                      onDelete={() => {
-                        const m = getMeal(idx, mt.type);
-                        if (m) handleDelete(m.id);
-                      }}
-                      onRate={handleRate}
-                      onNote={handleNote}
-                    />
-                  ))}
+                  {MEAL_TYPES.map(mt => {
+                    const existing = getMeal(idx, mt.type);
+                    return (
+                      <MealSlot
+                        key={mt.type}
+                        meal={existing}
+                        mealType={mt}
+                        dayLabel={day}
+                        pendingFill={!existing && pendingRecipeName ? pendingRecipeName : undefined}
+                        onAdd={(text, sourceUrl) => {
+                          handleAdd(idx, mt.type, text, sourceUrl);
+                          // Clear pending recipe after any successful add
+                          if (pendingRecipeName) setPendingRecipeName(null);
+                        }}
+                        onDelete={() => {
+                          if (existing) handleDelete(existing.id);
+                        }}
+                        onRate={handleRate}
+                        onNote={handleNote}
+                        onSaveToCookbook={handleSaveToCookbook}
+                        cookbookNames={cookbookNames}
+                      />
+                    );
+                  })}
                 </div>
               );
             })}
           </div>
         )
-      ) : (
+      ) : activeTab === "shopping" ? (
         /* ── Shopping list ── */
         <div className="max-w-2xl">
           <div className="flex items-center gap-3 mb-6">
@@ -872,7 +1024,289 @@ export default function Meals() {
             <div className="text-muted-foreground py-8 text-center animate-pulse">Loading…</div>
           )}
         </div>
+      ) : (
+        /* ── Cookbook / Recipes ── */
+        <div>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <BookOpen className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-serif font-bold text-xl">Cookbook</h2>
+              <p className="text-sm text-muted-foreground">Your saved family favorites</p>
+            </div>
+          </div>
+          <CookbookSection propertyId={propertyIdStr} onUseRecipe={handleUseRecipe} />
+        </div>
       )}
+    </div>
+  );
+}
+
+function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUseRecipe?: (name: string) => void }) {
+  const queryClient = useQueryClient();
+  const params = { propertyId };
+  const { data: recipes, isLoading } = useGetRecipes(params, { query: { queryKey: getGetRecipesQueryKey(params) } });
+  const createRecipe = useCreateRecipe();
+  const updateRecipe = useUpdateRecipe();
+  const deleteRecipe = useDeleteRecipe();
+
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetRecipesQueryKey(params) });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    createRecipe.mutate(
+      { data: { name: newName.trim(), propertyId, sourceUrl: newUrl.trim() || null, notes: newNotes.trim() || null } },
+      {
+        onSuccess: () => {
+          setNewName(""); setNewUrl(""); setNewNotes("");
+          setAdding(false);
+          invalidate();
+        },
+      }
+    );
+  };
+
+  const handleDelete = (id: string) => {
+    deleteRecipe.mutate({ id }, { onSuccess: invalidate });
+  };
+
+  const handleSaveNotes = (id: string) => {
+    updateRecipe.mutate({ id, data: { notes: editNotes || null } }, {
+      onSuccess: () => { setEditingId(null); invalidate(); },
+    });
+  };
+
+  React.useEffect(() => {
+    if (adding) setTimeout(() => inputRef.current?.focus(), 50);
+  }, [adding]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-20 bg-muted rounded-2xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {recipes?.length === 0
+            ? "Your cookbook is empty — save meals you love with the bookmark button."
+            : `${recipes?.length} saved recipe${(recipes?.length ?? 0) !== 1 ? "s" : ""}`}
+        </p>
+        <button
+          onClick={() => setAdding(v => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add Recipe
+        </button>
+      </div>
+
+      {/* Add form */}
+      {adding && (
+        <form onSubmit={handleAdd} className="bg-card border-2 border-primary/20 rounded-2xl p-4 space-y-3 shadow-sm">
+          <p className="text-sm font-bold text-foreground">New Recipe</p>
+          <input
+            ref={inputRef}
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            placeholder="Recipe name…"
+            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"
+          />
+          <input
+            value={newUrl}
+            onChange={e => setNewUrl(e.target.value)}
+            placeholder="Source URL (optional)"
+            type="url"
+            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"
+          />
+          <textarea
+            value={newNotes}
+            onChange={e => setNewNotes(e.target.value)}
+            placeholder="Notes (optional)"
+            rows={2}
+            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAdding(false)}
+              className="flex-1 py-2 rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createRecipe.isPending || !newName.trim()}
+              className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              Save Recipe
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Recipe list */}
+      {(recipes ?? []).length === 0 && !adding && (
+        <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
+          <BookOpen className="w-10 h-10 opacity-20" />
+          <p className="text-sm font-medium">No saved recipes yet</p>
+          <p className="text-xs text-center max-w-xs">
+            Tap the <Bookmark className="inline w-3 h-3 mx-0.5" /> bookmark on any meal to save it here, or add one manually.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {(recipes ?? []).map(recipe => {
+          const ratingBadge = recipe.aggregateRating ? RATING_BADGE[recipe.aggregateRating] : null;
+          const isExpanded = expandedId === recipe.id;
+          const isEditingNotes = editingId === recipe.id;
+
+          return (
+            <div
+              key={recipe.id}
+              className="bg-card border border-border/60 rounded-2xl overflow-hidden hover:border-border transition-colors"
+            >
+              {/* Top row */}
+              <div
+                className="flex items-center gap-3 px-4 py-3 cursor-pointer"
+                onClick={() => setExpandedId(isExpanded ? null : recipe.id)}
+              >
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <BookOpen className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-foreground leading-tight truncate">{recipe.name}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {recipe.timesCooked > 0 && (
+                      <span className="text-xs text-muted-foreground">{recipe.timesCooked}× made</span>
+                    )}
+                    {ratingBadge && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${ratingBadge.cls}`}>
+                        {ratingBadge.emoji} {ratingBadge.label}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* Use in meal plan */}
+                  {onUseRecipe && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onUseRecipe(recipe.name); }}
+                      title="Use in meal plan"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-primary hover:bg-primary/10 transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={e => { e.stopPropagation(); handleDelete(recipe.id); }}
+                    title="Remove from cookbook"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground/40 hover:text-destructive transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                </div>
+              </div>
+
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div className="border-t border-border/50 px-4 py-3 space-y-3 bg-muted/20">
+                  {/* Source URL */}
+                  {recipe.sourceUrl && (() => {
+                    // Defensively allow only http/https hrefs to block javascript: XSS
+                    let safeHref: string | null = null;
+                    try {
+                      const u = new URL(recipe.sourceUrl);
+                      if (u.protocol === "http:" || u.protocol === "https:") safeHref = u.toString();
+                    } catch { /* invalid URL — don't render as link */ }
+                    return safeHref ? (
+                      <a
+                        href={safeHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span className="truncate">{safeHref}</span>
+                      </a>
+                    ) : null;
+                  })()}
+
+                  {/* Notes */}
+                  {isEditingNotes ? (
+                    <div className="flex gap-2">
+                      <textarea
+                        autoFocus
+                        value={editNotes}
+                        onChange={e => setEditNotes(e.target.value)}
+                        rows={2}
+                        placeholder="Add notes…"
+                        className="flex-1 text-xs bg-background border border-border rounded-xl px-3 py-2 focus:outline-none focus:border-primary resize-none"
+                      />
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => handleSaveNotes(recipe.id)}
+                          className="w-7 h-7 flex items-center justify-center bg-primary text-primary-foreground rounded-lg"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="w-7 h-7 flex items-center justify-center border border-border rounded-lg text-muted-foreground"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setEditingId(recipe.id); setEditNotes(recipe.notes ?? ""); }}
+                      className="text-left w-full"
+                    >
+                      {recipe.notes ? (
+                        <p className="text-xs text-muted-foreground italic leading-snug">{recipe.notes}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground/50 italic flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3" /> Add notes…
+                        </p>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Add to meal plan shortcut */}
+                  {onUseRecipe && (
+                    <button
+                      onClick={() => onUseRecipe(recipe.name)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 border-primary/20 text-primary text-xs font-bold hover:bg-primary/5 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add to this week's meal plan
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

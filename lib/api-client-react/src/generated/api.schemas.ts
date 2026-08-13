@@ -398,6 +398,50 @@ export interface UpdateMealPlanEntryInput {
   notes?: string | null;
 }
 
+export type RecipeAggregateRating = typeof RecipeAggregateRating[keyof typeof RecipeAggregateRating] | null;
+
+
+export const RecipeAggregateRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
+export interface Recipe {
+  id: string;
+  propertyId: string;
+  name: string;
+  sourceUrl?: string | null;
+  notes?: string | null;
+  timesCooked: number;
+  aggregateRating?: RecipeAggregateRating;
+  createdAt: string;
+}
+
+export interface CreateRecipeInput {
+  name: string;
+  propertyId: string;
+  sourceUrl?: string | null;
+  notes?: string | null;
+}
+
+export type UpdateRecipeInputAggregateRating = typeof UpdateRecipeInputAggregateRating[keyof typeof UpdateRecipeInputAggregateRating] | null;
+
+
+export const UpdateRecipeInputAggregateRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
+export interface UpdateRecipeInput {
+  name?: string;
+  sourceUrl?: string | null;
+  notes?: string | null;
+  timesCooked?: number;
+  aggregateRating?: UpdateRecipeInputAggregateRating;
+}
+
 export interface TodoList {
   id: string;
   name: string;
@@ -568,6 +612,10 @@ propertyId?: string;
 
 export type GetMealPlansParams = {
 weekStart?: string;
+};
+
+export type GetRecipesParams = {
+propertyId: string;
 };
 
 export type UpdateUserProfile200 = {

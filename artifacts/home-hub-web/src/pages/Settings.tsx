@@ -5,6 +5,8 @@ import {
   useGetMaintenanceTasks, getGetMaintenanceTasksQueryKey,
   useCreateMaintenanceTask, useUpdateMaintenanceTask, useDeleteMaintenanceTask,
   getGetFamilyMembersQueryKey, getGetPropertiesQueryKey,
+  type CreateMaintenanceTaskInputCategory,
+  type UpdateMaintenanceTaskInputCategory,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -160,42 +162,72 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
   const createTask = useCreateMaintenanceTask();
   const updateTask = useUpdateMaintenanceTask();
   const deleteTask = useDeleteMaintenanceTask();
+
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey({ propertyId }) });
 
-  if (isLoading) return <div className="py-4 space-y-2">{[1,2,3].map(i => <div key={i} className="h-9 bg-muted animate-pulse rounded-lg" />)}</div>;
+  const handleAdd = (data: TaskFormState) => {
+    // nextDueDate defaults to today; the server will recalculate from a startDate anchor if one is provided
+    const today = new Date().toISOString().split("T")[0];
+    createTask.mutate(
+      { data: { title: data.title, category: data.category as CreateMaintenanceTaskInputCategory, frequencyDays: data.frequencyDays, description: data.description || undefined, propertyId, nextDueDate: today } },
+      { onSuccess: () => { invalidate(); setAdding(false); } }
+    );
+  };
+
+  const handleEdit = (id: string, data: TaskFormState) => {
+    updateTask.mutate(
+      { id, data: { title: data.title, category: data.category as UpdateMaintenanceTaskInputCategory, frequencyDays: data.frequencyDays, description: data.description || undefined } },
+      { onSuccess: () => { invalidate(); setEditingId(null); } }
+    );
+  };
+
+  const handleDelete = (id: string, title: string) => {
+    if (!confirm(`Delete "${title}"? This can't be undone.`)) return;
+    deleteTask.mutate({ id }, { onSuccess: invalidate });
+  };
+
+  if (isLoading) {
+    return <div className="py-4 flex gap-2 flex-col">{[1,2,3].map(i => <div key={i} className="h-9 bg-muted animate-pulse rounded-lg" />)}</div>;
+  }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {tasks?.length === 0 && !adding && (
-        <p className="text-xs text-muted-foreground py-3 text-center">No tasks yet.</p>
+        <p className="text-xs text-muted-foreground py-2 text-center">No tasks yet — add one below.</p>
       )}
+
       {tasks?.map(task => {
         const cat = getCat(task.category);
         if (editingId === task.id) {
           return (
-            <TaskForm key={task.id}
+            <TaskForm
+              key={task.id}
               initial={{ title: task.title, category: task.category, frequencyDays: task.frequencyDays, description: task.description ?? "" }}
-              onSave={data => updateTask.mutate({ id: task.id, data }, { onSuccess: () => { invalidate(); setEditingId(null); } })}
-              onCancel={() => setEditingId(null)} saving={updateTask.isPending} />
+              onSave={data => handleEdit(task.id, data)}
+              onCancel={() => setEditingId(null)}
+              saving={updateTask.isPending}
+            />
           );
         }
         return (
-          <div key={task.id} className="group flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors">
+          <div key={task.id}
+            className="group flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors">
             <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${cat.bg}`}>
               <cat.Icon className={`w-3 h-3 ${cat.color}`} />
             </div>
             <span className="text-sm font-medium flex-1 min-w-0 truncate">{task.title}</span>
             <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
-              <Repeat className="w-3 h-3" />{task.frequencyDays}d
+              <Repeat className="w-3 h-3" /> {task.frequencyDays}d
             </span>
             <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
               <button onClick={() => setEditingId(task.id)}
                 className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors">
                 <Pencil className="w-3 h-3" />
               </button>
-              <button onClick={() => { if (confirm(`Delete "${task.title}"?`)) deleteTask.mutate({ id: task.id }, { onSuccess: invalidate }); }}
+              <button onClick={() => handleDelete(task.id, task.title)}
                 className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors">
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -203,17 +235,20 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           </div>
         );
       })}
+
       {adding ? (
-        <TaskForm initial={defaultTaskForm()}
-          onSave={data => createTask.mutate(
-            { data: { ...data, description: data.description || undefined, propertyId } },
-            { onSuccess: () => { invalidate(); setAdding(false); } }
-          )}
-          onCancel={() => setAdding(false)} saving={createTask.isPending} />
+        <TaskForm
+          initial={defaultTaskForm()}
+          onSave={handleAdd}
+          onCancel={() => setAdding(false)}
+          saving={createTask.isPending}
+        />
       ) : (
-        <button onClick={() => setAdding(true)}
-          className="w-full flex items-center gap-2 px-3 py-2 mt-1 rounded-lg border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 text-muted-foreground text-xs font-medium transition-all group">
-          <Plus className="w-3.5 h-3.5 text-primary/60 group-hover:text-primary" /> Add task
+        <button
+          onClick={() => setAdding(true)}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 text-muted-foreground text-xs font-medium transition-all group">
+          <Plus className="w-3.5 h-3.5 text-primary/60 group-hover:text-primary" />
+          Add task
         </button>
       )}
     </div>

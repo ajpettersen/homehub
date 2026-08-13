@@ -12,6 +12,7 @@ import aiRouter from "./ai";
 import workoutsRouter from "./workouts";
 import pushTokensRouter from "./pushTokens";
 import meRouter from "./me";
+import recipesRouter from "./recipes";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(aiRouter);
 router.use(workoutsRouter);
 router.use(pushTokensRouter);
 router.use(meRouter);
+router.use(recipesRouter);
 
 export default router;

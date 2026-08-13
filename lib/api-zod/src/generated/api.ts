@@ -601,6 +601,85 @@ export const DeleteMealPlanEntryResponse = zod.void()
 
 
 /**
+ * @summary List all saved recipes (cookbook) for a household
+ */
+export const GetRecipesQueryParams = zod.object({
+  "propertyId": zod.coerce.string()
+})
+
+export const GetRecipesResponseItem = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string(),
+  "name": zod.string(),
+  "sourceUrl": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "timesCooked": zod.number(),
+  "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetRecipesResponse = zod.array(GetRecipesResponseItem)
+
+
+/**
+ * @summary Save a new recipe to the cookbook
+ */
+export const CreateRecipeBody = zod.object({
+  "name": zod.string(),
+  "propertyId": zod.string(),
+  "sourceUrl": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateRecipeResponse = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string(),
+  "name": zod.string(),
+  "sourceUrl": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "timesCooked": zod.number(),
+  "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a recipe (notes, timesCooked, aggregateRating)
+ */
+export const UpdateRecipeParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateRecipeBody = zod.object({
+  "name": zod.string().optional(),
+  "sourceUrl": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "timesCooked": zod.number().optional(),
+  "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish()
+})
+
+export const UpdateRecipeResponse = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string(),
+  "name": zod.string(),
+  "sourceUrl": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "timesCooked": zod.number(),
+  "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a recipe from the cookbook
+ */
+export const DeleteRecipeParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteRecipeResponse = zod.void()
+
+
+/**
  * @summary Get or create the current user's profile
  */
 export const GetMeResponse = zod.object({

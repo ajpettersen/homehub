@@ -590,6 +590,84 @@ paths:
         "204":
           description: Deleted
 
+  /recipes:
+    get:
+      operationId: getRecipes
+      tags: [meals]
+      summary: List all saved recipes (cookbook) for a household
+      parameters:
+        - name: propertyId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of recipes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recipe"
+    post:
+      operationId: createRecipe
+      tags: [meals]
+      summary: Save a new recipe to the cookbook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecipeInput"
+      responses:
+        "201":
+          description: Created recipe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+
+  /recipes/{id}:
+    put:
+      operationId: updateRecipe
+      tags: [meals]
+      summary: Update a recipe (notes, timesCooked, aggregateRating)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecipeInput"
+      responses:
+        "200":
+          description: Updated recipe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteRecipe
+      tags: [meals]
+      summary: Delete a recipe from the cookbook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
   /me:
     get:
       operationId: getMe
@@ -1590,6 +1668,72 @@ components:
           nullable: true
         notes:
           type: string
+          nullable: true
+
+    Recipe:
+      type: object
+      properties:
+        id:
+          type: string
+        propertyId:
+          type: string
+        name:
+          type: string
+        sourceUrl:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        timesCooked:
+          type: integer
+        aggregateRating:
+          type: string
+          enum: [love, ok, skip]
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - propertyId
+        - name
+        - timesCooked
+        - createdAt
+
+    CreateRecipeInput:
+      type: object
+      properties:
+        name:
+          type: string
+        propertyId:
+          type: string
+        sourceUrl:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - name
+        - propertyId
+
+    UpdateRecipeInput:
+      type: object
+      properties:
+        name:
+          type: string
+        sourceUrl:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        timesCooked:
+          type: integer
+        aggregateRating:
+          type: string
+          enum: [love, ok, skip]
           nullable: true
 
     TodoList:

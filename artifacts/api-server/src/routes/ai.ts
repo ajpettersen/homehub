@@ -2,9 +2,10 @@ import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
 import { mealPlansTable, aiMemoriesTable } from "@workspace/db/schema";
-import { desc, isNotNull } from "drizzle-orm";
+import { mealPlansTable, userProfilesTable, familyMembersTable, propertiesTable } from "@workspace/db/schema";
 
 // ── Memory helpers ───────────────────────────────────────────────────────────
+import { desc, isNotNull, eq } from "drizzle-orm";
 
 /** Load all stored memories from DB and format as a prompt section. */
 async function getMemoriesContext(): Promise<string> {
@@ -136,36 +137,8 @@ router.post("/ai/scan-pantry", async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 2048,
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...imageContent,
-            {
-              type: "text",
-              text: `You are a helpful family meal planner. Look at ${photoWord === "1 photo" ? "this photo" : "these photos"} of a fridge or pantry and identify ALL the ingredients you can see across all images.
-
-Then suggest 4 family-friendly dinner ideas that use as many of these ingredients as possible. This is for a family with kids aged 5-10, so meals should be approachable.
-
-${mealHistory.length > 0 ? `Recent meals to avoid repeating: ${mealHistory.join(", ")}` : ""}
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "ingredients": ["ingredient1", "ingredient2", ...],
-  "mealSuggestions": [
-    {
-      "name": "Meal Name",
-      "description": "One sentence description",
-      "usesIngredients": ["ing1", "ing2"],
-      "missingIngredients": ["thing you need to buy"]
-    }
-  ]
-}`,
-            },
-          ],
-        },
-      ],
+      max_completion_tokens: 1024,
+      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
@@ -275,36 +248,8 @@ router.post("/ai/suggest-week", async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 2048,
-      messages: [
-        {
-          role: "user",
-          content: `You are a family meal planner for AJ and Emily, who have 3 kids (Holden 10, Brody 8, Daphne 5).
-Plan a full week of meals (Monday–Sunday) covering breakfast, lunch, and dinner each day.
-${memoriesCtx}
-Goals:
-- Reduce food waste: reuse ingredients across multiple meals where sensible
-- Variety: don't repeat the same protein two days in a row
-- Practical: breakfasts and lunches should be quick; dinners can be more involved
-- Kid-friendly dinners that adults will also enjoy
-
-${mealHistory.length > 0 ? `Recent meals to avoid: ${mealHistory.slice(0, 20).join(", ")}` : ""}
-${preferenceLines.length > 0 ? `\n${preferenceLines.join("\n")}` : ""}
-
-Respond ONLY with valid JSON — no markdown, no extra text:
-{
-  "days": [
-    {
-      "dayName": "Monday",
-      "breakfast": "Scrambled eggs & toast",
-      "lunch": "Turkey sandwiches",
-      "dinner": "Sheet pan chicken thighs & roasted veggies"
-    },
-    ...7 items total, Monday through Sunday
-  ]
-}`,
-        },
-      ],
+      max_completion_tokens: 1024,
+      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
@@ -339,32 +284,18 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 512,
-      messages: [{
-        role: "user",
-        content: `This is the text content of a recipe webpage. Extract the recipe information.
-
-PAGE TEXT:
-${pageText}
-
-Respond ONLY with valid JSON:
-{
-  "name": "Recipe Name (short, suitable as a meal plan entry)",
-  "description": "One sentence description of the dish",
-  "servings": 4,
-  "source": "Site name or author if found, otherwise null"
-}
-
-If this does not appear to be a recipe page, respond with:
-{ "error": "Not a recipe page" }`,
-      }],
+      max_completion_tokens: 1024,
+      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
     const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return res.status(500).json({ error: "Failed to parse AI response" });
+    if (!jsonMatch) {
+      res.status(500).json({ error: "Failed to parse AI response" });
+      return;
+    }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch[0]) as { items: Array<{ name: string; quantity: string; category: string }> };
     if (parsed.error) return res.status(422).json({ error: parsed.error });
 
     res.json(parsed);
@@ -414,31 +345,8 @@ router.post("/ai/shopping-list", async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 2048,
-      messages: [
-        {
-          role: "user",
-          content: `You are a helpful family grocery assistant. Given the following weekly meal plan, generate a complete shopping list of ingredients needed.
-
-Meal plan:
-${mealLines}
-
-Rules:
-- Deduplicate ingredients (e.g. if chicken appears in multiple meals, list it once with the combined quantity)
-- Categorize every item into one of these exact category keys: ${VALID_CATEGORIES.join(", ")}
-- Include realistic quantities (e.g. "2 lbs", "1 dozen", "1 bunch", "1 can")
-- Only include ingredients that need to be purchased (skip pantry staples like salt, pepper, oil unless a specific quantity is needed)
-- Be practical for a family of 5 (2 adults, kids aged 5, 8, 10)
-
-Respond ONLY with valid JSON — no markdown, no extra text:
-{
-  "items": [
-    { "name": "Chicken breast", "quantity": "3 lbs", "category": "meat" },
-    { "name": "Broccoli", "quantity": "2 heads", "category": "produce" }
-  ]
-}`,
-        },
-      ],
+      max_completion_tokens: 1024,
+      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
@@ -466,21 +374,13 @@ Respond ONLY with valid JSON — no markdown, no extra text:
         category: VALID_CATEGORIES.includes(item.category) ? item.category : "other",
       }));
 
-    res.json({ items });
-  } catch (err) {
-    console.error("Shopping list error:", err);
-    res.status(500).json({ error: "Failed to generate shopping list" });
-  }
-});
-
-// ── POST /ai/chat ─────────────────────────────────────────────────────────────
-// Household assistant — multi-turn, vision-capable, memory-aware
-router.post("/ai/chat", async (req, res) => {
-  try {
+  const clerkId = (req as any).auth?.userId as string | undefined;
     const { messages, images } = req.body as {
       messages: { role: "user" | "assistant"; content: string }[];
       images?: string[];
     };
+
+    const MAX_MESSAGES = 12;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages required" });
@@ -493,33 +393,29 @@ router.post("/ai/chat", async (req, res) => {
     ]);
     const existingMemories = existingRows.map(r => r.content);
 
-    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for AJ and Emily's family.
+    const SYSTEM = `You are HomeHub Assistant — a helpful household AI.
 
 Family members:
-- AJ (parent) and Emily (parent)
-- Holden (age 10, boy)
-- Brody (age 8, boy)
-- Daphne (age 5, girl)
-- Willa (dog)
+${memberLines || "- (no members configured yet)"}
 
 Properties:
-- Main House (primary residence, school year focus)
-- Cabin (seasonal/vacation property, ongoing maintenance)
+${propertyLines || "- (no properties configured yet)"}
 
 What you help with:
-- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
-- Meal planning & recipes: family-friendly, kids ages 5/8/10, practical, low food waste.
-- Grocery & shopping: organized lists, pantry scanning.
-- Household maintenance: seasonal checklists for both properties.
-- Kids chores, schedules, organization, family planning.
+- Meal planning & recipes: practical, family-friendly meals.
+- Grocery & shopping: organized lists, efficient shopping.
+- Household maintenance: reminders and seasonal checklists.
+- Chores & schedules: age-appropriate tasks.
+- General household advice, organization, seasonal planning.
+- Workout planning: practical home or gym routines.
 ${memoriesCtx}
-Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
+Tone: Friendly, direct, practical. Use bullet points and short paragraphs. If they share a photo, describe what you see and give specific, actionable advice based on it.`;
 
     // Build messages with optional vision blocks on the last user message
-    const builtMessages: any[] = messages.slice(-12).map((m, idx, arr) => {
+    const builtMessages: any[] = trimmedMessages.map((m, idx, arr) => {
       const isLast = idx === arr.length - 1;
-      if (isLast && m.role === "user" && images && images.length > 0) {
-        const imgBlocks = images.map(raw => ({
+      if (isLast && m.role === "user" && trimmedImages.length > 0) {
+        const imgBlocks = trimmedImages.map(raw => ({
           type: "image_url" as const,
           image_url: {
             url: raw.startsWith("data:") ? raw : `data:${detectMimeType(raw)};base64,${raw}`,
@@ -579,3 +475,29 @@ router.delete("/ai/memories/:id", async (req, res) => {
 });
 
 export default router;
+
+    const trimmedMessages = messages.slice(-MAX_MESSAGES).map(m => ({
+      role: m.role,
+      content: typeof m.content === "string" ? m.content.slice(0, MAX_MSG_LEN) : "",
+    }));
+
+    const propertyLines = properties.map(p => `- ${p.name}${p.address ? ` — ${p.address}` : ""}`).join("\n");
+
+    const memberLines = members.map(m => `- ${m.name} (${m.role ?? "member"})`).join("\n");
+
+    const [members, properties] = await Promise.all([
+      db.select().from(familyMembersTable),
+      db.select().from(propertiesTable),
+    ]);
+
+  const [profile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.clerkId, clerkId))
+    .limit(1);
+
+    const MAX_IMAGES = 4;
+
+    const MAX_MSG_LEN = 2000;
+
+    const trimmedImages = (images ?? []).slice(0, MAX_IMAGES);
