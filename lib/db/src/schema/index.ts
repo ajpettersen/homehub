@@ -1,4 +1,5 @@
 export * from "./familyMembers";
+export * from "./households";
 export * from "./properties";
 export * from "./chores";
 export * from "./groceryLists";

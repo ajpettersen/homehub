@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db } from "@workspace/db";
-import { mealPlansTable, aiMemoriesTable, familyMembersTable, propertiesTable } from "@workspace/db/schema";
-import { desc, isNotNull, eq } from "drizzle-orm";
+import { mealPlansTable, aiMemoriesTable, familyMembersTable, propertiesTable, peopleTable, contractorsTable } from "@workspace/db/schema";
+import { desc, isNotNull, eq, inArray } from "drizzle-orm";
+import { getAuthorizedPropertyIds } from "../lib/propertyAuthorization";
 
 // ── Memory helpers ────────────────────────────────────────────────────────────
 
@@ -13,6 +14,35 @@ async function getMemoriesContext(): Promise<string> {
     if (rows.length === 0) return "";
     const lines = rows.map(r => `- ${r.content}`).join("\n");
     return `\nThings already known about this family (use these to personalize every response):\n${lines}\n`;
+  } catch {
+    return "";
+  }
+}
+
+/** Keep household context useful without sending free-form CRM notes or contact details to the model. */
+async function getPeopleContext(propertyIds: number[]): Promise<string> {
+  if (propertyIds.length === 0) return "";
+  try {
+    const [people, contractors] = await Promise.all([
+      db.select().from(peopleTable).where(inArray(peopleTable.propertyId, propertyIds)),
+      db.select().from(contractorsTable).where(inArray(contractorsTable.propertyId, propertyIds)),
+    ]);
+    const personLines = people
+      .slice(0, 40)
+      .map(person => {
+        const groups = person.groups?.length ? ` — ${person.groups.join(", ")}` : "";
+        return `- ${person.name}${groups}`;
+      });
+    const contractorLines = contractors
+      .slice(0, 30)
+      .map(contractor => {
+        const preferred = contractor.preferred ? " [preferred]" : "";
+        return `- ${contractor.name}: ${contractor.trade}${preferred}`;
+      });
+    if (!personLines.length && !contractorLines.length) return "";
+    return `\nHousehold people and contractor memory (shared context; free-form notes, past-work details, phone numbers, and email addresses are private and are not included here):\n${
+      personLines.length ? `People:\n${personLines.join("\n")}\n` : ""
+    }${contractorLines.length ? `Contractors:\n${contractorLines.join("\n")}\n` : ""}`;
   } catch {
     return "";
   }
@@ -458,7 +488,7 @@ Respond ONLY with valid JSON — no markdown, no extra text:
 
 // ── POST /ai/chat ─────────────────────────────────────────────────────────────
 // Household assistant — multi-turn, vision-capable, memory-aware, live family context
-router.post("/ai/chat", async (req, res) => {
+router.post("/ai/chat", async (req, res): Promise<void> => {
   try {
     const { messages, images } = req.body as {
       messages: { role: "user" | "assistant"; content: string }[];
@@ -466,7 +496,18 @@ router.post("/ai/chat", async (req, res) => {
     };
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: "messages required" });
+      res.status(400).json({ error: "messages required" });
+      return;
+    }
+    const clerkId = (req as any).auth?.userId as string | undefined;
+    if (!clerkId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const authorizedPropertyIds = await getAuthorizedPropertyIds(clerkId);
+    if (authorizedPropertyIds.length === 0) {
+      res.status(403).json({ error: "No household property access" });
+      return;
     }
 
     const MAX_MESSAGES = 12;
@@ -474,10 +515,11 @@ router.post("/ai/chat", async (req, res) => {
     const MAX_IMAGES = 4;
 
     // Load live household context + memories in parallel
-    const [members, properties, memoriesCtx, existingRows] = await Promise.all([
+    const [members, properties, memoriesCtx, peopleCtx, existingRows] = await Promise.all([
       db.select().from(familyMembersTable),
       db.select().from(propertiesTable),
       getMemoriesContext(),
+      getPeopleContext(authorizedPropertyIds),
       db.select({ content: aiMemoriesTable.content }).from(aiMemoriesTable),
     ]);
 
@@ -503,7 +545,9 @@ What you help with:
 - Grocery & shopping: organized lists, pantry scanning.
 - Household maintenance: seasonal checklists for both properties.
 - Kids chores, schedules, organization, family planning.
+ - Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose phone numbers or email addresses.
 ${memoriesCtx}
+${peopleCtx}
 Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
     const trimmedMessages = messages.slice(-MAX_MESSAGES).map(m => ({

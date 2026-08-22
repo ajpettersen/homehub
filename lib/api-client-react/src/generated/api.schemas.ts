@@ -623,6 +623,87 @@ export interface UpdateUserProfileRequest {
   linkedFamilyMemberId?: string | null;
 }
 
+export interface Person {
+  id: string;
+  propertyId?: string | null;
+  name: string;
+  groups: string[];
+  photoUrl?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  lastContactedAt?: string | null;
+  nextFollowUpAt?: string | null;
+  createdAt: string;
+}
+
+export interface CreatePersonInput {
+  propertyId?: string;
+  name: string;
+  groups?: string[];
+  photoUrl?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  lastContactedAt?: string | null;
+  nextFollowUpAt?: string | null;
+}
+
+export interface UpdatePersonInput {
+  name?: string;
+  groups?: string[];
+  photoUrl?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  lastContactedAt?: string | null;
+  nextFollowUpAt?: string | null;
+}
+
+export interface Contractor {
+  id: string;
+  propertyId?: string | null;
+  name: string;
+  trade: string;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  pastWork?: string | null;
+  preferred: boolean;
+  matchScore?: number;
+  createdAt: string;
+}
+
+export interface CreateContractorInput {
+  propertyId?: string;
+  name: string;
+  trade: string;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  pastWork?: string | null;
+  preferred?: boolean;
+}
+
+export interface UpdateContractorInput {
+  name?: string;
+  trade?: string;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  pastWork?: string | null;
+  preferred?: boolean;
+}
+
+export interface ContractorMatchInput {
+  problem: string;
+}
+
+export interface ContractorMatchResult {
+  problem: string;
+  matches: Contractor[];
+}
+
 export type ScanPantryBody = {
   /** @minItems 1 */
   imagesBase64: string[];
@@ -656,5 +737,9 @@ memberId?: string;
 
 export type GetMaintenanceTasksParams = {
 propertyId?: string;
+};
+
+export type GetContractorsParams = {
+search?: string;
 };
 

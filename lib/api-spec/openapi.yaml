@@ -30,6 +30,8 @@ tags:
     description: To-do lists and items
   - name: maintenance
     description: Home maintenance tasks and reminders
+  - name: people
+    description: Household people, follow-ups, and trusted contractors
 
 paths:
   /ai/scan-pantry:
@@ -1070,6 +1072,170 @@ paths:
               schema:
                 $ref: "#/components/schemas/MaintenanceTask"
 
+  /people:
+    get:
+      operationId: getPeople
+      tags: [people]
+      summary: List household people
+      responses:
+        "200":
+          description: People
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Person"
+    post:
+      operationId: createPerson
+      tags: [people]
+      summary: Create a household person
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePersonInput"
+      responses:
+        "201":
+          description: Created person
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+
+  /people/{id}:
+    put:
+      operationId: updatePerson
+      tags: [people]
+      summary: Update a household person
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePersonInput"
+      responses:
+        "200":
+          description: Updated person
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+    delete:
+      operationId: deletePerson
+      tags: [people]
+      summary: Delete a household person
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /contractors:
+    get:
+      operationId: getContractors
+      tags: [people]
+      summary: List trusted contractors
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Contractors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contractor"
+    post:
+      operationId: createContractor
+      tags: [people]
+      summary: Create a trusted contractor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContractorInput"
+      responses:
+        "201":
+          description: Created contractor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contractor"
+
+  /contractors/{id}:
+    put:
+      operationId: updateContractor
+      tags: [people]
+      summary: Update a trusted contractor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContractorInput"
+      responses:
+        "200":
+          description: Updated contractor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contractor"
+    delete:
+      operationId: deleteContractor
+      tags: [people]
+      summary: Delete a trusted contractor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /contractors/match:
+    post:
+      operationId: matchContractors
+      tags: [people]
+      summary: Rank contractors for a plain-language home problem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractorMatchInput"
+      responses:
+        "200":
+          description: Ranked contractor matches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractorMatchResult"
+
 components:
   schemas:
     Workout:
@@ -2070,3 +2236,203 @@ components:
         linkedFamilyMemberId:
           type: string
           nullable: true
+
+    Person:
+      type: object
+      required: [id, name, groups, createdAt]
+      properties:
+        id:
+          type: string
+        propertyId:
+          type: string
+          nullable: true
+        name:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+        photoUrl:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        lastContactedAt:
+          type: string
+          format: date
+          nullable: true
+        nextFollowUpAt:
+          type: string
+          format: date
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreatePersonInput:
+      type: object
+      required: [name]
+      properties:
+        propertyId:
+          type: string
+        name:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+        photoUrl:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        lastContactedAt:
+          type: string
+          format: date
+          nullable: true
+        nextFollowUpAt:
+          type: string
+          format: date
+          nullable: true
+
+    UpdatePersonInput:
+      type: object
+      properties:
+        name:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+        photoUrl:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        lastContactedAt:
+          type: string
+          format: date
+          nullable: true
+        nextFollowUpAt:
+          type: string
+          format: date
+          nullable: true
+
+    Contractor:
+      type: object
+      required: [id, name, trade, preferred, createdAt]
+      properties:
+        id:
+          type: string
+        propertyId:
+          type: string
+          nullable: true
+        name:
+          type: string
+        trade:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        pastWork:
+          type: string
+          nullable: true
+        preferred:
+          type: boolean
+        matchScore:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateContractorInput:
+      type: object
+      required: [name, trade]
+      properties:
+        propertyId:
+          type: string
+        name:
+          type: string
+        trade:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        pastWork:
+          type: string
+          nullable: true
+        preferred:
+          type: boolean
+
+    UpdateContractorInput:
+      type: object
+      properties:
+        name:
+          type: string
+        trade:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        pastWork:
+          type: string
+          nullable: true
+        preferred:
+          type: boolean
+
+    ContractorMatchInput:
+      type: object
+      required: [problem]
+      properties:
+        problem:
+          type: string
+
+    ContractorMatchResult:
+      type: object
+      required: [problem, matches]
+      properties:
+        problem:
+          type: string
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contractor"

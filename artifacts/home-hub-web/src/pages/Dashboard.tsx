@@ -77,7 +77,6 @@ function HouseholdChat() {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const loadMemories = useCallback(async () => {
@@ -89,10 +88,6 @@ function HouseholdChat() {
   }, []);
 
   useEffect(() => { loadMemories(); }, [loadMemories]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
 
   const handleDeleteMemory = async (id: number) => {
     setDeletingId(id);
@@ -125,6 +120,11 @@ function HouseholdChat() {
     setLoading(true);
 
     try {
+      const profileResponse = await fetch("/api/me", { credentials: "include" });
+      if (!profileResponse.ok) {
+        const profileData = await profileResponse.json();
+        throw new Error(profileData.error ?? "Sign in to use the household assistant");
+      }
       const res = await fetch(`/api/ai/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -230,7 +230,6 @@ function HouseholdChat() {
         <div className="space-y-4">
           {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
           {loading && <ThinkingBubble />}
-          <div ref={bottomRef} />
         </div>
       </div>
 

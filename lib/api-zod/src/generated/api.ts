@@ -1120,3 +1120,214 @@ export const CompleteMaintenanceTaskResponse = zod.object({
 })
 
 
+/**
+ * @summary List household people
+ */
+export const GetPeopleResponseItem = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string().nullish(),
+  "name": zod.string(),
+  "groups": zod.array(zod.string()),
+  "photoUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lastContactedAt": zod.coerce.date().nullish(),
+  "nextFollowUpAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetPeopleResponse = zod.array(GetPeopleResponseItem)
+
+
+/**
+ * @summary Create a household person
+ */
+export const CreatePersonBody = zod.object({
+  "propertyId": zod.string().optional(),
+  "name": zod.string(),
+  "groups": zod.array(zod.string()).optional(),
+  "photoUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lastContactedAt": zod.coerce.date().nullish(),
+  "nextFollowUpAt": zod.coerce.date().nullish()
+})
+
+export const CreatePersonResponse = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string().nullish(),
+  "name": zod.string(),
+  "groups": zod.array(zod.string()),
+  "photoUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lastContactedAt": zod.coerce.date().nullish(),
+  "nextFollowUpAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a household person
+ */
+export const UpdatePersonParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdatePersonBody = zod.object({
+  "name": zod.string().optional(),
+  "groups": zod.array(zod.string()).optional(),
+  "photoUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lastContactedAt": zod.coerce.date().nullish(),
+  "nextFollowUpAt": zod.coerce.date().nullish()
+})
+
+export const UpdatePersonResponse = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string().nullish(),
+  "name": zod.string(),
+  "groups": zod.array(zod.string()),
+  "photoUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lastContactedAt": zod.coerce.date().nullish(),
+  "nextFollowUpAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a household person
+ */
+export const DeletePersonParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeletePersonResponse = zod.void()
+
+
+/**
+ * @summary List trusted contractors
+ */
+export const GetContractorsQueryParams = zod.object({
+  "search": zod.coerce.string().optional()
+})
+
+export const GetContractorsResponseItem = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string().nullish(),
+  "name": zod.string(),
+  "trade": zod.string(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "pastWork": zod.string().nullish(),
+  "preferred": zod.boolean(),
+  "matchScore": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+export const GetContractorsResponse = zod.array(GetContractorsResponseItem)
+
+
+/**
+ * @summary Create a trusted contractor
+ */
+export const CreateContractorBody = zod.object({
+  "propertyId": zod.string().optional(),
+  "name": zod.string(),
+  "trade": zod.string(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "pastWork": zod.string().nullish(),
+  "preferred": zod.boolean().optional()
+})
+
+export const CreateContractorResponse = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string().nullish(),
+  "name": zod.string(),
+  "trade": zod.string(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "pastWork": zod.string().nullish(),
+  "preferred": zod.boolean(),
+  "matchScore": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a trusted contractor
+ */
+export const UpdateContractorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateContractorBody = zod.object({
+  "name": zod.string().optional(),
+  "trade": zod.string().optional(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "pastWork": zod.string().nullish(),
+  "preferred": zod.boolean().optional()
+})
+
+export const UpdateContractorResponse = zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string().nullish(),
+  "name": zod.string(),
+  "trade": zod.string(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "pastWork": zod.string().nullish(),
+  "preferred": zod.boolean(),
+  "matchScore": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a trusted contractor
+ */
+export const DeleteContractorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteContractorResponse = zod.void()
+
+
+/**
+ * @summary Rank contractors for a plain-language home problem
+ */
+export const MatchContractorsBody = zod.object({
+  "problem": zod.string()
+})
+
+export const MatchContractorsResponse = zod.object({
+  "problem": zod.string(),
+  "matches": zod.array(zod.object({
+  "id": zod.string(),
+  "propertyId": zod.string().nullish(),
+  "name": zod.string(),
+  "trade": zod.string(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "pastWork": zod.string().nullish(),
+  "preferred": zod.boolean(),
+  "matchScore": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+

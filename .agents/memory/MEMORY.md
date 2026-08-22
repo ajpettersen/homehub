@@ -1,2 +1,4 @@
 - [Orval barrel append bug](orval-barrel-append.md) — orval appends to barrel index files; patch-zod-index.js normalizes them after each codegen run.
 - [Maintenance one-time scheduling](maintenance-one-time-scheduling.md) — dated reminders finish once; periodic tasks continue to reschedule.
+- [CRM property ownership](crm-property-ownership.md) — never infer a legacy contact’s property; unowned CRM rows stay hidden until explicitly assigned.
+- [Household account bootstrap](household-account-bootstrap.md) — only the configured Clerk identity can bootstrap family access; later profiles remain pending until approved.

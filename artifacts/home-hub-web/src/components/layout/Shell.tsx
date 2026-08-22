@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Settings, Utensils, Brush, ChevronDown, Dumbbell, Mountain, UsersRound } from "lucide-react";
+import { Home, CheckSquare, Settings, Utensils, Brush, ChevronDown, Dumbbell, Mountain, UsersRound, ArrowLeft } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useGetFamilyMembers, getGetFamilyMembersQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
@@ -157,6 +157,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {/* Page content */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className="max-w-6xl mx-auto">
+            {location !== "/" && (
+              <Link
+                href="/"
+                aria-label="Back to Home"
+                className="mb-5 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Home
+              </Link>
+            )}
             {children}
           </div>
         </div>
