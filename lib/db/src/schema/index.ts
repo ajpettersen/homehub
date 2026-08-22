@@ -14,3 +14,4 @@ export * from "./workouts";
 export * from "./aiMemories";
 export * from "./recipes";
 export * from "./people";
+export * from "./mealRatings";

@@ -44,7 +44,10 @@ router.get("/todo-lists", async (req, res) => {
 router.post("/todo-lists", async (req, res) => {
   try {
     const { name, assigneeId, propertyId } = req.body;
-    if (!name) return res.status(400).json({ error: "name required" });
+    if (!name) {
+      res.status(400).json({ error: "name required" });
+      return;
+    }
 
     const [list] = await db
       .insert(todoListsTable)
@@ -116,7 +119,10 @@ router.post("/todo-lists/:id/items", async (req, res) => {
   try {
     const listId = Number(req.params.id);
     const { content, dueDate, assigneeId } = req.body;
-    if (!content) return res.status(400).json({ error: "content required" });
+    if (!content) {
+      res.status(400).json({ error: "content required" });
+      return;
+    }
 
     const [item] = await db
       .insert(todoItemsTable)
@@ -165,7 +171,10 @@ router.put("/todo-items/:id", async (req, res) => {
       .leftJoin(familyMembersTable, eq(todoItemsTable.assigneeId, familyMembersTable.id))
       .where(eq(todoItemsTable.id, id));
 
-    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    if (!rows.length) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const r = rows[0];
 
     res.json({

@@ -30,12 +30,18 @@ router.get("/family-members", async (req, res) => {
 router.post("/family-members", async (req, res) => {
   try {
     const { name, role, color, photoUrl } = req.body ?? {};
-    if (!name || typeof name !== "string" || !name.trim())
-      return res.status(400).json({ error: "name is required" });
-    if (!VALID_ROLES.includes(role))
-      return res.status(400).json({ error: "role must be parent | child | pet" });
-    if (!color || typeof color !== "string")
-      return res.status(400).json({ error: "color is required" });
+    if (!name || typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+    if (!VALID_ROLES.includes(role)) {
+      res.status(400).json({ error: "role must be parent | child | pet" });
+      return;
+    }
+    if (!color || typeof color !== "string") {
+      res.status(400).json({ error: "color is required" });
+      return;
+    }
 
     const [member] = await db
       .insert(familyMembersTable)
@@ -58,11 +64,16 @@ router.post("/family-members", async (req, res) => {
 router.put("/family-members/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
 
     const { name, role, color, photoUrl } = req.body ?? {};
-    if (role !== undefined && !VALID_ROLES.includes(role))
-      return res.status(400).json({ error: "role must be parent | child | pet" });
+    if (role !== undefined && !VALID_ROLES.includes(role)) {
+      res.status(400).json({ error: "role must be parent | child | pet" });
+      return;
+    }
 
     const updates: Record<string, unknown> = {};
     if (name !== undefined) {
@@ -79,7 +90,10 @@ router.put("/family-members/:id", async (req, res) => {
       .where(eq(familyMembersTable.id, id))
       .returning();
 
-    if (!member) return res.status(404).json({ error: "Not found" });
+    if (!member) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(memberToJson(member));
   } catch (err) {
     req.log.error({ err }, "Failed to update family member");
@@ -90,7 +104,10 @@ router.put("/family-members/:id", async (req, res) => {
 router.delete("/family-members/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
     await db.delete(familyMembersTable).where(eq(familyMembersTable.id, id));
     res.status(204).send();
   } catch (err) {

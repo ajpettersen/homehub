@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getAuth } from "@clerk/express";
 import { db, userProfilesTable, familyMembersTable, householdsTable, propertiesTable } from "@workspace/db";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { isConfiguredBootstrapIdentity } from "../lib/bootstrapIdentity";
@@ -43,7 +44,7 @@ async function ensureBootstrapHousehold(tx: any): Promise<number> {
 }
 
 async function requireFamilyAdmin(req: any, res: any): Promise<FamilyAdminScope | null> {
-  const clerkId = req.auth?.userId as string | undefined;
+  const clerkId = getAuth(req).userId;
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
@@ -65,7 +66,7 @@ async function requireFamilyAdmin(req: any, res: any): Promise<FamilyAdminScope 
 
 /** GET /api/me — get or auto-create the current user's profile */
 router.get("/me", async (req, res): Promise<void> => {
-  const clerkId = (req as any).auth?.userId as string | undefined;
+  const clerkId = getAuth(req).userId;
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return;

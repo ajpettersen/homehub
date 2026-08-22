@@ -98,7 +98,8 @@ router.post("/chores", async (req, res) => {
     const { title, assigneeId, propertyId, frequency, dueDate, points } = req.body;
 
     if (!title || !propertyId || !frequency) {
-      return res.status(400).json({ error: "title, propertyId, frequency required" });
+      res.status(400).json({ error: "title, propertyId, frequency required" });
+      return;
     }
 
     const [chore] = await db
@@ -164,7 +165,10 @@ router.put("/chores/:id", async (req, res) => {
       .leftJoin(propertiesTable, eq(choresTable.propertyId, propertiesTable.id))
       .where(eq(choresTable.id, id));
 
-    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    if (!rows.length) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const row = rows[0];
     res.json(formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? ""));
   } catch (err) {
@@ -184,7 +188,8 @@ router.post("/chores/snooze-overdue", async (req, res) => {
 
     const overdue = stale.filter((c) => !c.completedAt);
     if (!overdue.length) {
-      return res.json({ updated: 0 });
+      res.json({ updated: 0 });
+      return;
     }
 
     const freqDays: Record<string, number> = {
@@ -247,7 +252,10 @@ router.post("/chores/:id/complete", async (req, res) => {
       .leftJoin(propertiesTable, eq(choresTable.propertyId, propertiesTable.id))
       .where(eq(choresTable.id, id));
 
-    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    if (!rows.length) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const row = rows[0];
     res.json(formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? ""));
   } catch (err) {

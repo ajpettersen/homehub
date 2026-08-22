@@ -25,7 +25,10 @@ router.get("/properties", async (req, res) => {
 router.put("/properties/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
 
     const { name, address, icon, type } = req.body as {
       name?: string;
@@ -41,7 +44,8 @@ router.put("/properties/:id", async (req, res) => {
     if (type !== undefined) updates.type = type;
 
     if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ error: "No fields to update" });
+      res.status(400).json({ error: "No fields to update" });
+      return;
     }
 
     const [updated] = await db
@@ -50,7 +54,10 @@ router.put("/properties/:id", async (req, res) => {
       .where(eq(propertiesTable.id, id))
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Property not found" });
+    if (!updated) {
+      res.status(404).json({ error: "Property not found" });
+      return;
+    }
 
     res.json({
       id: String(updated.id),
@@ -69,18 +76,30 @@ router.put("/properties/:id", async (req, res) => {
 router.get("/properties/:id/streetview", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
 
     const [prop] = await db
       .select()
       .from(propertiesTable)
       .where(eq(propertiesTable.id, id));
 
-    if (!prop) return res.status(404).json({ error: "Not found" });
-    if (!prop.address) return res.status(404).json({ error: "No address set" });
+    if (!prop) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (!prop.address) {
+      res.status(404).json({ error: "No address set" });
+      return;
+    }
 
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!apiKey) return res.status(503).json({ error: "Street view not configured" });
+    if (!apiKey) {
+      res.status(503).json({ error: "Street view not configured" });
+      return;
+    }
 
     const url = new URL("https://maps.googleapis.com/maps/api/streetview");
     url.searchParams.set("size", "600x300");
@@ -90,7 +109,10 @@ router.get("/properties/:id/streetview", async (req, res) => {
     url.searchParams.set("key", apiKey);
 
     const upstream = await fetch(url.toString());
-    if (!upstream.ok) return res.status(502).json({ error: "Street view unavailable" });
+    if (!upstream.ok) {
+      res.status(502).json({ error: "Street view unavailable" });
+      return;
+    }
 
     res.setHeader("Content-Type", upstream.headers.get("content-type") ?? "image/jpeg");
     res.setHeader("Cache-Control", "public, max-age=86400");

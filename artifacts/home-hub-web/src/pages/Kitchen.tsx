@@ -9,13 +9,18 @@ import {
   useGetProperties, getGetPropertiesQueryKey,
   useGetRecipes, getGetRecipesQueryKey,
   useCreateRecipe, useUpdateRecipe, useDeleteRecipe,
+  useGetFamilyMembers, getGetFamilyMembersQueryKey,
+  useGetMealRatings, getGetMealRatingsQueryKey,
+  useUpsertMealRating, useDeleteMealRating,
+  type FamilyMember, type MealRating,
 } from "@workspace/api-client-react";
+import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
   ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown,
   Link, MessageSquare, ThumbsUp, ThumbsDown, Minus, Bookmark, BookOpen,
-  ExternalLink, Star,
+  ExternalLink, Star, AlertTriangle,
 } from "lucide-react";
 import { addWeeks, format, addDays } from "date-fns";
 
@@ -54,11 +59,22 @@ function apiDayToIndex(d: number): number {
 
 // ── rating config ─────────────────────────────────────────────────────────────
 
-const RATINGS = [
-  { key: "love", emoji: "❤️", label: "Love it",   active: "bg-red-50 border-red-300 text-red-600" },
-  { key: "ok",   emoji: "👍", label: "It's okay", active: "bg-amber-50 border-amber-300 text-amber-600" },
-  { key: "skip", emoji: "🙅", label: "Skip next time", active: "bg-muted border-border text-muted-foreground" },
-] as const;
+const RATING_CYCLE = ["love", "ok", "skip"] as const;
+type RatingKey = typeof RATING_CYCLE[number];
+
+const RATING_META: Record<RatingKey, { emoji: string; label: string; bg: string }> = {
+  love: { emoji: "❤️", label: "Love it",        bg: "bg-red-100 border-red-300" },
+  ok:   { emoji: "👍", label: "It's okay",      bg: "bg-amber-100 border-amber-300" },
+  skip: { emoji: "🙅", label: "Skip next time", bg: "bg-muted border-border" },
+};
+
+/** Cycle rating: undefined → love → ok → skip → undefined */
+function cycleRating(current: RatingKey | undefined): RatingKey | undefined {
+  if (!current) return "love";
+  const idx = RATING_CYCLE.indexOf(current);
+  if (idx === RATING_CYCLE.length - 1) return undefined;
+  return RATING_CYCLE[idx + 1];
+}
 
 // ── URL import modal ──────────────────────────────────────────────────────────
 
@@ -148,29 +164,120 @@ function SaveToCookbookPrompt({
     </div>
   );
 }
+function MemberRatingRow({
+  mealId,
+  members,
+  activeMemberId,
+}: {
+  mealId: string;
+  members: FamilyMember[];
+  activeMemberId: string | null;
+}) {
+  const queryClient = useQueryClient();
+  const mealRatingsKey = getGetMealRatingsQueryKey({ mealPlanId: mealId });
+  const { data: ratings } = useGetMealRatings(
+    { mealPlanId: mealId },
+    { query: { queryKey: mealRatingsKey } }
+  );
+  const upsert = useUpsertMealRating();
+  const deleteMr = useDeleteMealRating();
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: mealRatingsKey });
+
+  const ratingByMember = new Map<string, MealRating>(
+    (ratings ?? []).map(r => [r.memberId, r])
+  );
+
+  const handleMemberRate = (member: FamilyMember, current: RatingKey | undefined) => {
+    const next = cycleRating(current);
+    if (next) {
+      upsert.mutate(
+        { data: { mealPlanId: mealId, memberId: member.id, rating: next } },
+        { onSuccess: invalidate }
+      );
+    } else {
+      const existing = ratingByMember.get(member.id);
+      if (existing) {
+        deleteMr.mutate({ id: existing.id }, { onSuccess: invalidate });
+      }
+    }
+  };
+
+  // Warn if more skips than loves (and at least one skip)
+  const loves = (ratings ?? []).filter(r => r.rating === "love").length;
+  const skips = (ratings ?? []).filter(r => r.rating === "skip").length;
+  const showWarning = skips > 0 && skips > loves;
+
+  // Limit members shown to keep the UI tight — show up to 5
+  const shownMembers = members.slice(0, 5);
+
+  return (
+    <div>
+      {showWarning && (
+        <div className="flex items-center gap-1 px-2 pb-1">
+          <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+          <span className="text-[10px] text-amber-600 font-medium">Some family members prefer to skip this one</span>
+        </div>
+      )}
+      <div className="flex items-center gap-1 px-2 pb-2 flex-wrap">
+        {shownMembers.map(member => {
+          const mr = ratingByMember.get(member.id);
+          const rating = mr?.rating as RatingKey | undefined;
+          const meta = rating ? RATING_META[rating] : null;
+          const isActive = member.id === activeMemberId;
+          return (
+            <button
+              key={member.id}
+              onClick={() => handleMemberRate(member, rating)}
+              title={`${member.name}: ${rating ? RATING_META[rating].label : "No rating — tap to rate"}`}
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold border transition-all ${
+                meta
+                  ? `${meta.bg} text-foreground`
+                  : isActive
+                    ? "border-primary/40 bg-primary/5 text-primary"
+                    : "border-border/50 text-muted-foreground/60 hover:border-border"
+              }`}
+            >
+              <span
+                className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[8px] font-bold shrink-0"
+                style={{ backgroundColor: member.color || "#2D6A4F" }}
+              >
+                {member.name.charAt(0)}
+              </span>
+              {meta ? <span>{meta.emoji}</span> : <span className="opacity-50">+</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MealSlot({
   meal,
   mealType,
   dayLabel,
   onAdd,
   onDelete,
-  onRate,
   onNote,
   onSaveToCookbook,
   cookbookNames,
   pendingFill,
+  members,
+  activeMemberId,
 }: {
   meal?: any;
   mealType: { type: MealType; label: string; Icon: React.ComponentType<any>; color: string; bg: string };
   dayLabel: string;
   onAdd: (text: string, sourceUrl?: string) => void;
   onDelete: () => void;
-  onRate: (id: string, rating: string | null) => void;
   onNote: (id: string, notes: string) => void;
   onSaveToCookbook: (name: string, sourceUrl?: string) => void;
   cookbookNames: Set<string>;
   /** When set and the slot is empty, clicking directly adds this recipe name without opening the editor */
   pendingFill?: string;
+  members: FamilyMember[];
+  activeMemberId: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -202,12 +309,6 @@ function MealSlot({
   const commitNote = () => {
     if (meal) onNote(meal.id, noteValue);
     setShowNotes(false);
-  };
-
-  const handleRate = (key: string) => {
-    if (!meal) return;
-    // Toggle off if already selected
-    onRate(meal.id, meal.rating === key ? null : key);
   };
 
   React.useEffect(() => {
@@ -246,18 +347,13 @@ function MealSlot({
           </button>
         </div>
 
-        {/* Rating + notes row */}
+        {/* Per-member ratings */}
+        {members.length > 0 && (
+          <MemberRatingRow mealId={meal.id} members={members} activeMemberId={activeMemberId} />
+        )}
+
+        {/* Notes toggle */}
         <div className="flex items-center gap-1 px-2 pb-2">
-          {RATINGS.map(r => (
-            <button
-              key={r.key}
-              onClick={() => handleRate(r.key)}
-              title={r.label}
-              className={`flex-1 py-0.5 rounded-lg text-xs border transition-all ${meal.rating === r.key ? r.active : "border-transparent text-muted-foreground/50 hover:text-muted-foreground"}`}
-            >
-              {r.emoji}
-            </button>
-          ))}
           <button
             onClick={() => { setShowNotes(v => !v); setNoteValue(meal.notes ?? ""); }}
             title="Add note"
@@ -731,6 +827,11 @@ export default function Meals() {
   const monday = addWeeks(baseMonday, weekOffset);
   const weekStart = monday.toISOString();
 
+  const { activeMember } = useActiveMember();
+
+  const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
+  const members = familyMembers ?? [];
+
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
   const houseProperty = properties?.find(p => p.type === "house") ?? properties?.[0];
 
@@ -793,10 +894,6 @@ export default function Meals() {
 
   const handleDelete = (id: string) => {
     deleteMeal.mutate({ id }, { onSuccess: invalidateMeals });
-  };
-
-  const handleRate = (id: string, rating: string | null) => {
-    updateMeal.mutate({ id, data: { rating: rating as any } }, { onSuccess: invalidateMeals });
   };
 
   const handleNote = (id: string, notes: string) => {
@@ -986,10 +1083,11 @@ export default function Meals() {
                         onDelete={() => {
                           if (existing) handleDelete(existing.id);
                         }}
-                        onRate={handleRate}
                         onNote={handleNote}
                         onSaveToCookbook={handleSaveToCookbook}
                         cookbookNames={cookbookNames}
+                        members={members}
+                        activeMemberId={activeMember ? activeMember.id : null}
                       />
                     );
                   })}

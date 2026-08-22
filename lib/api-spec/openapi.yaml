@@ -592,6 +592,59 @@ paths:
         "204":
           description: Deleted
 
+  /meal-ratings:
+    get:
+      operationId: getMealRatings
+      tags: [meals]
+      summary: Get per-member ratings for a meal plan entry
+      parameters:
+        - name: mealPlanId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of per-member ratings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MealRating"
+    post:
+      operationId: upsertMealRating
+      tags: [meals]
+      summary: Set (upsert) a per-member rating for a meal plan entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertMealRatingInput"
+      responses:
+        "200":
+          description: Upserted rating
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MealRating"
+
+  /meal-ratings/{id}:
+    delete:
+      operationId: deleteMealRating
+      tags: [meals]
+      summary: Remove a per-member rating
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
   /recipes:
     get:
       operationId: getRecipes
@@ -1793,6 +1846,43 @@ components:
         - mealType
         - meal
         - propertyId
+
+    MealRating:
+      type: object
+      properties:
+        id:
+          type: string
+        mealPlanId:
+          type: string
+        memberId:
+          type: string
+        rating:
+          type: string
+          enum: [love, ok, skip]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - mealPlanId
+        - memberId
+        - rating
+        - createdAt
+
+    UpsertMealRatingInput:
+      type: object
+      properties:
+        mealPlanId:
+          type: string
+        memberId:
+          type: string
+        rating:
+          type: string
+          enum: [love, ok, skip]
+      required:
+        - mealPlanId
+        - memberId
+        - rating
 
     CreateMealPlanEntryInput:
       type: object

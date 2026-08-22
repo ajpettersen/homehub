@@ -361,6 +361,7 @@ export interface UpdateGroceryItemInput {
   checked?: boolean;
 }
 
+export type MealRatingRating = typeof MealRatingRating[keyof typeof MealRatingRating];
 export type CreateMealPlanEntryInputMealType = typeof CreateMealPlanEntryInputMealType[keyof typeof CreateMealPlanEntryInputMealType];
 
 
@@ -723,6 +724,9 @@ export type GetMealPlansParams = {
 weekStart?: string;
 };
 
+export type GetMealRatingsParams = {
+mealPlanId: string;
+};
 export type GetRecipesParams = {
 propertyId: string;
 };
@@ -739,7 +743,34 @@ export type GetMaintenanceTasksParams = {
 propertyId?: string;
 };
 
+export const UpsertMealRatingInputRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
 export type GetContractorsParams = {
 search?: string;
 };
 
+export type UpsertMealRatingInputRating = typeof UpsertMealRatingInputRating[keyof typeof UpsertMealRatingInputRating];
+
+export interface UpsertMealRatingInput {
+  mealPlanId: string;
+  memberId: string;
+  rating: UpsertMealRatingInputRating;
+}
+
+export const MealRatingRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
+export interface MealRating {
+  id: string;
+  mealPlanId: string;
+  memberId: string;
+  rating: MealRatingRating;
+  createdAt: string;
+}

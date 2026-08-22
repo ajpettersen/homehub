@@ -1,8 +1,17 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
-import { mealPlansTable, aiMemoriesTable, familyMembersTable, propertiesTable, peopleTable, contractorsTable } from "@workspace/db/schema";
-import { desc, isNotNull, eq, inArray } from "drizzle-orm";
+import {
+  mealPlansTable,
+  aiMemoriesTable,
+  familyMembersTable,
+  propertiesTable,
+  mealRatingsTable,
+  peopleTable,
+  contractorsTable,
+} from "@workspace/db/schema";
+import { desc, eq, inArray } from "drizzle-orm";
 import { getAuthorizedPropertyIds } from "../lib/propertyAuthorization";
 
 // ── Memory helpers ────────────────────────────────────────────────────────────
@@ -19,7 +28,7 @@ async function getMemoriesContext(): Promise<string> {
   }
 }
 
-/** Keep household context useful without sending free-form CRM notes or contact details to the model. */
+/** Include names and categories, but never private notes or contact details. */
 async function getPeopleContext(propertyIds: number[]): Promise<string> {
   if (propertyIds.length === 0) return "";
   try {
@@ -27,20 +36,16 @@ async function getPeopleContext(propertyIds: number[]): Promise<string> {
       db.select().from(peopleTable).where(inArray(peopleTable.propertyId, propertyIds)),
       db.select().from(contractorsTable).where(inArray(contractorsTable.propertyId, propertyIds)),
     ]);
-    const personLines = people
-      .slice(0, 40)
-      .map(person => {
-        const groups = person.groups?.length ? ` — ${person.groups.join(", ")}` : "";
-        return `- ${person.name}${groups}`;
-      });
-    const contractorLines = contractors
-      .slice(0, 30)
-      .map(contractor => {
-        const preferred = contractor.preferred ? " [preferred]" : "";
-        return `- ${contractor.name}: ${contractor.trade}${preferred}`;
-      });
+    const personLines = people.slice(0, 40).map((person) => {
+      const groups = person.groups?.length ? ` — ${person.groups.join(", ")}` : "";
+      return `- ${person.name}${groups}`;
+    });
+    const contractorLines = contractors.slice(0, 30).map((contractor) => {
+      const preferred = contractor.preferred ? " [preferred]" : "";
+      return `- ${contractor.name}: ${contractor.trade}${preferred}`;
+    });
     if (!personLines.length && !contractorLines.length) return "";
-    return `\nHousehold people and contractor memory (shared context; free-form notes, past-work details, phone numbers, and email addresses are private and are not included here):\n${
+    return `\nHousehold people and contractor memory (private notes and contact details are not included):\n${
       personLines.length ? `People:\n${personLines.join("\n")}\n` : ""
     }${contractorLines.length ? `Contractors:\n${contractorLines.join("\n")}\n` : ""}`;
   } catch {
@@ -153,6 +158,7 @@ router.post("/ai/scan-pantry", async (req, res) => {
       .limit(60);
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
+    const memoriesCtx = await getMemoriesContext();
 
     const imageContent = imagesBase64.map((raw) => ({
       type: "image_url" as const,
@@ -163,39 +169,30 @@ router.post("/ai/scan-pantry", async (req, res) => {
     }));
 
     const photoWord = imagesBase64.length === 1 ? "photo" : `${imagesBase64.length} photos`;
-    const memoriesCtx = await getMemoriesContext();
+
+    const SYSTEM = `You are a family meal planner AI. Scan fridge/pantry photos and return a JSON object with: ingredients found and meal suggestions.
+${memoriesCtx}
+Recent meals to avoid repeating: ${mealHistory.slice(0, 20).join(", ") || "none"}
+
+Respond ONLY with valid JSON:
+{
+  "ingredients": ["chicken breast", "pasta"],
+  "mealSuggestions": [
+    { "name": "Pasta Primavera", "description": "...", "usesIngredients": ["pasta"], "missingIngredients": ["cream"] }
+  ]
+}`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 2048,
+      max_completion_tokens: 1024,
       messages: [
+        { role: "system", content: SYSTEM },
         {
           role: "user",
           content: [
+            { type: "text", text: `Please analyze ${photoWord} of my fridge/pantry and suggest meals.` },
             ...imageContent,
-            {
-              type: "text",
-              text: `You are a helpful family meal planner. Look at ${photoWord === "1 photo" ? "this photo" : "these photos"} of a fridge or pantry and identify ALL the ingredients you can see across all images.
-
-Then suggest 4 family-friendly dinner ideas that use as many of these ingredients as possible. This is for a family with kids aged 5-10, so meals should be approachable.
-
-${mealHistory.length > 0 ? `Recent meals to avoid repeating: ${mealHistory.join(", ")}` : ""}
-${memoriesCtx}
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "ingredients": ["ingredient1", "ingredient2"],
-  "mealSuggestions": [
-    {
-      "name": "Meal Name",
-      "description": "One sentence description",
-      "usesIngredients": ["ingredient"],
-      "missingIngredients": ["thing you need to buy"]
-    }
-  ]
-}`,
-            },
-          ],
+          ] as any,
         },
       ],
     });
@@ -288,56 +285,90 @@ Respond ONLY with valid JSON:
 });
 
 // ── POST /ai/suggest-week ────────────────────────────────────────────────────
-// Returns Mon–Sun meal suggestions, informed by past ratings + stored memories
+// Returns Mon–Sun meal suggestions, informed by per-member ratings + stored memories
 router.post("/ai/suggest-week", async (req, res) => {
   try {
-    const [recentMeals, ratedMeals, memoriesCtx] = await Promise.all([
+    const [recentMeals, familyMembers, allMealPlans, memoriesCtx] = await Promise.all([
       db.select({ meal: mealPlansTable.meal }).from(mealPlansTable).orderBy(desc(mealPlansTable.createdAt)).limit(60),
-      db.select({ meal: mealPlansTable.meal, rating: mealPlansTable.rating }).from(mealPlansTable).where(isNotNull(mealPlansTable.rating)).orderBy(desc(mealPlansTable.createdAt)).limit(100),
+      db.select().from(familyMembersTable),
+      db.select({ id: mealPlansTable.id, meal: mealPlansTable.meal }).from(mealPlansTable).limit(200),
       getMemoriesContext(),
     ]);
 
+    // Load per-member ratings for all known meal plan entries
+    const mealPlanIds = allMealPlans.map(m => m.id);
+    const perMemberRatings = mealPlanIds.length > 0
+      ? await db.select().from(mealRatingsTable).where(inArray(mealRatingsTable.mealPlanId, mealPlanIds))
+      : [];
+
+    // Build a map: mealPlanId → meal name, then memberId → mealName → ratings[]
+    const mealPlanById = new Map(allMealPlans.map(m => [m.id, m.meal]));
+    const memberMealRatings = new Map<number, Map<string, string[]>>();
+
+    for (const r of perMemberRatings) {
+      const mealName = mealPlanById.get(r.mealPlanId);
+      if (!mealName) continue;
+      if (!memberMealRatings.has(r.memberId)) memberMealRatings.set(r.memberId, new Map());
+      const mealMap = memberMealRatings.get(r.memberId)!;
+      if (!mealMap.has(mealName)) mealMap.set(mealName, []);
+      mealMap.get(mealName)!.push(r.rating);
+    }
+
+    // Build per-member preference summary lines for the AI prompt
+    const memberPreferenceLines: string[] = [];
+    for (const member of familyMembers) {
+      const mealMap = memberMealRatings.get(member.id);
+      if (!mealMap) continue;
+      const loves: string[] = [];
+      const skips: string[] = [];
+      for (const [meal, ratings] of mealMap.entries()) {
+        const loveCount = ratings.filter(r => r === "love").length;
+        const skipCount = ratings.filter(r => r === "skip").length;
+        if (loveCount > 0 && loveCount >= skipCount) loves.push(meal);
+        if (skipCount > 0 && skipCount > loveCount) skips.push(meal);
+      }
+      const parts: string[] = [];
+      if (loves.length > 0) parts.push(`loves: ${loves.slice(0, 8).join(", ")}`);
+      if (skips.length > 0) parts.push(`refuses/skips: ${skips.slice(0, 8).join(", ")}`);
+      if (parts.length > 0) {
+        memberPreferenceLines.push(`  - ${member.name}: ${parts.join("; ")}`);
+      }
+    }
+
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
-    const loved = [...new Set(ratedMeals.filter(m => m.rating === "love").map(m => m.meal))].slice(0, 15);
-    const skipped = [...new Set(ratedMeals.filter(m => m.rating === "skip").map(m => m.meal))].slice(0, 15);
 
-    const preferenceLines: string[] = [];
-    if (loved.length > 0) preferenceLines.push(`Family favorites (suggest similar meals): ${loved.join(", ")}`);
-    if (skipped.length > 0) preferenceLines.push(`Family dislikes (avoid these and similar meals): ${skipped.join(", ")}`);
+    const SYSTEM = `You are a family meal planner. Suggest a full week of meals (breakfast, lunch, dinner for Mon–Sun) for a family with kids.
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 2048,
-      messages: [
-        {
-          role: "user",
-          content: `You are a family meal planner for AJ and Emily, who have 3 kids (Holden 10, Brody 8, Daphne 5).
-Plan a full week of meals (Monday–Sunday) covering breakfast, lunch, and dinner each day.
+Recent meals already eaten (vary from these): ${mealHistory.slice(0, 25).join(", ") || "none"}
+
+Per-member food preferences:
+${memberPreferenceLines.length > 0 ? memberPreferenceLines.join("\n") : "  - (no per-member ratings yet — use general family-friendly meals)"}
 
 ${memoriesCtx}
+Rules:
+- Avoid meals marked as "refuses/skips" by any member whenever possible
+- Prioritize meals loved by most members
+- Keep meals practical and kid-friendly
+- Vary cuisines and protein types across the week
 
-Goals:
-- Reduce food waste: reuse ingredients across multiple meals where sensible
-- Variety: don't repeat the same protein two days in a row
-- Practical: breakfasts and lunches should be quick; dinners can be more involved
-- Kid-friendly dinners that adults will also enjoy
-
-${mealHistory.length > 0 ? `Recent meals to avoid: ${mealHistory.slice(0, 20).join(", ")}` : ""}
-${preferenceLines.length > 0 ? `\n${preferenceLines.join("\n")}` : ""}
-
-Respond ONLY with valid JSON — no markdown, no extra text:
+Respond ONLY with valid JSON:
 {
   "days": [
     {
       "dayName": "Monday",
-      "breakfast": "Scrambled eggs & toast",
-      "lunch": "Turkey sandwiches",
-      "dinner": "Sheet pan chicken thighs & roasted vegetables"
+      "breakfast": "Scrambled Eggs & Toast",
+      "lunch": "PB&J Sandwiches",
+      "dinner": "Spaghetti Bolognese"
     }
   ]
-}
-Include exactly 7 items, Monday through Sunday.`,
-        },
+}`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 1024,
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content: "Please suggest a full week of meals for our family." },
       ],
     });
 
@@ -361,35 +392,27 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
   try {
     const { url } = req.body as { url: string };
     if (!url || typeof url !== "string") {
-      return res.status(400).json({ error: "url is required" });
+      res.status(400).json({ error: "url is required" });
+      return;
     }
 
     let pageText: string;
     try {
       pageText = await fetchPageText(url);
     } catch {
-      return res.status(422).json({ error: "Could not fetch that URL. Make sure it's a public recipe page." });
+      res.status(422).json({ error: "Could not fetch that URL. Make sure it's a public recipe page." });
+      return;
     }
 
-    const memoriesCtx = await getMemoriesContext();
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
-      messages: [{
-        role: "user",
-        content: `Extract the recipe's name and a short description from this webpage text.
-${memoriesCtx}
-
-Webpage text:
-${pageText}
-
-Respond ONLY with valid JSON:
-{
-  "name": "Recipe name",
-  "description": "A concise one-sentence description"
-}
-If this is not a recipe page, respond with {"error":"This does not appear to be a recipe page."}.`,
-      }],
+      max_completion_tokens: 256,
+      messages: [
+        {
+          role: "user",
+          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
+        },
+      ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
@@ -399,8 +422,11 @@ If this is not a recipe page, respond with {"error":"This does not appear to be 
       return;
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as { name?: string; description?: string; error?: string };
-    if (parsed.error) return res.status(422).json({ error: parsed.error });
+    const parsed = JSON.parse(jsonMatch[0]) as { name?: string; error?: string };
+    if (parsed.error) {
+      res.status(422).json({ error: parsed.error });
+      return;
+    }
 
     res.json(parsed);
   } catch (err) {
@@ -412,6 +438,13 @@ If this is not a recipe page, respond with {"error":"This does not appear to be 
 // ── POST /ai/shopping-list ────────────────────────────────────────────────────
 // Takes the current week's meal plan and returns a deduplicated, categorized ingredient list
 router.post("/ai/shopping-list", async (req, res) => {
+  // Require authentication — this calls OpenAI and must not be public
+  const { userId } = getAuth(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   try {
     const { meals } = req.body as {
       meals: Array<{ dayName: string; mealType: string; meal: string }>;
@@ -421,9 +454,16 @@ router.post("/ai/shopping-list", async (req, res) => {
       res.status(400).json({ error: "meals must be a non-empty array" });
       return;
     }
+    // Cap input size: max 21 meals (7 days × 3 types), each meal name max 100 chars
+    const MAX_MEALS = 21;
+    const MAX_MEAL_NAME_LEN = 100;
+    if (meals.length > MAX_MEALS) {
+      res.status(400).json({ error: `Too many meals — maximum ${MAX_MEALS}` });
+      return;
+    }
 
     const mealLines = meals
-      .map((m) => `- ${m.dayName} ${m.mealType}: ${m.meal}`)
+      .map((m) => `- ${m.dayName} ${m.mealType}: ${String(m.meal ?? "").slice(0, MAX_MEAL_NAME_LEN)}`)
       .join("\n");
 
     const shoppingResponse = await openai.chat.completions.create({
@@ -488,7 +528,7 @@ Respond ONLY with valid JSON — no markdown, no extra text:
 
 // ── POST /ai/chat ─────────────────────────────────────────────────────────────
 // Household assistant — multi-turn, vision-capable, memory-aware, live family context
-router.post("/ai/chat", async (req, res): Promise<void> => {
+router.post("/ai/chat", async (req, res) => {
   try {
     const { messages, images } = req.body as {
       messages: { role: "user" | "assistant"; content: string }[];
@@ -499,7 +539,8 @@ router.post("/ai/chat", async (req, res): Promise<void> => {
       res.status(400).json({ error: "messages required" });
       return;
     }
-    const clerkId = (req as any).auth?.userId as string | undefined;
+
+    const clerkId = getAuth(req).userId;
     if (!clerkId) {
       res.status(401).json({ error: "Unauthorized" });
       return;
@@ -545,7 +586,7 @@ What you help with:
 - Grocery & shopping: organized lists, pantry scanning.
 - Household maintenance: seasonal checklists for both properties.
 - Kids chores, schedules, organization, family planning.
- - Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose phone numbers or email addresses.
+- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
 ${memoriesCtx}
 ${peopleCtx}
 Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
@@ -557,6 +598,7 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
 
     const trimmedImages = (images ?? []).slice(0, MAX_IMAGES);
 
+    // Build messages with optional vision blocks on the last user message
     const builtMessages: any[] = trimmedMessages.map((m, idx, arr) => {
       const isLast = idx === arr.length - 1;
       if (isLast && m.role === "user" && trimmedImages.length > 0) {

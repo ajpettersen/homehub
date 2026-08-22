@@ -41,7 +41,8 @@ router.post("/grocery-lists", async (req, res) => {
   try {
     const { name, propertyId } = req.body;
     if (!name || !propertyId) {
-      return res.status(400).json({ error: "name and propertyId required" });
+      res.status(400).json({ error: "name and propertyId required" });
+      return;
     }
 
     const [list] = await db
@@ -106,7 +107,10 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
   try {
     const listId = Number(req.params.id);
     const { name, quantity, category, addedBy } = req.body;
-    if (!name) return res.status(400).json({ error: "name required" });
+    if (!name) {
+      res.status(400).json({ error: "name required" });
+      return;
+    }
 
     const [item] = await db
       .insert(groceryItemsTable)
@@ -145,7 +149,10 @@ router.put("/grocery-items/:id", async (req, res) => {
       .where(eq(groceryItemsTable.id, id));
 
     const [item] = await db.select().from(groceryItemsTable).where(eq(groceryItemsTable.id, id));
-    if (!item) return res.status(404).json({ error: "Not found" });
+    if (!item) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
 
     res.json({
       id: String(item.id),

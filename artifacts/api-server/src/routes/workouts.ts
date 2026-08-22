@@ -59,7 +59,8 @@ router.post("/workouts", async (req, res) => {
   try {
     const { memberId, title, workoutDate, durationMinutes, notes } = req.body;
     if (!memberId || !title || !workoutDate) {
-      return res.status(400).json({ error: "memberId, title, workoutDate required" });
+      res.status(400).json({ error: "memberId, title, workoutDate required" });
+      return;
     }
 
     const [workout] = await db
@@ -106,7 +107,10 @@ router.get("/workouts/:id", async (req, res) => {
       .leftJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
       .where(eq(workoutsTable.id, id));
 
-    if (!row) return res.status(404).json({ error: "Not found" });
+    if (!row) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
 
     const exercises = await db
       .select()
@@ -155,7 +159,10 @@ router.post("/workouts/:id/exercises", async (req, res) => {
   try {
     const workoutId = Number(req.params.id);
     const { name, sets, reps, weightLbs, durationSeconds, notes } = req.body;
-    if (!name) return res.status(400).json({ error: "name required" });
+    if (!name) {
+      res.status(400).json({ error: "name required" });
+      return;
+    }
 
     const [exercise] = await db
       .insert(workoutExercisesTable)
@@ -204,7 +211,8 @@ router.post("/ai/recommend-workout", async (req, res) => {
   try {
     const { memberId, memberName } = req.body;
     if (!memberId || !memberName) {
-      return res.status(400).json({ error: "memberId and memberName required" });
+      res.status(400).json({ error: "memberId and memberName required" });
+      return;
     }
 
     // Pull last 10 workouts for this member
@@ -280,7 +288,8 @@ Include 4-6 exercises. Use null for fields that don't apply (e.g. cardio has dur
     const content = response.choices[0]?.message?.content ?? "";
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return res.status(500).json({ error: "Failed to parse AI response" });
+      res.status(500).json({ error: "Failed to parse AI response" });
+      return;
     }
 
     res.json(JSON.parse(jsonMatch[0]));
