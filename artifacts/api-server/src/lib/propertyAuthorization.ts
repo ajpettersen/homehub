@@ -8,23 +8,44 @@ import { and, eq } from "drizzle-orm";
  * receive only their explicitly assigned property.
  */
 export async function getAuthorizedPropertyIds(clerkId: string): Promise<number[]> {
+  const scope = await getPropertyAuthorizationScope(clerkId);
+  return scope?.propertyIds ?? [];
+}
+
+export interface PropertyAuthorizationScope {
+  householdId: number;
+  propertyIds: number[];
+  role: "family" | "cleaner";
+}
+
+export async function getPropertyAuthorizationScope(
+  clerkId: string,
+): Promise<PropertyAuthorizationScope | null> {
   const [profile] = await db
     .select()
     .from(userProfilesTable)
     .where(eq(userProfilesTable.clerkId, clerkId))
     .limit(1);
 
-  if (!profile?.householdId) return [];
+  if (!profile?.householdId || (profile.role !== "family" && profile.role !== "cleaner")) {
+    return null;
+  }
 
   if (profile.role === "family") {
     const properties = await db
       .select({ id: propertiesTable.id })
       .from(propertiesTable)
       .where(eq(propertiesTable.householdId, profile.householdId));
-    return properties.map(property => property.id);
+    return {
+      householdId: profile.householdId,
+      propertyIds: properties.map(property => property.id),
+      role: "family",
+    };
   }
 
-  if (!profile.allowedPropertyId) return [];
+  if (!profile.allowedPropertyId) {
+    return { householdId: profile.householdId, propertyIds: [], role: "cleaner" };
+  }
   const [property] = await db
     .select({ id: propertiesTable.id })
     .from(propertiesTable)
@@ -33,5 +54,9 @@ export async function getAuthorizedPropertyIds(clerkId: string): Promise<number[
       eq(propertiesTable.householdId, profile.householdId),
     ))
     .limit(1);
-  return property ? [property.id] : [];
+  return {
+    householdId: profile.householdId,
+    propertyIds: property ? [property.id] : [],
+    role: "cleaner",
+  };
 }

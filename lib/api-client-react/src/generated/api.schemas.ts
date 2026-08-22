@@ -362,6 +362,39 @@ export interface UpdateGroceryItemInput {
 }
 
 export type MealRatingRating = typeof MealRatingRating[keyof typeof MealRatingRating];
+
+
+export const MealRatingRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
+export interface MealRating {
+  id: string;
+  mealPlanId: string;
+  memberId: string;
+  rating: MealRatingRating;
+  createdAt: string;
+}
+
+export type MealRatingList = MealRating[];
+
+export type UpsertMealRatingInputRating = typeof UpsertMealRatingInputRating[keyof typeof UpsertMealRatingInputRating];
+
+
+export const UpsertMealRatingInputRating = {
+  love: 'love',
+  ok: 'ok',
+  skip: 'skip',
+} as const;
+
+export interface UpsertMealRatingInput {
+  mealPlanId: string;
+  memberId: string;
+  rating: UpsertMealRatingInputRating;
+}
+
 export type CreateMealPlanEntryInputMealType = typeof CreateMealPlanEntryInputMealType[keyof typeof CreateMealPlanEntryInputMealType];
 
 
@@ -727,6 +760,7 @@ weekStart?: string;
 export type GetMealRatingsParams = {
 mealPlanId: string;
 };
+
 export type GetRecipesParams = {
 propertyId: string;
 };
@@ -743,34 +777,6 @@ export type GetMaintenanceTasksParams = {
 propertyId?: string;
 };
 
-export const UpsertMealRatingInputRating = {
-  love: 'love',
-  ok: 'ok',
-  skip: 'skip',
-} as const;
-
 export type GetContractorsParams = {
 search?: string;
 };
-
-export type UpsertMealRatingInputRating = typeof UpsertMealRatingInputRating[keyof typeof UpsertMealRatingInputRating];
-
-export interface UpsertMealRatingInput {
-  mealPlanId: string;
-  memberId: string;
-  rating: UpsertMealRatingInputRating;
-}
-
-export const MealRatingRating = {
-  love: 'love',
-  ok: 'ok',
-  skip: 'skip',
-} as const;
-
-export interface MealRating {
-  id: string;
-  mealPlanId: string;
-  memberId: string;
-  rating: MealRatingRating;
-  createdAt: string;
-}

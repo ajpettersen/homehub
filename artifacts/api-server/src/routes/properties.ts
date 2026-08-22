@@ -1,12 +1,25 @@
 import { Router } from "express";
 import { db, propertiesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
 router.get("/properties", async (req, res) => {
   try {
-    const props = await db.select().from(propertiesTable).orderBy(propertiesTable.id);
+    const scope = getApprovedHouseholdScope(res);
+
+    if (scope.propertyIds.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const props = await db
+      .select()
+      .from(propertiesTable)
+      .where(inArray(propertiesTable.id, scope.propertyIds))
+      .orderBy(propertiesTable.id);
+
     res.json(
       props.map((p) => ({
         id: String(p.id),
@@ -24,9 +37,23 @@ router.get("/properties", async (req, res) => {
 
 router.put("/properties/:id", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    // Only family members may modify properties.
+    if (scope.role !== "family") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    // The requested property must be within the authorized scope.
+    if (!scope.propertyIds.includes(id)) {
+      res.status(404).json({ error: "Property not found" });
       return;
     }
 
@@ -51,7 +78,12 @@ router.put("/properties/:id", async (req, res) => {
     const [updated] = await db
       .update(propertiesTable)
       .set(updates)
-      .where(eq(propertiesTable.id, id))
+      .where(
+        and(
+          eq(propertiesTable.id, id),
+          eq(propertiesTable.householdId, scope.householdId),
+        ),
+      )
       .returning();
 
     if (!updated) {
@@ -75,16 +107,29 @@ router.put("/properties/:id", async (req, res) => {
 // Proxy Google Street View image (keeps API key server-side)
 router.get("/properties/:id/streetview", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
 
+    // The requested property must be within the authorized scope.
+    if (!scope.propertyIds.includes(id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     const [prop] = await db
       .select()
       .from(propertiesTable)
-      .where(eq(propertiesTable.id, id));
+      .where(
+        and(
+          eq(propertiesTable.id, id),
+          eq(propertiesTable.householdId, scope.householdId),
+        ),
+      );
 
     if (!prop) {
       res.status(404).json({ error: "Not found" });

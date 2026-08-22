@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { recipesTable, userProfilesTable, propertiesTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { recipesTable } from "@workspace/db";
+import { and, eq, desc, inArray } from "drizzle-orm";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
@@ -28,36 +29,9 @@ function validateHttpUrl(raw: string): string | null {
   }
 }
 
-/**
- * Resolve the set of property IDs the authenticated user may access.
- * - "family" role → all properties in the household
- * - any other role → only the explicitly allowed property (if set)
- * Returns an empty array when the user profile has no permitted properties.
- */
-async function getAuthorizedPropertyIds(clerkId: string): Promise<number[]> {
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.clerkId, clerkId))
-    .limit(1);
-
-  if (!profile) return [];
-
-  if (profile.role === "family") {
-    const props = await db.select({ id: propertiesTable.id }).from(propertiesTable);
-    return props.map((p) => p.id);
-  }
-
-  return profile.allowedPropertyId ? [profile.allowedPropertyId] : [];
-}
-
 // GET /recipes?propertyId=…  — scoped to an authorized household
 router.get("/recipes", async (req, res): Promise<void> => {
-  const clerkId = (req as any).auth?.userId as string | undefined;
-  if (!clerkId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+  const scope = getApprovedHouseholdScope(res);
 
   const { propertyId } = req.query;
   if (!propertyId) {
@@ -66,8 +40,7 @@ router.get("/recipes", async (req, res): Promise<void> => {
   }
 
   try {
-    const authorizedIds = await getAuthorizedPropertyIds(clerkId);
-    if (!authorizedIds.includes(Number(propertyId))) {
+    if (!scope.propertyIds.includes(Number(propertyId))) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -86,11 +59,7 @@ router.get("/recipes", async (req, res): Promise<void> => {
 
 // POST /recipes
 router.post("/recipes", async (req, res): Promise<void> => {
-  const clerkId = (req as any).auth?.userId as string | undefined;
-  if (!clerkId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+  const scope = getApprovedHouseholdScope(res);
 
   const { name, propertyId, sourceUrl, notes } = req.body;
   if (!name || !propertyId) {
@@ -99,8 +68,7 @@ router.post("/recipes", async (req, res): Promise<void> => {
   }
 
   try {
-    const authorizedIds = await getAuthorizedPropertyIds(clerkId);
-    if (!authorizedIds.includes(Number(propertyId))) {
+    if (!scope.propertyIds.includes(Number(propertyId))) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -130,11 +98,7 @@ router.post("/recipes", async (req, res): Promise<void> => {
 
 // PUT /recipes/:id — update notes, timesCooked, aggregateRating
 router.put("/recipes/:id", async (req, res): Promise<void> => {
-  const clerkId = (req as any).auth?.userId as string | undefined;
-  if (!clerkId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+  const scope = getApprovedHouseholdScope(res);
 
   const id = Number(req.params.id);
   if (isNaN(id)) {
@@ -151,21 +115,8 @@ router.put("/recipes/:id", async (req, res): Promise<void> => {
   }
 
   try {
-    // Fetch recipe first to authorize against its property
-    const [existing] = await db
-      .select({ propertyId: recipesTable.propertyId })
-      .from(recipesTable)
-      .where(eq(recipesTable.id, id))
-      .limit(1);
-
-    if (!existing) {
+    if (scope.propertyIds.length === 0) {
       res.status(404).json({ error: "Not found" });
-      return;
-    }
-
-    const authorizedIds = await getAuthorizedPropertyIds(clerkId);
-    if (!authorizedIds.includes(existing.propertyId)) {
-      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -187,10 +138,22 @@ router.put("/recipes/:id", async (req, res): Promise<void> => {
     if (timesCooked !== undefined) updates.timesCooked = Number(timesCooked);
     if (aggregateRating !== undefined) updates.aggregateRating = aggregateRating;
 
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ error: "No fields to update" });
+      return;
+    }
+
+    // Update atomically constrained to the authorized property scope so a recipe
+    // belonging to another household is never mutated.
     const [row] = await db
       .update(recipesTable)
       .set(updates)
-      .where(eq(recipesTable.id, id))
+      .where(
+        and(
+          eq(recipesTable.id, id),
+          inArray(recipesTable.propertyId, scope.propertyIds),
+        ),
+      )
       .returning();
 
     if (!row) {
@@ -206,11 +169,7 @@ router.put("/recipes/:id", async (req, res): Promise<void> => {
 
 // DELETE /recipes/:id
 router.delete("/recipes/:id", async (req, res): Promise<void> => {
-  const clerkId = (req as any).auth?.userId as string | undefined;
-  if (!clerkId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+  const scope = getApprovedHouseholdScope(res);
 
   const id = Number(req.params.id);
   if (isNaN(id)) {
@@ -219,25 +178,27 @@ router.delete("/recipes/:id", async (req, res): Promise<void> => {
   }
 
   try {
-    // Fetch recipe first to authorize against its property
-    const [existing] = await db
-      .select({ propertyId: recipesTable.propertyId })
-      .from(recipesTable)
-      .where(eq(recipesTable.id, id))
-      .limit(1);
-
-    if (!existing) {
+    if (scope.propertyIds.length === 0) {
       res.status(404).json({ error: "Not found" });
       return;
     }
 
-    const authorizedIds = await getAuthorizedPropertyIds(clerkId);
-    if (!authorizedIds.includes(existing.propertyId)) {
-      res.status(403).json({ error: "Forbidden" });
+    // Delete atomically constrained to the authorized property scope.
+    const deleted = await db
+      .delete(recipesTable)
+      .where(
+        and(
+          eq(recipesTable.id, id),
+          inArray(recipesTable.propertyId, scope.propertyIds),
+        ),
+      )
+      .returning({ id: recipesTable.id });
+
+    if (deleted.length === 0) {
+      res.status(404).json({ error: "Not found" });
       return;
     }
 
-    await db.delete(recipesTable).where(eq(recipesTable.id, id));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete recipe");

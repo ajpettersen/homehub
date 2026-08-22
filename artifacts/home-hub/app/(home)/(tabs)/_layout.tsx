@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // NativeTabs (expo-router/unstable-native-tabs) and expo-glass-effect both
 // require native modules that are not bundled in Expo Go. We always use the
@@ -16,6 +17,9 @@ function ClassicTabLayout() {
   const isDark = colorScheme === 'dark';
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = isWeb ? 92 : Math.max(84, 56 + insets.bottom);
+  const tabIconSize = isIOS ? 27 : 25;
 
   return (
     <Tabs
@@ -29,8 +33,23 @@ function ClassicTabLayout() {
           borderTopWidth: isWeb ? 1 : 0,
           borderTopColor: colors.border,
           elevation: 0,
-          ...(isWeb ? { height: 64 } : {}),
-          ...(Platform.OS === 'android' ? { paddingBottom: 8, height: 60 } : {}),
+          height: tabBarHeight,
+          paddingTop: 6,
+          paddingBottom: isWeb ? 28 : Math.max(insets.bottom, 8),
+        },
+        tabBarItemStyle: {
+          height: 54,
+          minHeight: 54,
+          paddingVertical: 2,
+        },
+        tabBarIconStyle: {
+          marginTop: 2,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontFamily: 'Inter_600SemiBold',
+          lineHeight: 15,
+          marginTop: -1,
         },
         tabBarBackground: () =>
           isIOS ? (
@@ -55,9 +74,9 @@ function ClassicTabLayout() {
           title: 'Home',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="house" tintColor={color} size={24} />
+              <SymbolView name="house" tintColor={color} size={tabIconSize} />
             ) : (
-              <Feather name="home" size={22} color={color} />
+              <Feather name="home" size={tabIconSize} color={color} />
             ),
         }}
       />
@@ -67,9 +86,9 @@ function ClassicTabLayout() {
           title: 'Chores',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="checkmark.circle" tintColor={color} size={24} />
+              <SymbolView name="checkmark.circle" tintColor={color} size={tabIconSize} />
             ) : (
-              <Feather name="check-circle" size={22} color={color} />
+              <Feather name="check-circle" size={tabIconSize} color={color} />
             ),
         }}
       />
@@ -79,9 +98,9 @@ function ClassicTabLayout() {
           title: 'Kitchen',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="cart" tintColor={color} size={24} />
+              <SymbolView name="cart" tintColor={color} size={tabIconSize} />
             ) : (
-              <Feather name="shopping-cart" size={22} color={color} />
+              <Feather name="shopping-cart" size={tabIconSize} color={color} />
             ),
         }}
       />
@@ -91,21 +110,22 @@ function ClassicTabLayout() {
           title: 'Tasks',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="checklist" tintColor={color} size={24} />
+              <SymbolView name="checklist" tintColor={color} size={tabIconSize} />
             ) : (
-              <Feather name="check-square" size={22} color={color} />
+              <Feather name="check-square" size={tabIconSize} color={color} />
             ),
         }}
       />
       <Tabs.Screen
         name="maintenance"
         options={{
-          title: 'Maintenance',
+          title: 'Maint.',
+          tabBarAccessibilityLabel: 'Maintenance',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="wrench.and.screwdriver" tintColor={color} size={24} />
+              <SymbolView name="wrench.and.screwdriver" tintColor={color} size={tabIconSize} />
             ) : (
-              <Feather name="tool" size={22} color={color} />
+              <Feather name="tool" size={tabIconSize} color={color} />
             ),
         }}
       />
@@ -115,9 +135,9 @@ function ClassicTabLayout() {
           title: 'Settings',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="gearshape" tintColor={color} size={24} />
+              <SymbolView name="gearshape" tintColor={color} size={tabIconSize} />
             ) : (
-              <Feather name="settings" size={22} color={color} />
+              <Feather name="settings" size={tabIconSize} color={color} />
             ),
         }}
       />

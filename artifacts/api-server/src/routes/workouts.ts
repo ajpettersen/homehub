@@ -1,15 +1,57 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { workoutsTable, workoutExercisesTable, familyMembersTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
+
+// Resolves a workout within the scope's household in SQL. Returns null for both
+// missing and cross-household workouts so IDs never reveal existence.
+async function resolveAuthorizedWorkout(
+  workoutId: number,
+  householdId: number,
+): Promise<{ workout: typeof workoutsTable.$inferSelect; memberName: string } | null> {
+  const [row] = await db
+    .select({ workout: workoutsTable, memberName: familyMembersTable.name })
+    .from(workoutsTable)
+    .innerJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
+    .where(and(eq(workoutsTable.id, workoutId), eq(familyMembersTable.householdId, householdId)))
+    .limit(1);
+  if (!row) return null;
+  return { workout: row.workout, memberName: row.memberName };
+}
+
+// Requires a family member to belong to the scope's household.
+async function resolveHouseholdMember(memberId: number, householdId: number) {
+  const [member] = await db
+    .select()
+    .from(familyMembersTable)
+    .where(and(eq(familyMembersTable.id, memberId), eq(familyMembersTable.householdId, householdId)))
+    .limit(1);
+  return member ?? null;
+}
 
 // GET /workouts
 router.get("/workouts", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const { memberId } = req.query;
+
+    let requestedMemberId: number | undefined;
+    if (memberId !== undefined) {
+      requestedMemberId = Number(memberId);
+      if (isNaN(requestedMemberId)) {
+        res.status(400).json({ error: "Invalid memberId" });
+        return;
+      }
+      const member = await resolveHouseholdMember(requestedMemberId, scope.householdId);
+      if (!member) {
+        res.status(403).json({ error: "Member not authorized" });
+        return;
+      }
+    }
 
     const rows = await db
       .select({
@@ -17,12 +59,13 @@ router.get("/workouts", async (req, res) => {
         memberName: familyMembersTable.name,
       })
       .from(workoutsTable)
-      .leftJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
+      .innerJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
+      .where(eq(familyMembersTable.householdId, scope.householdId))
       .orderBy(desc(workoutsTable.workoutDate), desc(workoutsTable.createdAt));
 
     let filtered = rows;
-    if (memberId) {
-      filtered = filtered.filter((r) => String(r.workout.memberId) === String(memberId));
+    if (requestedMemberId !== undefined) {
+      filtered = filtered.filter((r) => r.workout.memberId === requestedMemberId);
     }
 
     // Get exercise counts
@@ -57,16 +100,28 @@ router.get("/workouts", async (req, res) => {
 // POST /workouts
 router.post("/workouts", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const { memberId, title, workoutDate, durationMinutes, notes } = req.body;
     if (!memberId || !title || !workoutDate) {
       res.status(400).json({ error: "memberId, title, workoutDate required" });
+      return;
+    }
+    const memberIdNum = Number(memberId);
+    if (isNaN(memberIdNum)) {
+      res.status(400).json({ error: "Invalid memberId" });
+      return;
+    }
+
+    const member = await resolveHouseholdMember(memberIdNum, scope.householdId);
+    if (!member) {
+      res.status(403).json({ error: "Member not authorized" });
       return;
     }
 
     const [workout] = await db
       .insert(workoutsTable)
       .values({
-        memberId: Number(memberId),
+        memberId: memberIdNum,
         title,
         workoutDate,
         durationMinutes: durationMinutes ? Number(durationMinutes) : null,
@@ -74,15 +129,10 @@ router.post("/workouts", async (req, res) => {
       })
       .returning();
 
-    const [member] = await db
-      .select()
-      .from(familyMembersTable)
-      .where(eq(familyMembersTable.id, workout.memberId));
-
     res.status(201).json({
       id: String(workout.id),
       memberId: String(workout.memberId),
-      memberName: member?.name ?? "",
+      memberName: member.name ?? "",
       workoutDate: workout.workoutDate,
       title: workout.title,
       durationMinutes: workout.durationMinutes ?? null,
@@ -99,15 +149,15 @@ router.post("/workouts", async (req, res) => {
 // GET /workouts/:id
 router.get("/workouts/:id", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
 
-    const [row] = await db
-      .select({ workout: workoutsTable, memberName: familyMembersTable.name })
-      .from(workoutsTable)
-      .leftJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
-      .where(eq(workoutsTable.id, id));
-
-    if (!row) {
+    const resolved = await resolveAuthorizedWorkout(id, scope.householdId);
+    if (!resolved) {
       res.status(404).json({ error: "Not found" });
       return;
     }
@@ -118,14 +168,14 @@ router.get("/workouts/:id", async (req, res) => {
       .where(eq(workoutExercisesTable.workoutId, id));
 
     res.json({
-      id: String(row.workout.id),
-      memberId: String(row.workout.memberId),
-      memberName: row.memberName ?? "",
-      workoutDate: row.workout.workoutDate,
-      title: row.workout.title,
-      durationMinutes: row.workout.durationMinutes ?? null,
-      notes: row.workout.notes ?? null,
-      createdAt: row.workout.createdAt.toISOString(),
+      id: String(resolved.workout.id),
+      memberId: String(resolved.workout.memberId),
+      memberName: resolved.memberName,
+      workoutDate: resolved.workout.workoutDate,
+      title: resolved.workout.title,
+      durationMinutes: resolved.workout.durationMinutes ?? null,
+      notes: resolved.workout.notes ?? null,
+      createdAt: resolved.workout.createdAt.toISOString(),
       exercises: exercises.map((e) => ({
         id: String(e.id),
         workoutId: String(e.workoutId),
@@ -146,7 +196,20 @@ router.get("/workouts/:id", async (req, res) => {
 // DELETE /workouts/:id
 router.delete("/workouts/:id", async (req, res) => {
   try {
-    await db.delete(workoutsTable).where(eq(workoutsTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const resolved = await resolveAuthorizedWorkout(id, scope.householdId);
+    if (!resolved) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    await db.delete(workoutsTable).where(eq(workoutsTable.id, id));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete workout");
@@ -157,10 +220,21 @@ router.delete("/workouts/:id", async (req, res) => {
 // POST /workouts/:id/exercises
 router.post("/workouts/:id/exercises", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const workoutId = Number(req.params.id);
+    if (isNaN(workoutId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
     const { name, sets, reps, weightLbs, durationSeconds, notes } = req.body;
     if (!name) {
       res.status(400).json({ error: "name required" });
+      return;
+    }
+
+    const resolved = await resolveAuthorizedWorkout(workoutId, scope.householdId);
+    if (!resolved) {
+      res.status(404).json({ error: "Not found" });
       return;
     }
 
@@ -196,9 +270,28 @@ router.post("/workouts/:id/exercises", async (req, res) => {
 // DELETE /workout-exercises/:id
 router.delete("/workout-exercises/:id", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const [row] = await db
+      .select({ id: workoutExercisesTable.id })
+      .from(workoutExercisesTable)
+      .innerJoin(workoutsTable, eq(workoutExercisesTable.workoutId, workoutsTable.id))
+      .innerJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
+      .where(and(eq(workoutExercisesTable.id, id), eq(familyMembersTable.householdId, scope.householdId)))
+      .limit(1);
+    if (!row) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     await db
       .delete(workoutExercisesTable)
-      .where(eq(workoutExercisesTable.id, Number(req.params.id)));
+      .where(eq(workoutExercisesTable.id, id));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete exercise");
@@ -209,17 +302,30 @@ router.delete("/workout-exercises/:id", async (req, res) => {
 // POST /ai/recommend-workout
 router.post("/ai/recommend-workout", async (req, res) => {
   try {
-    const { memberId, memberName } = req.body;
-    if (!memberId || !memberName) {
+    const scope = getApprovedHouseholdScope(res);
+    const { memberId } = req.body;
+    if (!memberId) {
       res.status(400).json({ error: "memberId and memberName required" });
       return;
     }
+    const memberIdNum = Number(memberId);
+    if (isNaN(memberIdNum)) {
+      res.status(400).json({ error: "Invalid memberId" });
+      return;
+    }
+
+    const member = await resolveHouseholdMember(memberIdNum, scope.householdId);
+    if (!member) {
+      res.status(403).json({ error: "Member not authorized" });
+      return;
+    }
+    const memberName = member.name;
 
     // Pull last 10 workouts for this member
     const recentWorkouts = await db
       .select({ workout: workoutsTable })
       .from(workoutsTable)
-      .where(eq(workoutsTable.memberId, Number(memberId)))
+      .where(eq(workoutsTable.memberId, memberIdNum))
       .orderBy(desc(workoutsTable.workoutDate))
       .limit(10);
 

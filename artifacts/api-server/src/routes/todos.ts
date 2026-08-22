@@ -1,12 +1,35 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { todoListsTable, todoItemsTable, familyMembersTable, propertiesTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
+import type { PropertyAuthorizationScope } from "../lib/propertyAuthorization";
 
 const router = Router();
 
+/**
+ * Confirms a family member id belongs to the scope's household.
+ * Returns true when accessible, false otherwise.
+ */
+async function assigneeInHousehold(
+  assigneeId: number,
+  scope: PropertyAuthorizationScope,
+): Promise<boolean> {
+  const [member] = await db
+    .select({ id: familyMembersTable.id })
+    .from(familyMembersTable)
+    .where(and(
+      eq(familyMembersTable.id, assigneeId),
+      eq(familyMembersTable.householdId, scope.householdId),
+    ))
+    .limit(1);
+  return Boolean(member);
+}
+
 router.get("/todo-lists", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+
     const rows = await db
       .select({
         list: todoListsTable,
@@ -19,11 +42,16 @@ router.get("/todo-lists", async (req, res) => {
       .leftJoin(familyMembersTable, eq(todoListsTable.assigneeId, familyMembersTable.id))
       .leftJoin(propertiesTable, eq(todoListsTable.propertyId, propertiesTable.id))
       .leftJoin(todoItemsTable, eq(todoItemsTable.listId, todoListsTable.id))
+      .where(eq(todoListsTable.householdId, scope.householdId))
       .groupBy(todoListsTable.id, familyMembersTable.name, propertiesTable.name)
       .orderBy(todoListsTable.id);
 
+    const visible = rows.filter(
+      (r) => r.list.propertyId === null || scope.propertyIds.includes(r.list.propertyId),
+    );
+
     res.json(
-      rows.map((r) => ({
+      visible.map((r) => ({
         id: String(r.list.id),
         name: r.list.name,
         assigneeId: r.list.assigneeId ? String(r.list.assigneeId) : null,
@@ -43,18 +71,46 @@ router.get("/todo-lists", async (req, res) => {
 
 router.post("/todo-lists", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const { name, assigneeId, propertyId } = req.body;
     if (!name) {
       res.status(400).json({ error: "name required" });
       return;
     }
 
+    let propertyIdNum: number | null = null;
+    if (propertyId !== undefined && propertyId !== null) {
+      propertyIdNum = Number(propertyId);
+      if (!Number.isInteger(propertyIdNum)) {
+        res.status(400).json({ error: "propertyId must be a valid id" });
+        return;
+      }
+      if (!scope.propertyIds.includes(propertyIdNum)) {
+        res.status(403).json({ error: "Property not accessible" });
+        return;
+      }
+    }
+
+    let assigneeIdNum: number | null = null;
+    if (assigneeId !== undefined && assigneeId !== null) {
+      assigneeIdNum = Number(assigneeId);
+      if (!Number.isInteger(assigneeIdNum)) {
+        res.status(400).json({ error: "assigneeId must be a valid id" });
+        return;
+      }
+      if (!(await assigneeInHousehold(assigneeIdNum, scope))) {
+        res.status(403).json({ error: "Assignee not accessible" });
+        return;
+      }
+    }
+
     const [list] = await db
       .insert(todoListsTable)
       .values({
+        householdId: scope.householdId,
         name,
-        assigneeId: assigneeId ? Number(assigneeId) : null,
-        propertyId: propertyId ? Number(propertyId) : null,
+        assigneeId: assigneeIdNum,
+        propertyId: propertyIdNum,
       })
       .returning();
 
@@ -75,9 +131,42 @@ router.post("/todo-lists", async (req, res) => {
   }
 });
 
+/**
+ * Resolves a todo list and confirms it belongs to the scope's household and,
+ * when a property is set, that the property is authorized.
+ * Returns the list when accessible, otherwise null.
+ */
+async function resolveAccessibleList(
+  listId: number,
+  scope: PropertyAuthorizationScope,
+): Promise<typeof todoListsTable.$inferSelect | null> {
+  const [list] = await db
+    .select()
+    .from(todoListsTable)
+    .where(eq(todoListsTable.id, listId))
+    .limit(1);
+  if (!list) return null;
+  if (list.householdId !== scope.householdId) return null;
+  if (list.propertyId !== null && !scope.propertyIds.includes(list.propertyId)) return null;
+  return list;
+}
+
 router.delete("/todo-lists/:id", async (req, res) => {
   try {
-    await db.delete(todoListsTable).where(eq(todoListsTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const listId = Number(req.params.id);
+    if (!Number.isInteger(listId)) {
+      res.status(400).json({ error: "Invalid list id" });
+      return;
+    }
+
+    const list = await resolveAccessibleList(listId, scope);
+    if (!list) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    await db.delete(todoListsTable).where(eq(todoListsTable.id, listId));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete todo list");
@@ -87,6 +176,19 @@ router.delete("/todo-lists/:id", async (req, res) => {
 
 router.get("/todo-lists/:id/items", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+    const listId = Number(req.params.id);
+    if (!Number.isInteger(listId)) {
+      res.status(400).json({ error: "Invalid list id" });
+      return;
+    }
+
+    const list = await resolveAccessibleList(listId, scope);
+    if (!list) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     const rows = await db
       .select({
         item: todoItemsTable,
@@ -94,7 +196,7 @@ router.get("/todo-lists/:id/items", async (req, res) => {
       })
       .from(todoItemsTable)
       .leftJoin(familyMembersTable, eq(todoItemsTable.assigneeId, familyMembersTable.id))
-      .where(eq(todoItemsTable.listId, Number(req.params.id)))
+      .where(eq(todoItemsTable.listId, listId))
       .orderBy(todoItemsTable.createdAt);
 
     res.json(
@@ -117,11 +219,35 @@ router.get("/todo-lists/:id/items", async (req, res) => {
 
 router.post("/todo-lists/:id/items", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const listId = Number(req.params.id);
+    if (!Number.isInteger(listId)) {
+      res.status(400).json({ error: "Invalid list id" });
+      return;
+    }
     const { content, dueDate, assigneeId } = req.body;
     if (!content) {
       res.status(400).json({ error: "content required" });
       return;
+    }
+
+    const list = await resolveAccessibleList(listId, scope);
+    if (!list) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    let assigneeIdNum: number | null = null;
+    if (assigneeId !== undefined && assigneeId !== null) {
+      assigneeIdNum = Number(assigneeId);
+      if (!Number.isInteger(assigneeIdNum)) {
+        res.status(400).json({ error: "assigneeId must be a valid id" });
+        return;
+      }
+      if (!(await assigneeInHousehold(assigneeIdNum, scope))) {
+        res.status(403).json({ error: "Assignee not accessible" });
+        return;
+      }
     }
 
     const [item] = await db
@@ -130,7 +256,7 @@ router.post("/todo-lists/:id/items", async (req, res) => {
         listId,
         content,
         dueDate: dueDate ?? null,
-        assigneeId: assigneeId ? Number(assigneeId) : null,
+        assigneeId: assigneeIdNum,
       })
       .returning();
 
@@ -152,8 +278,46 @@ router.post("/todo-lists/:id/items", async (req, res) => {
 
 router.put("/todo-items/:id", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid item id" });
+      return;
+    }
     const { content, completed, dueDate, assigneeId } = req.body;
+
+    const [existing] = await db
+      .select({ item: todoItemsTable, list: todoListsTable })
+      .from(todoItemsTable)
+      .innerJoin(todoListsTable, eq(todoItemsTable.listId, todoListsTable.id))
+      .where(eq(todoItemsTable.id, id))
+      .limit(1);
+    if (
+      !existing ||
+      existing.list.householdId !== scope.householdId ||
+      (existing.list.propertyId !== null && !scope.propertyIds.includes(existing.list.propertyId))
+    ) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    let assigneeIdSet: number | null | undefined;
+    if (assigneeId !== undefined) {
+      if (assigneeId === null) {
+        assigneeIdSet = null;
+      } else {
+        const assigneeIdNum = Number(assigneeId);
+        if (!Number.isInteger(assigneeIdNum)) {
+          res.status(400).json({ error: "assigneeId must be a valid id" });
+          return;
+        }
+        if (!(await assigneeInHousehold(assigneeIdNum, scope))) {
+          res.status(403).json({ error: "Assignee not accessible" });
+          return;
+        }
+        assigneeIdSet = assigneeIdNum;
+      }
+    }
 
     await db
       .update(todoItemsTable)
@@ -161,7 +325,7 @@ router.put("/todo-items/:id", async (req, res) => {
         ...(content !== undefined && { content }),
         ...(completed !== undefined && { completed }),
         ...(dueDate !== undefined && { dueDate: dueDate ?? null }),
-        ...(assigneeId !== undefined && { assigneeId: assigneeId ? Number(assigneeId) : null }),
+        ...(assigneeIdSet !== undefined && { assigneeId: assigneeIdSet }),
       })
       .where(eq(todoItemsTable.id, id));
 
@@ -195,7 +359,29 @@ router.put("/todo-items/:id", async (req, res) => {
 
 router.delete("/todo-items/:id", async (req, res) => {
   try {
-    await db.delete(todoItemsTable).where(eq(todoItemsTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid item id" });
+      return;
+    }
+
+    const [existing] = await db
+      .select({ item: todoItemsTable, list: todoListsTable })
+      .from(todoItemsTable)
+      .innerJoin(todoListsTable, eq(todoItemsTable.listId, todoListsTable.id))
+      .where(eq(todoItemsTable.id, id))
+      .limit(1);
+    if (
+      !existing ||
+      existing.list.householdId !== scope.householdId ||
+      (existing.list.propertyId !== null && !scope.propertyIds.includes(existing.list.propertyId))
+    ) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    await db.delete(todoItemsTable).where(eq(todoItemsTable.id, id));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete todo item");

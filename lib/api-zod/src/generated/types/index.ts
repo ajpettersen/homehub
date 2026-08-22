@@ -54,6 +54,7 @@ export * from './mealPlanEntry';
 export * from './mealPlanEntryMealType';
 export * from './mealPlanEntryRating';
 export * from './mealRating';
+export * from './mealRatingList';
 export * from './mealRatingRating';
 export * from './mealRecipeResult';
 export * from './mealSuggestion';

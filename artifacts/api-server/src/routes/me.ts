@@ -81,7 +81,13 @@ router.get("/me", async (req, res): Promise<void> => {
 
     if (rows.length) {
       const { profile, member, property } = rows[0];
-      if (profile.role === "pending" && await isConfiguredBootstrapIdentity(clerkId)) {
+      if (profile.role === "pending") {
+        const isBootstrapOwner = await isConfiguredBootstrapIdentity(clerkId);
+        if (!isBootstrapOwner && profile.householdId) {
+          res.json(formatProfile(profile, member ?? null, property ?? null));
+          return;
+        }
+
         const [resolvedProfile] = await db.transaction(async (tx) => {
           await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('homehub-user-profile-bootstrap'))`);
           const [currentProfile] = await tx
@@ -90,11 +96,14 @@ router.get("/me", async (req, res): Promise<void> => {
             .where(eq(userProfilesTable.clerkId, clerkId))
             .limit(1);
 
-          if (currentProfile?.role === "pending") {
+          if (currentProfile?.role === "pending" && (isBootstrapOwner || !currentProfile.householdId)) {
             const householdId = await ensureBootstrapHousehold(tx);
             return tx
               .update(userProfilesTable)
-              .set({ role: "family", householdId })
+              .set({
+                role: isBootstrapOwner ? "family" : "pending",
+                householdId,
+              })
               .where(eq(userProfilesTable.clerkId, clerkId))
               .returning();
           }
@@ -121,18 +130,21 @@ router.get("/me", async (req, res): Promise<void> => {
         .limit(1);
 
       if (existingProfile) {
-        if (isBootstrapOwner && existingProfile.role === "pending") {
+        if (existingProfile.role === "pending" && (isBootstrapOwner || !existingProfile.householdId)) {
           const householdId = await ensureBootstrapHousehold(tx);
           return tx
             .update(userProfilesTable)
-            .set({ role: "family", householdId })
+            .set({
+              role: isBootstrapOwner ? "family" : "pending",
+              householdId,
+            })
             .where(eq(userProfilesTable.clerkId, clerkId))
             .returning();
         }
         return [existingProfile];
       }
 
-      const householdId = isBootstrapOwner ? await ensureBootstrapHousehold(tx) : null;
+      const householdId = await ensureBootstrapHousehold(tx);
       return tx
         .insert(userProfilesTable)
         .values({
@@ -220,6 +232,32 @@ router.put("/admin/users/:targetClerkId", async (req, res) => {
       }
     }
 
+    let normalizedLinkedFamilyMemberId: number | null | undefined;
+    if (linkedFamilyMemberId !== undefined) {
+      if (linkedFamilyMemberId === null || linkedFamilyMemberId === "") {
+        normalizedLinkedFamilyMemberId = null;
+      } else {
+        const familyMemberId = Number(linkedFamilyMemberId);
+        if (!Number.isInteger(familyMemberId)) {
+          res.status(400).json({ error: "Invalid family member" });
+          return;
+        }
+        const [familyMember] = await db
+          .select({ id: familyMembersTable.id })
+          .from(familyMembersTable)
+          .where(and(
+            eq(familyMembersTable.id, familyMemberId),
+            eq(familyMembersTable.householdId, admin.householdId),
+          ))
+          .limit(1);
+        if (!familyMember) {
+          res.status(403).json({ error: "Unauthorized family member" });
+          return;
+        }
+        normalizedLinkedFamilyMemberId = familyMemberId;
+      }
+    }
+
     await db
       .update(userProfilesTable)
       .set({
@@ -228,7 +266,7 @@ router.put("/admin/users/:targetClerkId", async (req, res) => {
           ? { allowedPropertyId: normalizedPropertyId ?? null }
           : {}),
         ...(linkedFamilyMemberId !== undefined
-          ? { linkedFamilyMemberId: linkedFamilyMemberId ? Number(linkedFamilyMemberId) : null }
+          ? { linkedFamilyMemberId: normalizedLinkedFamilyMemberId ?? null }
           : {}),
       })
       .where(and(

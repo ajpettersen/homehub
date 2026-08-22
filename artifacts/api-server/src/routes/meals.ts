@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { mealPlansTable, mealRatingsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { mealPlansTable, mealRatingsTable, familyMembersTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
@@ -30,12 +31,22 @@ function ratingToJson(r: any) {
 
 router.get("/meal-plans", async (req, res) => {
   try {
-    const { weekStart } = req.query;
-    let query = db.select().from(mealPlansTable);
-    if (weekStart) {
-      query = query.where(eq(mealPlansTable.weekStart, String(weekStart))) as typeof query;
+    const scope = getApprovedHouseholdScope(res);
+    if (scope.propertyIds.length === 0) {
+      res.json([]);
+      return;
     }
-    const entries = await query.orderBy(mealPlansTable.dayOfWeek, mealPlansTable.mealType);
+
+    const { weekStart } = req.query;
+    const conditions = [inArray(mealPlansTable.propertyId, scope.propertyIds)];
+    if (weekStart) {
+      conditions.push(eq(mealPlansTable.weekStart, String(weekStart)));
+    }
+    const entries = await db
+      .select()
+      .from(mealPlansTable)
+      .where(and(...conditions))
+      .orderBy(mealPlansTable.dayOfWeek, mealPlansTable.mealType);
     res.json(entries.map(entryToJson));
   } catch (err) {
     req.log.error({ err }, "Failed to get meal plans");
@@ -45,14 +56,24 @@ router.get("/meal-plans", async (req, res) => {
 
 router.post("/meal-plans", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const { weekStart, dayOfWeek, mealType, meal, notes, rating, propertyId } = req.body;
     if (!weekStart || dayOfWeek === undefined || !mealType || !meal || !propertyId) {
       res.status(400).json({ error: "weekStart, dayOfWeek, mealType, meal, propertyId required" });
       return;
     }
+    const propertyIdNum = Number(propertyId);
+    if (isNaN(propertyIdNum)) {
+      res.status(400).json({ error: "Invalid propertyId" });
+      return;
+    }
+    if (!scope.propertyIds.includes(propertyIdNum)) {
+      res.status(403).json({ error: "Property not authorized" });
+      return;
+    }
     const [entry] = await db
       .insert(mealPlansTable)
-      .values({ weekStart, dayOfWeek: Number(dayOfWeek), mealType, meal, notes: notes ?? null, rating: rating ?? null, propertyId: Number(propertyId) })
+      .values({ weekStart, dayOfWeek: Number(dayOfWeek), mealType, meal, notes: notes ?? null, rating: rating ?? null, propertyId: propertyIdNum })
       .returning();
     res.status(201).json(entryToJson(entry));
   } catch (err) {
@@ -63,6 +84,7 @@ router.post("/meal-plans", async (req, res) => {
 
 router.patch("/meal-plans/:id", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -70,11 +92,11 @@ router.patch("/meal-plans/:id", async (req, res) => {
     }
 
     const { rating, notes } = req.body ?? {};
-    const VALID_RATINGS = ["love", "ok", "skip", null];
+    const VALID_PLAN_RATINGS = ["love", "ok", "skip", null];
 
     const updates: Record<string, unknown> = {};
     if (rating !== undefined) {
-      if (!VALID_RATINGS.includes(rating)) {
+      if (!VALID_PLAN_RATINGS.includes(rating)) {
         res.status(400).json({ error: "rating must be love | ok | skip | null" });
         return;
       }
@@ -82,7 +104,16 @@ router.patch("/meal-plans/:id", async (req, res) => {
     }
     if (notes !== undefined) updates.notes = notes ?? null;
 
-    const [entry] = await db.update(mealPlansTable).set(updates).where(eq(mealPlansTable.id, id)).returning();
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const [entry] = await db
+      .update(mealPlansTable)
+      .set(updates)
+      .where(and(eq(mealPlansTable.id, id), inArray(mealPlansTable.propertyId, scope.propertyIds)))
+      .returning();
     if (!entry) {
       res.status(404).json({ error: "Not found" });
       return;
@@ -96,7 +127,26 @@ router.patch("/meal-plans/:id", async (req, res) => {
 
 router.delete("/meal-plans/:id", async (req, res) => {
   try {
-    await db.delete(mealPlansTable).where(eq(mealPlansTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const [deleted] = await db
+      .delete(mealPlansTable)
+      .where(and(eq(mealPlansTable.id, id), inArray(mealPlansTable.propertyId, scope.propertyIds)))
+      .returning();
+    if (!deleted) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete meal plan entry");
@@ -108,13 +158,34 @@ router.delete("/meal-plans/:id", async (req, res) => {
 
 const VALID_RATINGS = ["love", "ok", "skip"];
 
+async function resolveAuthorizedMealPlan(
+  mealPlanId: number,
+  propertyIds: number[],
+): Promise<typeof mealPlansTable.$inferSelect | null> {
+  if (propertyIds.length === 0) return null;
+  const [plan] = await db
+    .select()
+    .from(mealPlansTable)
+    .where(and(eq(mealPlansTable.id, mealPlanId), inArray(mealPlansTable.propertyId, propertyIds)))
+    .limit(1);
+  return plan ?? null;
+}
+
 router.get("/meal-ratings", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const mealPlanId = Number(req.query.mealPlanId);
     if (!mealPlanId || isNaN(mealPlanId)) {
       res.status(400).json({ error: "mealPlanId required" });
       return;
     }
+
+    const plan = await resolveAuthorizedMealPlan(mealPlanId, scope.propertyIds);
+    if (!plan) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     const rows = await db
       .select()
       .from(mealRatingsTable)
@@ -128,6 +199,7 @@ router.get("/meal-ratings", async (req, res) => {
 
 router.post("/meal-ratings", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const { mealPlanId, memberId, rating } = req.body ?? {};
     if (!mealPlanId || !memberId || !rating) {
       res.status(400).json({ error: "mealPlanId, memberId, rating required" });
@@ -137,12 +209,34 @@ router.post("/meal-ratings", async (req, res) => {
       res.status(400).json({ error: "rating must be love | ok | skip" });
       return;
     }
+    const mealPlanIdNum = Number(mealPlanId);
+    const memberIdNum = Number(memberId);
+    if (isNaN(mealPlanIdNum) || isNaN(memberIdNum)) {
+      res.status(400).json({ error: "Invalid mealPlanId or memberId" });
+      return;
+    }
+
+    const plan = await resolveAuthorizedMealPlan(mealPlanIdNum, scope.propertyIds);
+    if (!plan) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const [member] = await db
+      .select()
+      .from(familyMembersTable)
+      .where(and(eq(familyMembersTable.id, memberIdNum), eq(familyMembersTable.householdId, scope.householdId)))
+      .limit(1);
+    if (!member) {
+      res.status(403).json({ error: "Member not authorized" });
+      return;
+    }
 
     // Upsert: update if exists, insert if not
     const existing = await db
       .select()
       .from(mealRatingsTable)
-      .where(and(eq(mealRatingsTable.mealPlanId, Number(mealPlanId)), eq(mealRatingsTable.memberId, Number(memberId))))
+      .where(and(eq(mealRatingsTable.mealPlanId, mealPlanIdNum), eq(mealRatingsTable.memberId, memberIdNum)))
       .limit(1);
 
     let row: any;
@@ -156,7 +250,7 @@ router.post("/meal-ratings", async (req, res) => {
     } else {
       const [inserted] = await db
         .insert(mealRatingsTable)
-        .values({ mealPlanId: Number(mealPlanId), memberId: Number(memberId), rating })
+        .values({ mealPlanId: mealPlanIdNum, memberId: memberIdNum, rating })
         .returning();
       row = inserted;
     }
@@ -170,7 +264,30 @@ router.post("/meal-ratings", async (req, res) => {
 
 router.delete("/meal-ratings/:id", async (req, res) => {
   try {
-    await db.delete(mealRatingsTable).where(eq(mealRatingsTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const [row] = await db
+      .select({ rating: mealRatingsTable })
+      .from(mealRatingsTable)
+      .innerJoin(mealPlansTable, eq(mealRatingsTable.mealPlanId, mealPlansTable.id))
+      .where(and(eq(mealRatingsTable.id, id), inArray(mealPlansTable.propertyId, scope.propertyIds)))
+      .limit(1);
+    if (!row) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    await db.delete(mealRatingsTable).where(eq(mealRatingsTable.id, id));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete meal rating");

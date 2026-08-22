@@ -13,6 +13,7 @@ import * as zod from 'zod';
  */
 
 
+
 export const ScanPantryBody = zod.object({
   "imagesBase64": zod.array(zod.string()).min(1)
 })
@@ -98,6 +99,7 @@ export const HealthCheckResponse = zod.object({
  */
 export const getDashboardResponseTodaysMealsItemDayOfWeekMin = 0;
 export const getDashboardResponseTodaysMealsItemDayOfWeekMax = 6;
+
 
 
 export const GetDashboardResponse = zod.object({
@@ -512,6 +514,7 @@ export const getMealPlansResponseDayOfWeekMin = 0;
 export const getMealPlansResponseDayOfWeekMax = 6;
 
 
+
 export const GetMealPlansResponseItem = zod.object({
   "id": zod.string(),
   "weekStart": zod.coerce.date(),
@@ -532,6 +535,7 @@ export const createMealPlanEntryBodyDayOfWeekMin = 0;
 export const createMealPlanEntryBodyDayOfWeekMax = 6;
 
 
+
 export const CreateMealPlanEntryBody = zod.object({
   "weekStart": zod.coerce.date(),
   "dayOfWeek": zod.number().min(createMealPlanEntryBodyDayOfWeekMin).max(createMealPlanEntryBodyDayOfWeekMax),
@@ -544,6 +548,7 @@ export const CreateMealPlanEntryBody = zod.object({
 
 export const createMealPlanEntryResponseDayOfWeekMin = 0;
 export const createMealPlanEntryResponseDayOfWeekMax = 6;
+
 
 
 export const CreateMealPlanEntryResponse = zod.object({
@@ -574,6 +579,7 @@ export const updateMealPlanEntryResponseDayOfWeekMin = 0;
 export const updateMealPlanEntryResponseDayOfWeekMax = 6;
 
 
+
 export const UpdateMealPlanEntryResponse = zod.object({
   "id": zod.string(),
   "weekStart": zod.coerce.date(),
@@ -595,12 +601,52 @@ export const DeleteMealPlanEntryParams = zod.object({
 
 export const DeleteMealPlanEntryResponse = zod.void()
 
+
 /**
  * @summary Get per-member ratings for a meal plan entry
  */
 export const GetMealRatingsQueryParams = zod.object({
   "mealPlanId": zod.coerce.string()
 })
+
+export const GetMealRatingsResponseItem = zod.object({
+  "id": zod.string(),
+  "mealPlanId": zod.string(),
+  "memberId": zod.string(),
+  "rating": zod.enum(['love', 'ok', 'skip']),
+  "createdAt": zod.coerce.date()
+})
+export const GetMealRatingsResponse = zod.array(GetMealRatingsResponseItem)
+
+
+/**
+ * @summary Set (upsert) a per-member rating for a meal plan entry
+ */
+export const UpsertMealRatingBody = zod.object({
+  "mealPlanId": zod.string(),
+  "memberId": zod.string(),
+  "rating": zod.enum(['love', 'ok', 'skip'])
+})
+
+export const UpsertMealRatingResponse = zod.object({
+  "id": zod.string(),
+  "mealPlanId": zod.string(),
+  "memberId": zod.string(),
+  "rating": zod.enum(['love', 'ok', 'skip']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Remove a per-member rating
+ */
+export const DeleteMealRatingParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteMealRatingResponse = zod.void()
+
+
 /**
  * @summary List all saved recipes (cookbook) for a household
  */
@@ -1118,8 +1164,6 @@ export const CompleteMaintenanceTaskResponse = zod.object({
   "isDueSoon": zod.boolean()
 })
 
-export const DeleteMealRatingResponse = zod.void()
-
 
 /**
  * @summary List household people
@@ -1329,38 +1373,4 @@ export const MatchContractorsResponse = zod.object({
   "matchScore": zod.number().optional(),
   "createdAt": zod.coerce.date()
 }))
-})
-
-/**
- * @summary Set (upsert) a per-member rating for a meal plan entry
- */
-export const UpsertMealRatingBody = zod.object({
-  "mealPlanId": zod.string(),
-  "memberId": zod.string(),
-  "rating": zod.enum(['love', 'ok', 'skip'])
-})
-
-export const UpsertMealRatingResponse = zod.object({
-  "id": zod.string(),
-  "mealPlanId": zod.string(),
-  "memberId": zod.string(),
-  "rating": zod.enum(['love', 'ok', 'skip']),
-  "createdAt": zod.coerce.date()
-})
-
-/**
- * @summary Remove a per-member rating
- */
-export const DeleteMealRatingParams = zod.object({
-  "id": zod.coerce.string()
-})
-
-export const GetMealRatingsResponse = zod.array(GetMealRatingsResponseItem)
-
-export const GetMealRatingsResponseItem = zod.object({
-  "id": zod.string(),
-  "mealPlanId": zod.string(),
-  "memberId": zod.string(),
-  "rating": zod.enum(['love', 'ok', 'skip']),
-  "createdAt": zod.coerce.date()
 })

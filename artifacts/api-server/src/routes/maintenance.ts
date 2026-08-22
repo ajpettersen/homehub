@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { maintenanceTasksTable, propertiesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
@@ -58,7 +59,27 @@ function formatTask(
 
 router.get("/maintenance-tasks", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+    if (scope.propertyIds.length === 0) {
+      res.json([]);
+      return;
+    }
+
     const { propertyId } = req.query;
+
+    let scopedPropertyIds = scope.propertyIds;
+    if (propertyId !== undefined) {
+      const requested = Number(propertyId);
+      if (!Number.isInteger(requested)) {
+        res.status(400).json({ error: "Invalid propertyId" });
+        return;
+      }
+      if (!scope.propertyIds.includes(requested)) {
+        res.status(403).json({ error: "Unauthorized property" });
+        return;
+      }
+      scopedPropertyIds = [requested];
+    }
 
     const rows = await db
       .select({
@@ -67,14 +88,12 @@ router.get("/maintenance-tasks", async (req, res) => {
       })
       .from(maintenanceTasksTable)
       .leftJoin(propertiesTable, eq(maintenanceTasksTable.propertyId, propertiesTable.id))
+      .where(inArray(maintenanceTasksTable.propertyId, scopedPropertyIds))
       .orderBy(maintenanceTasksTable.nextDueDate);
 
-    let filtered = rows.filter(
+    const filtered = rows.filter(
       ({ task }) => !(task.scheduleType === "one-time" && task.isCompleted),
     );
-    if (propertyId) {
-      filtered = filtered.filter((r) => String(r.task.propertyId) === String(propertyId));
-    }
 
     res.json(filtered.map((r) => formatTask(r.task, r.propertyName ?? "")));
   } catch (err) {
@@ -85,12 +104,24 @@ router.get("/maintenance-tasks", async (req, res) => {
 
 router.post("/maintenance-tasks", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const { title, description, propertyId, category, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
     const effectiveScheduleType = scheduleType ?? "recurring";
     if (!title || !propertyId || !category) {
       res.status(400).json({ error: "title, propertyId, and category are required" });
       return;
     }
+
+    const propertyIdNum = Number(propertyId);
+    if (!Number.isInteger(propertyIdNum)) {
+      res.status(400).json({ error: "Invalid propertyId" });
+      return;
+    }
+    if (!scope.propertyIds.includes(propertyIdNum)) {
+      res.status(403).json({ error: "Unauthorized property" });
+      return;
+    }
+
     if (effectiveScheduleType !== "recurring" && effectiveScheduleType !== "one-time") {
       res.status(400).json({ error: "scheduleType must be recurring or one-time" });
       return;
@@ -118,7 +149,7 @@ router.post("/maintenance-tasks", async (req, res) => {
       .values({
         title,
         description: description ?? null,
-        propertyId: Number(propertyId),
+        propertyId: propertyIdNum,
         category,
         frequencyDays: freq,
         scheduleType: effectiveScheduleType,
@@ -139,12 +170,43 @@ router.post("/maintenance-tasks", async (req, res) => {
 
 router.put("/maintenance-tasks/:id", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
-    const { title, description, category, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
-    const [existing] = await db.select().from(maintenanceTasksTable).where(eq(maintenanceTasksTable.id, id));
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const { title, description, propertyId, category, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
+
+    const [existing] = await db
+      .select()
+      .from(maintenanceTasksTable)
+      .where(and(
+        eq(maintenanceTasksTable.id, id),
+        inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
+      ))
+      .limit(1);
     if (!existing) {
       res.status(404).json({ error: "Not found" });
       return;
+    }
+
+    // A property change, if supplied, must target an authorized property.
+    let propertyIdNum: number | undefined;
+    if (propertyId !== undefined) {
+      propertyIdNum = Number(propertyId);
+      if (!Number.isInteger(propertyIdNum)) {
+        res.status(400).json({ error: "Invalid propertyId" });
+        return;
+      }
+      if (!scope.propertyIds.includes(propertyIdNum)) {
+        res.status(403).json({ error: "Unauthorized property" });
+        return;
+      }
     }
 
     const effectiveScheduleType = scheduleType ?? existing.scheduleType;
@@ -179,6 +241,7 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
       .set({
         ...(title !== undefined && { title }),
         ...(description !== undefined && { description: description ?? null }),
+        ...(propertyIdNum !== undefined && { propertyId: propertyIdNum }),
         ...(category !== undefined && { category }),
         frequencyDays: effectiveFrequencyDays,
         scheduleType: effectiveScheduleType,
@@ -187,7 +250,10 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
         ...(scheduleType !== undefined && { isCompleted: false }),
         ...(isCleanerTask !== undefined && { isCleanerTask: Boolean(isCleanerTask) }),
       })
-      .where(eq(maintenanceTasksTable.id, id));
+      .where(and(
+        eq(maintenanceTasksTable.id, id),
+        inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
+      ));
 
     const rows = await db
       .select({ task: maintenanceTasksTable, propertyName: propertiesTable.name })
@@ -208,7 +274,29 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
 
 router.delete("/maintenance-tasks/:id", async (req, res) => {
   try {
-    await db.delete(maintenanceTasksTable).where(eq(maintenanceTasksTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const deleted = await db
+      .delete(maintenanceTasksTable)
+      .where(and(
+        eq(maintenanceTasksTable.id, id),
+        inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
+      ))
+      .returning({ id: maintenanceTasksTable.id });
+
+    if (deleted.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete maintenance task");
@@ -218,13 +306,26 @@ router.delete("/maintenance-tasks/:id", async (req, res) => {
 
 router.post("/maintenance-tasks/:id/complete", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { completedBy } = req.body;
 
     const [existing] = await db
       .select()
       .from(maintenanceTasksTable)
-      .where(eq(maintenanceTasksTable.id, id));
+      .where(and(
+        eq(maintenanceTasksTable.id, id),
+        inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
+      ))
+      .limit(1);
 
     if (!existing) {
       res.status(404).json({ error: "Not found" });
@@ -239,7 +340,10 @@ router.post("/maintenance-tasks/:id/complete", async (req, res) => {
           lastCompletedBy: completedBy ?? null,
           isCompleted: true,
         })
-        .where(eq(maintenanceTasksTable.id, id));
+        .where(and(
+          eq(maintenanceTasksTable.id, id),
+          inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
+        ));
     } else {
       // If the task has a startDate anchor, keep the recurrence aligned to that
       // schedule rather than drifting from the completion date.
@@ -261,7 +365,10 @@ router.post("/maintenance-tasks/:id/complete", async (req, res) => {
           lastCompletedBy: completedBy ?? null,
           nextDueDate,
         })
-        .where(eq(maintenanceTasksTable.id, id));
+        .where(and(
+          eq(maintenanceTasksTable.id, id),
+          inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
+        ));
     }
 
     const rows = await db

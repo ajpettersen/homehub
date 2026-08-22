@@ -609,9 +609,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/MealRating"
+                $ref: "#/components/schemas/MealRatingList"
     post:
       operationId: upsertMealRating
       tags: [meals]
@@ -1868,6 +1866,11 @@ components:
         - memberId
         - rating
         - createdAt
+
+    MealRatingList:
+      type: array
+      items:
+        $ref: "#/components/schemas/MealRating"
 
     UpsertMealRatingInput:
       type: object

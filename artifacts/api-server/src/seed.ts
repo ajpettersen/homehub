@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
 import {
   familyMembersTable,
+  householdsTable,
   propertiesTable,
   maintenanceTasksTable,
   choresTable,
@@ -37,24 +38,36 @@ export async function seedIfEmpty() {
 
     logger.info("Seeding database with initial data...");
 
+    const [existingHousehold] = await db
+      .select({ id: householdsTable.id })
+      .from(householdsTable)
+      .orderBy(householdsTable.id)
+      .limit(1);
+    const [household] = existingHousehold
+      ? [existingHousehold]
+      : await db
+        .insert(householdsTable)
+        .values({ name: "HomeHub Household" })
+        .returning({ id: householdsTable.id });
+
     // Family members
     await db
       .insert(familyMembersTable)
       .values([
-        { name: "AJ", role: "parent", color: "#2D6A4F", avatarInitials: "AJ" },
-        { name: "Emily", role: "parent", color: "#E76F51", avatarInitials: "EM" },
-        { name: "Holden", role: "child", color: "#457B9D", avatarInitials: "HO" },
-        { name: "Brody", role: "child", color: "#E9C46A", avatarInitials: "BR" },
-        { name: "Daphne", role: "child", color: "#A8DADC", avatarInitials: "DA" },
-        { name: "Willa", role: "pet", color: "#BC6C25", avatarInitials: "WI" },
+        { householdId: household.id, name: "AJ", role: "parent", color: "#2D6A4F", avatarInitials: "AJ" },
+        { householdId: household.id, name: "Emily", role: "parent", color: "#E76F51", avatarInitials: "EM" },
+        { householdId: household.id, name: "Holden", role: "child", color: "#457B9D", avatarInitials: "HO" },
+        { householdId: household.id, name: "Brody", role: "child", color: "#E9C46A", avatarInitials: "BR" },
+        { householdId: household.id, name: "Daphne", role: "child", color: "#A8DADC", avatarInitials: "DA" },
+        { householdId: household.id, name: "Willa", role: "pet", color: "#BC6C25", avatarInitials: "WI" },
       ]);
 
     // Properties
     await db
       .insert(propertiesTable)
       .values([
-        { name: "Main House", type: "house", icon: "home" },
-        { name: "Cabin", type: "cabin", icon: "triangle" },
+        { householdId: household.id, name: "Main House", type: "house", icon: "home" },
+        { householdId: household.id, name: "Cabin", type: "cabin", icon: "triangle" },
       ]);
 
     const today = new Date();
@@ -154,9 +167,9 @@ export async function seedIfEmpty() {
 
     // To-do lists
     await db.insert(todoListsTable).values([
-      { name: "Family To-Do", assigneeId: null, propertyId: null },
-      { name: "House Projects", assigneeId: null, propertyId: house.id },
-      { name: "Cabin Projects", assigneeId: null, propertyId: cabin.id },
+      { householdId: household.id, name: "Family To-Do", assigneeId: null, propertyId: null },
+      { householdId: household.id, name: "House Projects", assigneeId: null, propertyId: house.id },
+      { householdId: household.id, name: "Cabin Projects", assigneeId: null, propertyId: cabin.id },
     ]);
 
     logger.info("Database seeded successfully");
@@ -502,12 +515,6 @@ export async function seedCleanerIfEmpty() {
       .where(eq(familyMembersTable.name, "Cleaner"));
     if (existing.length) return;
 
-    // Create Cleaner family member
-    const [cleaner] = await db
-      .insert(familyMembersTable)
-      .values({ name: "Cleaner", role: "cleaner", color: "#9B89C4", avatarInitials: "CL" })
-      .returning();
-
     // Find Cabin property
     const cabins = await db
       .select()
@@ -515,6 +522,19 @@ export async function seedCleanerIfEmpty() {
       .where(eq(propertiesTable.name, "Cabin"));
     if (!cabins.length) return;
     const cabin = cabins[0];
+    if (!cabin.householdId) return;
+
+    // Create Cleaner family member
+    const [cleaner] = await db
+      .insert(familyMembersTable)
+      .values({
+        householdId: cabin.householdId,
+        name: "Cleaner",
+        role: "cleaner",
+        color: "#9B89C4",
+        avatarInitials: "CL",
+      })
+      .returning();
 
     const today = new Date();
     const addD = (d: Date, n: number) => {

@@ -5,7 +5,8 @@ import {
   familyMembersTable,
   propertiesTable,
 } from "@workspace/db";
-import { eq, and, isNull, lt, sql } from "drizzle-orm";
+import { eq, and, inArray, lt } from "drizzle-orm";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
@@ -39,9 +40,64 @@ function formatChore(
   };
 }
 
+/**
+ * Validates the optional assigneeId from a request body. Returns:
+ *  - { ok: true, value: number | null } when the assignee is null/absent or a
+ *    family member belonging to the authorized household.
+ *  - { ok: false, status } when the id is malformed (400) or references a member
+ *    outside the household (403).
+ */
+async function resolveAssigneeId(
+  rawAssigneeId: unknown,
+  householdId: number,
+): Promise<
+  | { ok: true; value: number | null }
+  | { ok: false; status: 400 | 403 }
+> {
+  if (rawAssigneeId === undefined || rawAssigneeId === null || rawAssigneeId === "") {
+    return { ok: true, value: null };
+  }
+  const assigneeId = Number(rawAssigneeId);
+  if (!Number.isInteger(assigneeId)) {
+    return { ok: false, status: 400 };
+  }
+  const [member] = await db
+    .select({ id: familyMembersTable.id })
+    .from(familyMembersTable)
+    .where(and(
+      eq(familyMembersTable.id, assigneeId),
+      eq(familyMembersTable.householdId, householdId),
+    ))
+    .limit(1);
+  if (!member) {
+    return { ok: false, status: 403 };
+  }
+  return { ok: true, value: assigneeId };
+}
+
 router.get("/chores", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+    if (scope.propertyIds.length === 0) {
+      res.json([]);
+      return;
+    }
+
     const { assigneeId, propertyId } = req.query;
+
+    let scopedPropertyIds = scope.propertyIds;
+    if (propertyId !== undefined) {
+      const requested = Number(propertyId);
+      if (!Number.isInteger(requested)) {
+        res.status(400).json({ error: "Invalid propertyId" });
+        return;
+      }
+      if (!scope.propertyIds.includes(requested)) {
+        res.status(403).json({ error: "Unauthorized property" });
+        return;
+      }
+      scopedPropertyIds = [requested];
+    }
 
     const rows = await db
       .select({
@@ -53,17 +109,13 @@ router.get("/chores", async (req, res) => {
       .from(choresTable)
       .leftJoin(familyMembersTable, eq(choresTable.assigneeId, familyMembersTable.id))
       .leftJoin(propertiesTable, eq(choresTable.propertyId, propertiesTable.id))
+      .where(inArray(choresTable.propertyId, scopedPropertyIds))
       .orderBy(choresTable.dueDate, choresTable.id);
 
     let filtered = rows;
     if (assigneeId) {
       filtered = filtered.filter(
         (r) => String(r.chore.assigneeId) === String(assigneeId),
-      );
-    }
-    if (propertyId) {
-      filtered = filtered.filter(
-        (r) => String(r.chore.propertyId) === String(propertyId),
       );
     }
 
@@ -95,6 +147,7 @@ router.get("/chores", async (req, res) => {
 
 router.post("/chores", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const { title, assigneeId, propertyId, frequency, dueDate, points } = req.body;
 
     if (!title || !propertyId || !frequency) {
@@ -102,12 +155,30 @@ router.post("/chores", async (req, res) => {
       return;
     }
 
+    const propertyIdNum = Number(propertyId);
+    if (!Number.isInteger(propertyIdNum)) {
+      res.status(400).json({ error: "Invalid propertyId" });
+      return;
+    }
+    if (!scope.propertyIds.includes(propertyIdNum)) {
+      res.status(403).json({ error: "Unauthorized property" });
+      return;
+    }
+
+    const assignee = await resolveAssigneeId(assigneeId, scope.householdId);
+    if (!assignee.ok) {
+      res.status(assignee.status).json({
+        error: assignee.status === 400 ? "Invalid assigneeId" : "Unauthorized assignee",
+      });
+      return;
+    }
+
     const [chore] = await db
       .insert(choresTable)
       .values({
         title,
-        assigneeId: assigneeId ? Number(assigneeId) : null,
-        propertyId: Number(propertyId),
+        assigneeId: assignee.value,
+        propertyId: propertyIdNum,
         frequency,
         dueDate: dueDate ?? null,
         points: points ?? 10,
@@ -138,20 +209,71 @@ router.post("/chores", async (req, res) => {
 
 router.put("/chores/:id", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { title, assigneeId, propertyId, frequency, dueDate, points } = req.body;
+
+    // Ensure the target chore exists within the authorized properties.
+    const [existing] = await db
+      .select({ id: choresTable.id })
+      .from(choresTable)
+      .where(and(
+        eq(choresTable.id, id),
+        inArray(choresTable.propertyId, scope.propertyIds),
+      ))
+      .limit(1);
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    let propertyIdNum: number | undefined;
+    if (propertyId !== undefined) {
+      propertyIdNum = Number(propertyId);
+      if (!Number.isInteger(propertyIdNum)) {
+        res.status(400).json({ error: "Invalid propertyId" });
+        return;
+      }
+      if (!scope.propertyIds.includes(propertyIdNum)) {
+        res.status(403).json({ error: "Unauthorized property" });
+        return;
+      }
+    }
+
+    let resolvedAssigneeId: number | null | undefined;
+    if (assigneeId !== undefined) {
+      const assignee = await resolveAssigneeId(assigneeId, scope.householdId);
+      if (!assignee.ok) {
+        res.status(assignee.status).json({
+          error: assignee.status === 400 ? "Invalid assigneeId" : "Unauthorized assignee",
+        });
+        return;
+      }
+      resolvedAssigneeId = assignee.value;
+    }
 
     await db
       .update(choresTable)
       .set({
         ...(title !== undefined && { title }),
-        ...(assigneeId !== undefined && { assigneeId: assigneeId ? Number(assigneeId) : null }),
-        ...(propertyId !== undefined && { propertyId: Number(propertyId) }),
+        ...(assigneeId !== undefined && { assigneeId: resolvedAssigneeId }),
+        ...(propertyIdNum !== undefined && { propertyId: propertyIdNum }),
         ...(frequency !== undefined && { frequency }),
         ...(dueDate !== undefined && { dueDate: dueDate ?? null }),
         ...(points !== undefined && { points }),
       })
-      .where(eq(choresTable.id, id));
+      .where(and(
+        eq(choresTable.id, id),
+        inArray(choresTable.propertyId, scope.propertyIds),
+      ));
 
     const rows = await db
       .select({
@@ -180,11 +302,20 @@ router.put("/chores/:id", async (req, res) => {
 // Advance all overdue (incomplete) chore due dates to today or later
 router.post("/chores/snooze-overdue", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+    if (scope.propertyIds.length === 0) {
+      res.json({ updated: 0 });
+      return;
+    }
+
     const today = new Date().toISOString().split("T")[0];
     const stale = await db
       .select()
       .from(choresTable)
-      .where(lt(choresTable.dueDate, today));
+      .where(and(
+        lt(choresTable.dueDate, today),
+        inArray(choresTable.propertyId, scope.propertyIds),
+      ));
 
     const overdue = stale.filter((c) => !c.completedAt);
     if (!overdue.length) {
@@ -210,7 +341,10 @@ router.post("/chores/snooze-overdue", async (req, res) => {
       await db
         .update(choresTable)
         .set({ dueDate: fixed })
-        .where(eq(choresTable.id, chore.id));
+        .where(and(
+          eq(choresTable.id, chore.id),
+          inArray(choresTable.propertyId, scope.propertyIds),
+        ));
     }
 
     res.json({ updated: overdue.length });
@@ -222,7 +356,29 @@ router.post("/chores/snooze-overdue", async (req, res) => {
 
 router.delete("/chores/:id", async (req, res) => {
   try {
-    await db.delete(choresTable).where(eq(choresTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const deleted = await db
+      .delete(choresTable)
+      .where(and(
+        eq(choresTable.id, id),
+        inArray(choresTable.propertyId, scope.propertyIds),
+      ))
+      .returning({ id: choresTable.id });
+
+    if (deleted.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete chore");
@@ -232,13 +388,31 @@ router.delete("/chores/:id", async (req, res) => {
 
 router.post("/chores/:id/complete", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (scope.propertyIds.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { completedBy, note } = req.body;
 
-    await db
+    const updated = await db
       .update(choresTable)
       .set({ completedAt: new Date(), completedBy: completedBy ?? "Family", completionNote: note ?? null })
-      .where(eq(choresTable.id, id));
+      .where(and(
+        eq(choresTable.id, id),
+        inArray(choresTable.propertyId, scope.propertyIds),
+      ))
+      .returning({ id: choresTable.id });
+
+    if (updated.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
 
     const rows = await db
       .select({

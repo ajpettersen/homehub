@@ -12,7 +12,9 @@ import {
   useGetMaintenanceTasks,
   useCreateMaintenanceTask,
   useCompleteMaintenanceTask,
+  useDeleteMaintenanceTask,
   useGetFamilyMembers,
+  getGetDashboardQueryKey,
   getGetMaintenanceTasksQueryKey,
   MaintenanceTask,
   MaintenanceTaskCategory,
@@ -42,13 +44,17 @@ function UrgencyBadge({ task, colors }: { task: MaintenanceTask; colors: any }) 
 function TaskCard({
   task,
   onMarkDone,
+  onDelete,
   colors,
   isPending,
+  isDeleting,
 }: {
   task: MaintenanceTask;
   onMarkDone: (task: MaintenanceTask) => void;
+  onDelete: (task: MaintenanceTask) => void;
   colors: any;
   isPending: boolean;
+  isDeleting: boolean;
 }) {
   const lastDoneText = task.lastCompletedAt
     ? `Done ${format(new Date(task.lastCompletedAt), 'MMM d')}${task.lastCompletedBy ? ` by ${task.lastCompletedBy}` : ''}`
@@ -77,24 +83,48 @@ function TaskCard({
           <Text style={[styles.taskMetaText, { color: colors.mutedForeground }]}>{lastDoneText}</Text>
         </View>
       </View>
-      <Pressable
-        style={({ pressed }) => [
-          styles.doneBtn,
-          { backgroundColor: task.isOverdue ? colors.danger : colors.primary },
-          (pressed || isPending) && { opacity: 0.7 },
-        ]}
-        onPress={() => onMarkDone(task)}
-        disabled={isPending}
-      >
-        {isPending ? (
-          <ActivityIndicator size="small" color="#fff" />
-        ) : (
-          <>
-            <Icon name="check" iosName="checkmark" size={15} color="#fff" />
-            <Text style={styles.doneBtnText}>Mark Done</Text>
-          </>
-        )}
-      </Pressable>
+      <View style={styles.taskActions}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.doneBtn,
+            { backgroundColor: task.isOverdue ? colors.danger : colors.primary },
+            (pressed || isPending) && { opacity: 0.7 },
+          ]}
+          onPress={() => onMarkDone(task)}
+          disabled={isPending || isDeleting}
+        >
+          {isPending ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Icon name="check" iosName="checkmark" size={15} color="#fff" />
+              <Text style={styles.doneBtnText}>Mark Done</Text>
+            </>
+          )}
+        </Pressable>
+        <Pressable
+          testID={`maintenance-delete-${task.id}`}
+          accessibilityLabel={`Delete ${task.title}`}
+          accessibilityHint="Permanently removes this maintenance task"
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.deleteBtn,
+            { borderColor: colors.danger },
+            (pressed || isDeleting) && { opacity: 0.6 },
+          ]}
+          onPress={() => onDelete(task)}
+          disabled={isPending || isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color={colors.danger} />
+          ) : (
+            <>
+              <Icon name="trash-2" iosName="trash" size={16} color={colors.danger} />
+              <Text style={[styles.deleteBtnText, { color: colors.danger }]}>Delete</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -103,15 +133,19 @@ function TaskSection({
   title,
   tasks,
   onMarkDone,
+  onDelete,
   colors,
   pendingId,
+  deletingId,
   emptyText,
 }: {
   title: string;
   tasks: MaintenanceTask[];
   onMarkDone: (task: MaintenanceTask) => void;
+  onDelete: (task: MaintenanceTask) => void;
   colors: any;
   pendingId: string | null;
+  deletingId: string | null;
   emptyText?: string;
 }) {
   const overdue = tasks.filter((t) => t.isOverdue);
@@ -139,7 +173,7 @@ function TaskSection({
         <View style={styles.subSection}>
           <Text style={[styles.subSectionLabel, { color: colors.danger }]}>Needs attention</Text>
           {overdue.map((t) => (
-            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} colors={colors} isPending={pendingId === t.id} />
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} />
           ))}
         </View>
       )}
@@ -147,7 +181,7 @@ function TaskSection({
         <View style={styles.subSection}>
           <Text style={[styles.subSectionLabel, { color: '#B45309' }]}>Due soon</Text>
           {dueSoon.map((t) => (
-            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} colors={colors} isPending={pendingId === t.id} />
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} />
           ))}
         </View>
       )}
@@ -155,7 +189,7 @@ function TaskSection({
         <View style={styles.subSection}>
           <Text style={[styles.subSectionLabel, { color: colors.mutedForeground }]}>Upcoming</Text>
           {upcoming.map((t) => (
-            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} colors={colors} isPending={pendingId === t.id} />
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} />
           ))}
         </View>
       )}
@@ -177,9 +211,12 @@ export default function MaintenanceScreen() {
 
   const completeTask = useCompleteMaintenanceTask();
   const createTask = useCreateMaintenanceTask();
+  const deleteTask = useDeleteMaintenanceTask();
 
   const [refreshing, setRefreshing] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<MaintenanceTask | null>(null);
 
   // "Who did it?" sheet
   const [whoSheet, setWhoSheet] = useState<{ task: MaintenanceTask } | null>(null);
@@ -214,7 +251,29 @@ export default function MaintenanceScreen() {
         onSettled: () => {
           setPendingId(null);
           queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
-          queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] });
+          queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        },
+      },
+    );
+  };
+
+  const handleDelete = (task: MaintenanceTask) => {
+    setDeleteCandidate(task);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteCandidate) return;
+    const task = deleteCandidate;
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setDeleteCandidate(null);
+    setDeletingId(task.id);
+    deleteTask.mutate(
+      { id: task.id },
+      {
+        onSettled: () => {
+          setDeletingId(null);
+          queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
         },
       },
     );
@@ -296,8 +355,10 @@ export default function MaintenanceScreen() {
             title="On-Site Tasks"
             tasks={tasks ?? []}
             onMarkDone={handleMarkDone}
+            onDelete={handleDelete}
             colors={colors}
             pendingId={pendingId}
+            deletingId={deletingId}
             emptyText="No cabin tasks yet. Tap + to add one."
           />
         ) : (
@@ -306,16 +367,20 @@ export default function MaintenanceScreen() {
               title="Your Tasks"
               tasks={yourTasks}
               onMarkDone={handleMarkDone}
+              onDelete={handleDelete}
               colors={colors}
               pendingId={pendingId}
+              deletingId={deletingId}
               emptyText="No personal tasks for this property."
             />
             <TaskSection
               title="Cleaner's Checklist"
               tasks={cleanerTasks}
               onMarkDone={handleMarkDone}
+              onDelete={handleDelete}
               colors={colors}
               pendingId={pendingId}
+              deletingId={deletingId}
               emptyText="No cleaner tasks yet. Add one with the + button."
             />
           </>
@@ -357,6 +422,60 @@ export default function MaintenanceScreen() {
             >
               <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete confirmation sheet */}
+      <Modal
+        visible={!!deleteCandidate}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setDeleteCandidate(null)}
+      >
+        <View style={styles.modalOverlay} accessibilityViewIsModal>
+          <View style={[styles.modalContent, { backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.modalHandle} />
+            <View style={[styles.deleteConfirmIcon, { backgroundColor: colors.secondary }]}>
+              <Icon name="trash-2" iosName="trash" size={24} color={colors.danger} />
+            </View>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              Delete {deleteCandidate?.scheduleType === 'recurring' ? 'recurring ' : ''}task?
+            </Text>
+            <Text style={[styles.deleteConfirmMessage, { color: colors.mutedForeground }]}>
+              {deleteCandidate?.scheduleType === 'recurring'
+                ? 'This will permanently stop this recurring task from appearing for this property.'
+                : 'This will permanently remove this one-time task from this property.'}
+            </Text>
+            <View style={[styles.deleteTaskPreview, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.deleteTaskPreviewText, { color: colors.foreground }]} numberOfLines={2}>
+                {deleteCandidate?.title}
+              </Text>
+            </View>
+            <View style={styles.deleteConfirmActions}>
+              <Pressable
+                testID="cancel-maintenance-delete"
+                style={({ pressed }) => [
+                  styles.deleteConfirmButton,
+                  { borderColor: colors.border },
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={() => setDeleteCandidate(null)}
+              >
+                <Text style={[styles.cancelBtnText, { color: colors.foreground }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                testID="confirm-maintenance-delete"
+                style={({ pressed }) => [
+                  styles.deleteConfirmButton,
+                  { backgroundColor: colors.danger, borderColor: colors.danger },
+                  pressed && { opacity: 0.8 },
+                ]}
+                onPress={handleConfirmDelete}
+              >
+                <Text style={styles.deleteConfirmButtonText}>Delete task</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -577,17 +696,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
   },
+  taskActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
   doneBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
     borderRadius: 12,
-    marginTop: 4,
+    minHeight: 48,
   },
   doneBtnText: {
     color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  deleteBtn: {
+    minHeight: 48,
+    minWidth: 82,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  deleteBtnText: {
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },
@@ -685,6 +824,46 @@ const styles = StyleSheet.create({
   cancelBtnText: {
     fontSize: 16,
     fontFamily: 'Inter_500Medium',
+  },
+  deleteConfirmIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteConfirmMessage: {
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 21,
+  },
+  deleteTaskPreview: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  deleteTaskPreviewText: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  deleteConfirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    minHeight: 52,
+    borderWidth: 1,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteConfirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
   },
   formGroup: { gap: 8 },
   formRow: { flexDirection: 'row', gap: 12 },

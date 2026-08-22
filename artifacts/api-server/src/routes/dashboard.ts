@@ -4,10 +4,12 @@ import {
   choresTable,
   maintenanceTasksTable,
   todoItemsTable,
+  todoListsTable,
   mealPlansTable,
   propertiesTable,
 } from "@workspace/db";
-import { eq, and, lt, lte, isNull, ne, or, sql } from "drizzle-orm";
+import { eq, and, lt, lte, isNull, ne, or, sql, inArray } from "drizzle-orm";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
@@ -20,6 +22,9 @@ function getWeekStart(date: Date): string {
 
 router.get("/dashboard", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+    const propertyIds = scope.propertyIds;
+
     const today = new Date();
     const todayStr = today.toISOString().split("T")[0];
     const sevenDays = new Date(today);
@@ -28,12 +33,32 @@ router.get("/dashboard", async (req, res) => {
     const weekStart = getWeekStart(today);
     const todayDow = today.getDay();
 
+    // If the authorized scope has no properties, return empty/zero aggregates
+    // without generating an invalid `IN ()` SQL clause.
+    if (propertyIds.length === 0) {
+      res.json({
+        choresToday: 0,
+        choresOverdue: 0,
+        maintenanceDueSoon: 0,
+        maintenanceOverdue: 0,
+        activeTodoItems: 0,
+        todaysMeals: [],
+        upcomingMaintenance: [],
+      });
+      return;
+    }
+
+    const choreScope = inArray(choresTable.propertyId, propertyIds);
+    const maintenanceScope = inArray(maintenanceTasksTable.propertyId, propertyIds);
+    const mealScope = inArray(mealPlansTable.propertyId, propertyIds);
+
     // Chores due today (dueDate = today and not completed)
     const [{ choresToday }] = await db
       .select({ choresToday: sql<number>`count(*)::int` })
       .from(choresTable)
       .where(
         and(
+          choreScope,
           eq(choresTable.dueDate, todayStr),
           isNull(choresTable.completedAt),
         ),
@@ -45,6 +70,7 @@ router.get("/dashboard", async (req, res) => {
       .from(choresTable)
       .where(
         and(
+          choreScope,
           lt(choresTable.dueDate, todayStr),
           isNull(choresTable.completedAt),
         ),
@@ -59,7 +85,7 @@ router.get("/dashboard", async (req, res) => {
     const [{ maintenanceOverdue }] = await db
       .select({ maintenanceOverdue: sql<number>`count(*)::int` })
       .from(maintenanceTasksTable)
-      .where(and(lt(maintenanceTasksTable.nextDueDate, todayStr), activeMaintenance));
+      .where(and(maintenanceScope, lt(maintenanceTasksTable.nextDueDate, todayStr), activeMaintenance));
 
     // Maintenance due within 7 days
     const [{ maintenanceDueSoon }] = await db
@@ -67,17 +93,24 @@ router.get("/dashboard", async (req, res) => {
       .from(maintenanceTasksTable)
       .where(
         and(
+          maintenanceScope,
           lte(maintenanceTasksTable.nextDueDate, sevenDaysStr),
           sql`${maintenanceTasksTable.nextDueDate} >= ${todayStr}`,
           activeMaintenance,
         ),
       );
 
-    // Active todo items (incomplete)
+    // Active todo items (incomplete), scoped to the household via todo_lists
     const [{ activeTodoItems }] = await db
       .select({ activeTodoItems: sql<number>`count(*)::int` })
       .from(todoItemsTable)
-      .where(eq(todoItemsTable.completed, false));
+      .innerJoin(todoListsTable, eq(todoItemsTable.listId, todoListsTable.id))
+      .where(
+        and(
+          eq(todoListsTable.householdId, scope.householdId),
+          eq(todoItemsTable.completed, false),
+        ),
+      );
 
     // Today's meals
     const todaysMeals = await db
@@ -85,6 +118,7 @@ router.get("/dashboard", async (req, res) => {
       .from(mealPlansTable)
       .where(
         and(
+          mealScope,
           eq(mealPlansTable.weekStart, weekStart),
           eq(mealPlansTable.dayOfWeek, todayDow),
         ),
@@ -100,7 +134,7 @@ router.get("/dashboard", async (req, res) => {
       .select({ task: maintenanceTasksTable, propertyName: propertiesTable.name })
       .from(maintenanceTasksTable)
       .leftJoin(propertiesTable, eq(maintenanceTasksTable.propertyId, propertiesTable.id))
-      .where(and(lte(maintenanceTasksTable.nextDueDate, thirtyDaysStr), activeMaintenance))
+      .where(and(maintenanceScope, lte(maintenanceTasksTable.nextDueDate, thirtyDaysStr), activeMaintenance))
       .orderBy(maintenanceTasksTable.nextDueDate)
       .limit(8);
 

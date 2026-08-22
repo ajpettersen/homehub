@@ -1,11 +1,31 @@
 import { Router } from "express";
+import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { familyMembersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { getPropertyAuthorizationScope, type PropertyAuthorizationScope } from "../lib/propertyAuthorization";
 
 const router = Router();
 
 const VALID_ROLES = ["parent", "child", "pet"] as const;
+
+async function requireHouseholdScope(
+  req: any,
+  res: any,
+  familyAdminOnly = false,
+): Promise<PropertyAuthorizationScope | null> {
+  const clerkId = getAuth(req).userId;
+  if (!clerkId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+  const scope = await getPropertyAuthorizationScope(clerkId);
+  if (!scope || (familyAdminOnly && scope.role !== "family")) {
+    res.status(403).json({ error: familyAdminOnly ? "Family administrator access required" : "Household access required" });
+    return null;
+  }
+  return scope;
+}
 
 function memberToJson(m: any) {
   return {
@@ -19,7 +39,13 @@ function memberToJson(m: any) {
 
 router.get("/family-members", async (req, res) => {
   try {
-    const members = await db.select().from(familyMembersTable).orderBy(familyMembersTable.id);
+    const scope = await requireHouseholdScope(req, res);
+    if (!scope) return;
+    const members = await db
+      .select()
+      .from(familyMembersTable)
+      .where(eq(familyMembersTable.householdId, scope.householdId))
+      .orderBy(familyMembersTable.id);
     res.json(members.map(memberToJson));
   } catch (err) {
     req.log.error({ err }, "Failed to get family members");
@@ -29,6 +55,8 @@ router.get("/family-members", async (req, res) => {
 
 router.post("/family-members", async (req, res) => {
   try {
+    const scope = await requireHouseholdScope(req, res, true);
+    if (!scope) return;
     const { name, role, color, photoUrl } = req.body ?? {};
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" });
@@ -46,6 +74,7 @@ router.post("/family-members", async (req, res) => {
     const [member] = await db
       .insert(familyMembersTable)
       .values({
+        householdId: scope.householdId,
         name: name.trim(),
         role,
         color,
@@ -63,6 +92,8 @@ router.post("/family-members", async (req, res) => {
 
 router.put("/family-members/:id", async (req, res) => {
   try {
+    const scope = await requireHouseholdScope(req, res, true);
+    if (!scope) return;
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -87,7 +118,10 @@ router.put("/family-members/:id", async (req, res) => {
     const [member] = await db
       .update(familyMembersTable)
       .set(updates)
-      .where(eq(familyMembersTable.id, id))
+      .where(and(
+        eq(familyMembersTable.id, id),
+        eq(familyMembersTable.householdId, scope.householdId),
+      ))
       .returning();
 
     if (!member) {
@@ -103,12 +137,17 @@ router.put("/family-members/:id", async (req, res) => {
 
 router.delete("/family-members/:id", async (req, res) => {
   try {
+    const scope = await requireHouseholdScope(req, res, true);
+    if (!scope) return;
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    await db.delete(familyMembersTable).where(eq(familyMembersTable.id, id));
+    await db.delete(familyMembersTable).where(and(
+      eq(familyMembersTable.id, id),
+      eq(familyMembersTable.householdId, scope.householdId),
+    ));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete family member");

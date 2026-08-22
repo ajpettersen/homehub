@@ -14,10 +14,13 @@ import pushTokensRouter from "./pushTokens";
 import meRouter from "./me";
 import recipesRouter from "./recipes";
 import peopleRouter from "./people";
+import { requireApprovedHousehold } from "../middlewares/requireApprovedHousehold";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(meRouter);
+router.use(requireApprovedHousehold);
 router.use(dashboardRouter);
 router.use(familyRouter);
 router.use(propertiesRouter);
@@ -29,7 +32,6 @@ router.use(maintenanceRouter);
 router.use(aiRouter);
 router.use(workoutsRouter);
 router.use(pushTokensRouter);
-router.use(meRouter);
 router.use(recipesRouter);
 router.use(peopleRouter);
 

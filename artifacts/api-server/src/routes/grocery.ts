@@ -1,12 +1,19 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { groceryListsTable, groceryItemsTable, propertiesTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, inArray } from "drizzle-orm";
+import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
 router.get("/grocery-lists", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+    if (scope.propertyIds.length === 0) {
+      res.json([]);
+      return;
+    }
+
     const lists = await db
       .select({
         list: groceryListsTable,
@@ -17,6 +24,7 @@ router.get("/grocery-lists", async (req, res) => {
       .from(groceryListsTable)
       .leftJoin(propertiesTable, eq(groceryListsTable.propertyId, propertiesTable.id))
       .leftJoin(groceryItemsTable, eq(groceryItemsTable.listId, groceryListsTable.id))
+      .where(inArray(groceryListsTable.propertyId, scope.propertyIds))
       .groupBy(groceryListsTable.id, propertiesTable.name)
       .orderBy(groceryListsTable.id);
 
@@ -39,15 +47,26 @@ router.get("/grocery-lists", async (req, res) => {
 
 router.post("/grocery-lists", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const { name, propertyId } = req.body;
     if (!name || !propertyId) {
       res.status(400).json({ error: "name and propertyId required" });
       return;
     }
 
+    const propertyIdNum = Number(propertyId);
+    if (!Number.isInteger(propertyIdNum)) {
+      res.status(400).json({ error: "propertyId must be a valid id" });
+      return;
+    }
+    if (!scope.propertyIds.includes(propertyIdNum)) {
+      res.status(403).json({ error: "Property not accessible" });
+      return;
+    }
+
     const [list] = await db
       .insert(groceryListsTable)
-      .values({ name, propertyId: Number(propertyId) })
+      .values({ name, propertyId: propertyIdNum })
       .returning();
 
     const [prop] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, list.propertyId));
@@ -69,7 +88,24 @@ router.post("/grocery-lists", async (req, res) => {
 
 router.delete("/grocery-lists/:id", async (req, res) => {
   try {
-    await db.delete(groceryListsTable).where(eq(groceryListsTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const listId = Number(req.params.id);
+    if (!Number.isInteger(listId)) {
+      res.status(400).json({ error: "Invalid list id" });
+      return;
+    }
+
+    const [list] = await db
+      .select()
+      .from(groceryListsTable)
+      .where(eq(groceryListsTable.id, listId))
+      .limit(1);
+    if (!list || !scope.propertyIds.includes(list.propertyId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    await db.delete(groceryListsTable).where(eq(groceryListsTable.id, listId));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete grocery list");
@@ -79,10 +115,27 @@ router.delete("/grocery-lists/:id", async (req, res) => {
 
 router.get("/grocery-lists/:id/items", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
+    const listId = Number(req.params.id);
+    if (!Number.isInteger(listId)) {
+      res.status(400).json({ error: "Invalid list id" });
+      return;
+    }
+
+    const [list] = await db
+      .select()
+      .from(groceryListsTable)
+      .where(eq(groceryListsTable.id, listId))
+      .limit(1);
+    if (!list || !scope.propertyIds.includes(list.propertyId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     const items = await db
       .select()
       .from(groceryItemsTable)
-      .where(eq(groceryItemsTable.listId, Number(req.params.id)))
+      .where(eq(groceryItemsTable.listId, listId))
       .orderBy(groceryItemsTable.createdAt);
 
     res.json(
@@ -105,10 +158,25 @@ router.get("/grocery-lists/:id/items", async (req, res) => {
 
 router.post("/grocery-lists/:id/items", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const listId = Number(req.params.id);
+    if (!Number.isInteger(listId)) {
+      res.status(400).json({ error: "Invalid list id" });
+      return;
+    }
     const { name, quantity, category, addedBy } = req.body;
     if (!name) {
       res.status(400).json({ error: "name required" });
+      return;
+    }
+
+    const [list] = await db
+      .select()
+      .from(groceryListsTable)
+      .where(eq(groceryListsTable.id, listId))
+      .limit(1);
+    if (!list || !scope.propertyIds.includes(list.propertyId)) {
+      res.status(404).json({ error: "Not found" });
       return;
     }
 
@@ -135,8 +203,24 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
 
 router.put("/grocery-items/:id", async (req, res) => {
   try {
+    const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid item id" });
+      return;
+    }
     const { name, quantity, category, checked } = req.body;
+
+    const [existing] = await db
+      .select({ item: groceryItemsTable, propertyId: groceryListsTable.propertyId })
+      .from(groceryItemsTable)
+      .innerJoin(groceryListsTable, eq(groceryItemsTable.listId, groceryListsTable.id))
+      .where(eq(groceryItemsTable.id, id))
+      .limit(1);
+    if (!existing || !scope.propertyIds.includes(existing.propertyId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
 
     await db
       .update(groceryItemsTable)
@@ -172,7 +256,25 @@ router.put("/grocery-items/:id", async (req, res) => {
 
 router.delete("/grocery-items/:id", async (req, res) => {
   try {
-    await db.delete(groceryItemsTable).where(eq(groceryItemsTable.id, Number(req.params.id)));
+    const scope = getApprovedHouseholdScope(res);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid item id" });
+      return;
+    }
+
+    const [existing] = await db
+      .select({ item: groceryItemsTable, propertyId: groceryListsTable.propertyId })
+      .from(groceryItemsTable)
+      .innerJoin(groceryListsTable, eq(groceryItemsTable.listId, groceryListsTable.id))
+      .where(eq(groceryItemsTable.id, id))
+      .limit(1);
+    if (!existing || !scope.propertyIds.includes(existing.propertyId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    await db.delete(groceryItemsTable).where(eq(groceryItemsTable.id, id));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete grocery item");

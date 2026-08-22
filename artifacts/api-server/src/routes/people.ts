@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { contractorsTable, peopleTable } from "@workspace/db/schema";
 import { asc, desc, eq, inArray } from "drizzle-orm";
@@ -86,7 +87,7 @@ function hasProvidedValue(value: unknown): boolean {
 }
 
 async function getAuthorizedScope(req: any, res: any): Promise<number[] | null> {
-  const clerkId = req.auth?.userId as string | undefined;
+  const clerkId = getAuth(req).userId;
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
