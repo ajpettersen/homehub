@@ -40,8 +40,22 @@ function getCat(key: string) {
 
 interface MemberFormState { name: string; role: Role; color: string; photoUrl: string; }
 interface PropertyFormState { name: string; address: string; }
-interface TaskFormState { title: string; category: string; frequencyDays: number; description: string; }
-const defaultTaskForm = (): TaskFormState => ({ title: "", category: "other", frequencyDays: 30, description: "" });
+interface TaskFormState {
+  title: string;
+  category: string;
+  scheduleType: "recurring" | "one-time";
+  frequencyDays: number;
+  dueDate: string;
+  description: string;
+}
+const defaultTaskForm = (): TaskFormState => ({
+  title: "",
+  category: "other",
+  scheduleType: "recurring",
+  frequencyDays: 30,
+  dueDate: new Date().toISOString().split("T")[0],
+  description: "",
+});
 
 // ── Accordion section wrapper ─────────────────────────────────────────────────
 function AccordionSection({
@@ -125,14 +139,52 @@ function TaskForm({ initial, onSave, onCancel, saving }: {
           </button>
         ))}
       </div>
+      <div>
+        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Schedule</label>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { value: "recurring", label: "Repeat" },
+            { value: "one-time", label: "One time" },
+          ].map(option => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => set("scheduleType", option.value as TaskFormState["scheduleType"])}
+              className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+                form.scheduleType === option.value
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:border-primary/40"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="flex items-center gap-2">
-        <Repeat className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs text-muted-foreground">Every</span>
-        <input type="number" min={1} max={3650} value={form.frequencyDays}
-          onChange={e => set("frequencyDays", Number(e.target.value))}
-          className="w-16 bg-background border border-border rounded-lg px-2 py-1 text-sm font-bold text-center focus:outline-none focus:border-primary"
-        />
-        <span className="text-xs text-muted-foreground">days</span>
+        {form.scheduleType === "recurring" ? (
+          <>
+            <Repeat className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs text-muted-foreground">Every</span>
+            <input type="number" min={1} max={3650} value={form.frequencyDays}
+              onChange={e => set("frequencyDays", Number(e.target.value))}
+              className="w-16 bg-background border border-border rounded-lg px-2 py-1 text-sm font-bold text-center focus:outline-none focus:border-primary"
+            />
+            <span className="text-xs text-muted-foreground">days</span>
+          </>
+        ) : (
+          <>
+            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs text-muted-foreground">Due</span>
+            <input
+              type="date"
+              required
+              value={form.dueDate}
+              onChange={e => set("dueDate", e.target.value)}
+              className="bg-background border border-border rounded-lg px-2 py-1 text-sm font-bold focus:outline-none focus:border-primary"
+            />
+          </>
+        )}
       </div>
       <textarea value={form.description} onChange={e => set("description", e.target.value)}
         placeholder="Notes (optional)…" rows={2}
@@ -169,17 +221,35 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey({ propertyId }) });
 
   const handleAdd = (data: TaskFormState) => {
-    // nextDueDate defaults to today; the server will recalculate from a startDate anchor if one is provided
-    const today = new Date().toISOString().split("T")[0];
     createTask.mutate(
-      { data: { title: data.title, category: data.category as CreateMaintenanceTaskInputCategory, frequencyDays: data.frequencyDays, description: data.description || undefined, propertyId, nextDueDate: today } },
+      {
+        data: {
+          title: data.title,
+          category: data.category as CreateMaintenanceTaskInputCategory,
+          scheduleType: data.scheduleType,
+          frequencyDays: data.scheduleType === "recurring" ? data.frequencyDays : undefined,
+          description: data.description || undefined,
+          propertyId,
+          nextDueDate: data.dueDate,
+        },
+      },
       { onSuccess: () => { invalidate(); setAdding(false); } }
     );
   };
 
   const handleEdit = (id: string, data: TaskFormState) => {
     updateTask.mutate(
-      { id, data: { title: data.title, category: data.category as UpdateMaintenanceTaskInputCategory, frequencyDays: data.frequencyDays, description: data.description || undefined } },
+      {
+        id,
+        data: {
+          title: data.title,
+          category: data.category as UpdateMaintenanceTaskInputCategory,
+          scheduleType: data.scheduleType,
+          frequencyDays: data.scheduleType === "recurring" ? data.frequencyDays : undefined,
+          nextDueDate: data.dueDate,
+          description: data.description || undefined,
+        },
+      },
       { onSuccess: () => { invalidate(); setEditingId(null); } }
     );
   };
@@ -205,7 +275,14 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           return (
             <TaskForm
               key={task.id}
-              initial={{ title: task.title, category: task.category, frequencyDays: task.frequencyDays, description: task.description ?? "" }}
+              initial={{
+                title: task.title,
+                category: task.category,
+                scheduleType: task.scheduleType ?? "recurring",
+                frequencyDays: task.frequencyDays ?? 30,
+                dueDate: task.nextDueDate,
+                description: task.description ?? "",
+              }}
               onSave={data => handleEdit(task.id, data)}
               onCancel={() => setEditingId(null)}
               saving={updateTask.isPending}
@@ -220,7 +297,11 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
             </div>
             <span className="text-sm font-medium flex-1 min-w-0 truncate">{task.title}</span>
             <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
-              <Repeat className="w-3 h-3" /> {task.frequencyDays}d
+              {task.scheduleType === "one-time" ? (
+                <><CalendarDays className="w-3 h-3" /> One time</>
+              ) : (
+                <><Repeat className="w-3 h-3" /> {task.frequencyDays}d</>
+              )}
             </span>
             <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
               <button onClick={() => setEditingId(task.id)}

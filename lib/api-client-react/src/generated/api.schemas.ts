@@ -132,6 +132,14 @@ export const MaintenanceTaskCategory = {
   cleaning: 'cleaning',
 } as const;
 
+export type MaintenanceTaskScheduleType = typeof MaintenanceTaskScheduleType[keyof typeof MaintenanceTaskScheduleType];
+
+
+export const MaintenanceTaskScheduleType = {
+  recurring: 'recurring',
+  'one-time': 'one-time',
+} as const;
+
 export interface MaintenanceTask {
   id: string;
   title: string;
@@ -139,7 +147,9 @@ export interface MaintenanceTask {
   propertyId: string;
   propertyName: string;
   category: MaintenanceTaskCategory;
-  frequencyDays: number;
+  frequencyDays: number | null;
+  scheduleType: MaintenanceTaskScheduleType;
+  isCompleted: boolean;
   isCleanerTask: boolean;
   startDate?: string | null;
   lastCompletedAt?: string | null;
@@ -496,12 +506,21 @@ export const CreateMaintenanceTaskInputCategory = {
   cleaning: 'cleaning',
 } as const;
 
+export type CreateMaintenanceTaskInputScheduleType = typeof CreateMaintenanceTaskInputScheduleType[keyof typeof CreateMaintenanceTaskInputScheduleType];
+
+
+export const CreateMaintenanceTaskInputScheduleType = {
+  recurring: 'recurring',
+  'one-time': 'one-time',
+} as const;
+
 export interface CreateMaintenanceTaskInput {
   title: string;
   description?: string | null;
   propertyId: string;
   category: CreateMaintenanceTaskInputCategory;
-  frequencyDays: number;
+  frequencyDays?: number | null;
+  scheduleType: CreateMaintenanceTaskInputScheduleType;
   isCleanerTask?: boolean;
   startDate?: string | null;
   nextDueDate: string;
@@ -520,12 +539,21 @@ export const UpdateMaintenanceTaskInputCategory = {
   cleaning: 'cleaning',
 } as const;
 
+export type UpdateMaintenanceTaskInputScheduleType = typeof UpdateMaintenanceTaskInputScheduleType[keyof typeof UpdateMaintenanceTaskInputScheduleType];
+
+
+export const UpdateMaintenanceTaskInputScheduleType = {
+  recurring: 'recurring',
+  'one-time': 'one-time',
+} as const;
+
 export interface UpdateMaintenanceTaskInput {
   title?: string;
   description?: string | null;
   category?: UpdateMaintenanceTaskInputCategory;
   isCleanerTask?: boolean;
-  frequencyDays?: number;
+  frequencyDays?: number | null;
+  scheduleType?: UpdateMaintenanceTaskInputScheduleType;
   startDate?: string | null;
   nextDueDate?: string;
 }

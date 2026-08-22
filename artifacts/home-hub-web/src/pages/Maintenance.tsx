@@ -76,7 +76,9 @@ function TaskCard({
           <p className="font-semibold text-sm text-foreground leading-snug">{task.title}</p>
           <div className="flex items-center gap-3 mt-1">
             {dueBadge}
-            <span className="text-xs text-muted-foreground">Every {task.frequencyDays}d</span>
+            <span className="text-xs text-muted-foreground">
+              {task.scheduleType === "one-time" ? "One-time task" : `Every ${task.frequencyDays}d`}
+            </span>
           </div>
         </div>
 
@@ -129,9 +131,11 @@ function AddTaskForm({
   const [title, setTitle] = useState("");
   const [propertyId, setPropertyId] = useState(defaultPropertyId ?? properties[0]?.id ?? "");
   const [category, setCategory] = useState("other");
+  const [scheduleType, setScheduleType] = useState<"recurring" | "one-time">("recurring");
   const [freqDays, setFreqDays] = useState("30");
   const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState("");
+  const [dueDate, setDueDate] = useState("");
 
   const handle = (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,9 +146,10 @@ function AddTaskForm({
       description: description || null,
       propertyId,
       category,
-      frequencyDays: parseInt(freqDays) || 30,
-      startDate: startDate || null,
-      nextDueDate: startDate || today,
+      scheduleType,
+      frequencyDays: scheduleType === "recurring" ? parseInt(freqDays) || 30 : undefined,
+      startDate: scheduleType === "recurring" ? startDate || null : null,
+      nextDueDate: scheduleType === "one-time" ? dueDate : startDate || today,
     });
   };
 
@@ -185,9 +190,35 @@ function AddTaskForm({
         </div>
       </div>
 
+      <div>
+        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Schedule</label>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { value: "recurring", label: "Repeat" },
+            { value: "one-time", label: "One time" },
+          ].map(option => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setScheduleType(option.value as "recurring" | "one-time")}
+              className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition-colors ${
+                scheduleType === option.value
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:border-primary/40"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Repeat every (days)</label>
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">
+            {scheduleType === "recurring" ? "Repeat every (days)" : "Due date"}
+          </label>
+          {scheduleType === "recurring" ? (
           <input
             type="number"
             min="1"
@@ -195,16 +226,27 @@ function AddTaskForm({
             onChange={e => setFreqDays(e.target.value)}
             className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
           />
+          ) : (
+            <input
+              type="date"
+              required
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
+            />
+          )}
         </div>
-        <div>
-          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Anchor date (optional)</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={e => setStartDate(e.target.value)}
-            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
-          />
-        </div>
+        {scheduleType === "recurring" && (
+          <div>
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Anchor date (optional)</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
+            />
+          </div>
+        )}
       </div>
 
       <div>

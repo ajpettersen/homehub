@@ -4022,7 +4022,7 @@ export const getCompleteMaintenanceTaskUrl = (id: string,) => {
 }
 
 /**
- * @summary Mark a maintenance task as done (resets next due date)
+ * @summary Mark a maintenance task as done (reschedules recurring tasks)
  */
 export const completeMaintenanceTask = async (id: string,
     completeMaintenanceTaskInput?: CompleteMaintenanceTaskInput, options?: RequestInit): Promise<MaintenanceTask> => {
@@ -4072,7 +4072,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CompleteMaintenanceTaskMutationError = ErrorType<unknown>
 
     /**
- * @summary Mark a maintenance task as done (resets next due date)
+ * @summary Mark a maintenance task as done (reschedules recurring tasks)
  */
 export const useCompleteMaintenanceTask = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMaintenanceTask>>, TError,{id: string;data?: BodyType<CompleteMaintenanceTaskInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

@@ -133,11 +133,41 @@ router.post("/ai/scan-pantry", async (req, res) => {
     }));
 
     const photoWord = imagesBase64.length === 1 ? "photo" : `${imagesBase64.length} photos`;
+    const memoriesCtx = await getMemoriesContext();
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
-      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
+      max_completion_tokens: 2048,
+      messages: [
+        {
+          role: "user",
+          content: [
+            ...imageContent,
+            {
+              type: "text",
+              text: `You are a helpful family meal planner. Look at ${photoWord === "1 photo" ? "this photo" : "these photos"} of a fridge or pantry and identify ALL the ingredients you can see across all images.
+
+Then suggest 4 family-friendly dinner ideas that use as many of these ingredients as possible. This is for a family with kids aged 5-10, so meals should be approachable.
+
+${mealHistory.length > 0 ? `Recent meals to avoid repeating: ${mealHistory.join(", ")}` : ""}
+${memoriesCtx}
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "ingredients": ["ingredient1", "ingredient2"],
+  "mealSuggestions": [
+    {
+      "name": "Meal Name",
+      "description": "One sentence description",
+      "usesIngredients": ["ingredient"],
+      "missingIngredients": ["thing you need to buy"]
+    }
+  ]
+}`,
+            },
+          ],
+        },
+      ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
@@ -247,8 +277,38 @@ router.post("/ai/suggest-week", async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
-      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
+      max_completion_tokens: 2048,
+      messages: [
+        {
+          role: "user",
+          content: `You are a family meal planner for AJ and Emily, who have 3 kids (Holden 10, Brody 8, Daphne 5).
+Plan a full week of meals (Monday–Sunday) covering breakfast, lunch, and dinner each day.
+
+${memoriesCtx}
+
+Goals:
+- Reduce food waste: reuse ingredients across multiple meals where sensible
+- Variety: don't repeat the same protein two days in a row
+- Practical: breakfasts and lunches should be quick; dinners can be more involved
+- Kid-friendly dinners that adults will also enjoy
+
+${mealHistory.length > 0 ? `Recent meals to avoid: ${mealHistory.slice(0, 20).join(", ")}` : ""}
+${preferenceLines.length > 0 ? `\n${preferenceLines.join("\n")}` : ""}
+
+Respond ONLY with valid JSON — no markdown, no extra text:
+{
+  "days": [
+    {
+      "dayName": "Monday",
+      "breakfast": "Scrambled eggs & toast",
+      "lunch": "Turkey sandwiches",
+      "dinner": "Sheet pan chicken thighs & roasted vegetables"
+    }
+  ]
+}
+Include exactly 7 items, Monday through Sunday.`,
+        },
+      ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
@@ -281,10 +341,25 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
       return res.status(422).json({ error: "Could not fetch that URL. Make sure it's a public recipe page." });
     }
 
+    const memoriesCtx = await getMemoriesContext();
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
       max_completion_tokens: 1024,
-      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
+      messages: [{
+        role: "user",
+        content: `Extract the recipe's name and a short description from this webpage text.
+${memoriesCtx}
+
+Webpage text:
+${pageText}
+
+Respond ONLY with valid JSON:
+{
+  "name": "Recipe name",
+  "description": "A concise one-sentence description"
+}
+If this is not a recipe page, respond with {"error":"This does not appear to be a recipe page."}.`,
+      }],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
@@ -294,7 +369,7 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
       return;
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as { items: Array<{ name: string; quantity: string; category: string }> };
+    const parsed = JSON.parse(jsonMatch[0]) as { name?: string; description?: string; error?: string };
     if (parsed.error) return res.status(422).json({ error: parsed.error });
 
     res.json(parsed);

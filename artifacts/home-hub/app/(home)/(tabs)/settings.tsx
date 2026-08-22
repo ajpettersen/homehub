@@ -348,7 +348,7 @@ function MaintenanceRow({
         <View style={styles.choreRowRight}>
           <View style={[styles.freqChip, { backgroundColor: colors.secondary }]}>
             <Text style={[styles.freqChipText, { color: colors.foreground }]}>
-              {freqLabel(task.frequencyDays)}
+              {task.scheduleType === 'one-time' ? 'One time' : freqLabel(task.frequencyDays ?? 0)}
             </Text>
           </View>
           {/* Cleaner badge — Main House only */}

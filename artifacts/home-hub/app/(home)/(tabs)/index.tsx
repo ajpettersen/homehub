@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, ScrollView, RefreshControl, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useGetDashboard, getGetDashboardQueryKey, getGetPropertiesQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -19,6 +20,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { selectedProperty } = useProperty();
 
   const { data: dashboard } = useGetDashboard();
@@ -61,42 +63,67 @@ export default function DashboardScreen() {
         {dashboard && (
           <>
             <View style={styles.summaryRow}>
-              <View style={[styles.summaryCard, { backgroundColor: colors.secondary }]}>
+              <Pressable
+                style={({ pressed }) => [styles.summaryCard, { backgroundColor: colors.secondary }, pressed && styles.pressed]}
+                onPress={() => router.push('/chores')}
+                accessibilityRole="button"
+                accessibilityLabel="View chores due today"
+              >
                 <Text style={[styles.summaryValue, { color: colors.primary }]}>{dashboard.choresToday}</Text>
                 <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Chores Today</Text>
-              </View>
-              <View style={[styles.summaryCard, { backgroundColor: dashboard.choresOverdue > 0 ? '#FEF2F2' : colors.secondary }]}>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.summaryCard, { backgroundColor: dashboard.choresOverdue > 0 ? '#FEF2F2' : colors.secondary }, pressed && styles.pressed]}
+                onPress={() => router.push('/chores')}
+                accessibilityRole="button"
+                accessibilityLabel="View overdue chores"
+              >
                 <Text style={[styles.summaryValue, { color: dashboard.choresOverdue > 0 ? colors.danger : colors.primary }]}>
                   {dashboard.choresOverdue}
                 </Text>
                 <Text style={[styles.summaryLabel, { color: dashboard.choresOverdue > 0 ? colors.danger : colors.mutedForeground }]}>
                   Overdue Chores
                 </Text>
-              </View>
+              </Pressable>
             </View>
             <View style={styles.summaryRow}>
-              <View style={[styles.summaryCard, { backgroundColor: dashboard.maintenanceDueSoon > 0 ? '#FEF9C3' : colors.secondary }]}>
+              <Pressable
+                style={({ pressed }) => [styles.summaryCard, { backgroundColor: dashboard.maintenanceDueSoon > 0 ? '#FEF9C3' : colors.secondary }, pressed && styles.pressed]}
+                onPress={() => router.push('/maintenance')}
+                accessibilityRole="button"
+                accessibilityLabel="View maintenance due soon"
+              >
                 <Text style={[styles.summaryValue, { color: dashboard.maintenanceDueSoon > 0 ? colors.warning : colors.primary }]}>
                   {dashboard.maintenanceDueSoon}
                 </Text>
                 <Text style={[styles.summaryLabel, { color: dashboard.maintenanceDueSoon > 0 ? '#B45309' : colors.mutedForeground }]}>
                   Maint. Due Soon
                 </Text>
-              </View>
-              <View style={[styles.summaryCard, { backgroundColor: dashboard.maintenanceOverdue > 0 ? '#FEF2F2' : colors.secondary }]}>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.summaryCard, { backgroundColor: dashboard.maintenanceOverdue > 0 ? '#FEF2F2' : colors.secondary }, pressed && styles.pressed]}
+                onPress={() => router.push('/maintenance')}
+                accessibilityRole="button"
+                accessibilityLabel="View overdue maintenance"
+              >
                 <Text style={[styles.summaryValue, { color: dashboard.maintenanceOverdue > 0 ? colors.danger : colors.primary }]}>
                   {dashboard.maintenanceOverdue}
                 </Text>
                 <Text style={[styles.summaryLabel, { color: dashboard.maintenanceOverdue > 0 ? colors.danger : colors.mutedForeground }]}>
                   Overdue Maint.
                 </Text>
-              </View>
+              </Pressable>
             </View>
 
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Today's Meals</Text>
               {dashboard.todaysMeals.length > 0 ? (
-                <View style={[styles.mealsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Pressable
+                  style={({ pressed }) => [styles.mealsCard, { backgroundColor: colors.card, borderColor: colors.border }, pressed && styles.pressed]}
+                  onPress={() => router.push('/kitchen')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open today's meal plan"
+                >
                   {['breakfast', 'lunch', 'dinner', 'snack'].map((mt) => {
                     const meal = dashboard.todaysMeals.find((m) => m.mealType === mt);
                     if (!meal) return null;
@@ -109,7 +136,7 @@ export default function DashboardScreen() {
                       </View>
                     );
                   })}
-                </View>
+                </Pressable>
               ) : (
                 <View style={[styles.emptyCard, { backgroundColor: colors.secondary }]}>
                   <Icon name="coffee" iosName="cup.and.saucer.fill" size={24} color={colors.mutedForeground} />
@@ -126,9 +153,12 @@ export default function DashboardScreen() {
               </Text>
               {maintenance.length > 0 ? (
                 maintenance.map((task) => (
-                  <View
+                  <Pressable
                     key={task.id}
                     style={[styles.taskCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => router.push('/maintenance')}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View maintenance task ${task.title}`}
                   >
                     <View style={styles.taskInfo}>
                       <Text style={[styles.taskTitle, { color: colors.foreground }]}>{task.title}</Text>
@@ -152,7 +182,7 @@ export default function DashboardScreen() {
                         {task.isOverdue ? 'Overdue' : task.isDueSoon ? 'Due Soon' : 'Upcoming'}
                       </Text>
                     </View>
-                  </View>
+                  </Pressable>
                 ))
               ) : (
                 <View style={[styles.emptyCard, { backgroundColor: colors.secondary }]}>
@@ -201,6 +231,10 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 16,
+  },
+  pressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.98 }],
   },
   summaryValue: {
     fontSize: 28,

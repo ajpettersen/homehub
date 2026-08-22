@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MaintenanceTaskCategory } from './maintenanceTaskCategory';
+import type { MaintenanceTaskScheduleType } from './maintenanceTaskScheduleType';
 
 export interface MaintenanceTask {
   id: string;
@@ -14,7 +15,9 @@ export interface MaintenanceTask {
   propertyId: string;
   propertyName: string;
   category: MaintenanceTaskCategory;
-  frequencyDays: number;
+  frequencyDays: number | null;
+  scheduleType: MaintenanceTaskScheduleType;
+  isCompleted: boolean;
   isCleanerTask: boolean;
   startDate?: Date | null;
   lastCompletedAt?: Date | null;

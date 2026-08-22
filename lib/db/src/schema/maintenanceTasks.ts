@@ -9,7 +9,10 @@ export const maintenanceTasksTable = pgTable("maintenance_tasks", {
   description: text("description"),
   propertyId: integer("property_id").notNull().references(() => propertiesTable.id, { onDelete: "cascade" }),
   category: text("category").notNull().default("other"), // filter | water | seasonal | appliance | yard | other | cleaning
-  frequencyDays: integer("frequency_days").notNull().default(30),
+  // Null for a one-time task; recurring tasks always have a positive interval.
+  frequencyDays: integer("frequency_days"),
+  scheduleType: text("schedule_type").notNull().default("recurring"), // recurring | one-time
+  isCompleted: boolean("is_completed").notNull().default(false),
   isCleanerTask: boolean("is_cleaner_task").notNull().default(false),
   lastCompletedAt: timestamp("last_completed_at", { withTimezone: true }),
   lastCompletedBy: text("last_completed_by"),

@@ -1049,7 +1049,7 @@ paths:
     post:
       operationId: completeMaintenanceTask
       tags: [maintenance]
-      summary: Mark a maintenance task as done (resets next due date)
+      summary: Mark a maintenance task as done (reschedules recurring tasks)
       parameters:
         - name: id
           in: path
@@ -1860,6 +1860,12 @@ components:
           enum: [filter, water, seasonal, appliance, yard, other, cleaning]
         frequencyDays:
           type: integer
+          nullable: true
+        scheduleType:
+          type: string
+          enum: [recurring, one-time]
+        isCompleted:
+          type: boolean
         isCleanerTask:
           type: boolean
         startDate:
@@ -1887,6 +1893,8 @@ components:
         - propertyName
         - category
         - frequencyDays
+        - scheduleType
+        - isCompleted
         - isCleanerTask
         - nextDueDate
         - isOverdue
@@ -1907,6 +1915,10 @@ components:
           enum: [filter, water, seasonal, appliance, yard, other, cleaning]
         frequencyDays:
           type: integer
+          nullable: true
+        scheduleType:
+          type: string
+          enum: [recurring, one-time]
         isCleanerTask:
           type: boolean
         startDate:
@@ -1920,7 +1932,7 @@ components:
         - title
         - propertyId
         - category
-        - frequencyDays
+        - scheduleType
         - nextDueDate
 
     UpdateMaintenanceTaskInput:
@@ -1938,6 +1950,10 @@ components:
           type: boolean
         frequencyDays:
           type: integer
+          nullable: true
+        scheduleType:
+          type: string
+          enum: [recurring, one-time]
         startDate:
           type: string
           format: date

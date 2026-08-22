@@ -13,6 +13,7 @@ import workoutsRouter from "./workouts";
 import pushTokensRouter from "./pushTokens";
 import meRouter from "./me";
 import recipesRouter from "./recipes";
+import peopleRouter from "./people";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(workoutsRouter);
 router.use(pushTokensRouter);
 router.use(meRouter);
 router.use(recipesRouter);
+router.use(peopleRouter);
 
 export default router;

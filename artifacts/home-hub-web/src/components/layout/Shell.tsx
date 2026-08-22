@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Settings, Utensils, Brush, ChevronDown, Dumbbell, Mountain } from "lucide-react";
+import { Home, CheckSquare, Settings, Utensils, Brush, ChevronDown, Dumbbell, Mountain, UsersRound } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useGetFamilyMembers, getGetFamilyMembersQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
@@ -11,6 +11,7 @@ const navItems = [
   { href: "/tasks",      label: "Tasks",      icon: CheckSquare },
   { href: "/workouts",   label: "Workouts",   icon: Dumbbell },
   { href: "/properties", label: "Properties", icon: Mountain },
+  { href: "/people",     label: "People",     icon: UsersRound },
   { href: "/settings",   label: "Settings",   icon: Settings },
 ];
 
@@ -23,10 +24,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const humanMembers = familyMembers?.filter(m => m.role !== "pet") ?? [];
 
   return (
-    <div className="min-h-[100dvh] flex flex-col md:flex-row bg-background">
+    <div className="h-[100dvh] min-h-0 flex flex-col md:flex-row bg-background overflow-hidden">
 
       {/* ── Desktop sidebar ── */}
-      <aside className="hidden md:flex w-64 bg-card border-r border-border flex-col p-4 min-h-[100dvh] shadow-sm shrink-0">
+      <aside className="hidden md:flex w-64 h-[100dvh] sticky top-0 bg-card border-r border-border flex-col p-4 shadow-sm shrink-0">
         <div className="flex items-center gap-3 px-2 mb-8 mt-2">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-serif font-bold text-xl shadow-md rotate-[-3deg]">
             H
@@ -87,7 +88,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ── Main content ── */}
-      <main className="flex-1 flex flex-col min-h-[100dvh] overflow-hidden">
+      <main className="flex-1 flex flex-col h-[100dvh] min-h-0 overflow-hidden">
 
         {/* Mobile top bar */}
         <header className="md:hidden flex items-center justify-between px-4 py-3 bg-card border-b border-border shrink-0">
@@ -154,7 +155,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
           <div className="max-w-6xl mx-auto">
             {children}
           </div>

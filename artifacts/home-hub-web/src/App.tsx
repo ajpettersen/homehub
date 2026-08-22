@@ -11,6 +11,7 @@ import Tasks from '@/pages/Tasks';
 import Workouts from '@/pages/Workouts';
 import Maintenance from '@/pages/Maintenance';
 import Settings from '@/pages/Settings';
+import People from '@/pages/People';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/workouts" component={Workouts} />
         <Route path="/properties" component={Maintenance} />
         <Route path="/settings" component={Settings} />
+        <Route path="/people" component={People} />
         <Route component={NotFound} />
       </Switch>
     </Shell>

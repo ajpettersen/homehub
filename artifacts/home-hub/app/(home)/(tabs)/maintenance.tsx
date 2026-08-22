@@ -69,7 +69,7 @@ function TaskCard({
         <View style={styles.taskMeta}>
           <Icon name="calendar" iosName="calendar" size={13} color={colors.mutedForeground} />
           <Text style={[styles.taskMetaText, { color: colors.mutedForeground }]}>
-            {format(new Date(task.nextDueDate), 'MMM d')} · every {task.frequencyDays}d
+            {format(new Date(task.nextDueDate), 'MMM d')} · {task.scheduleType === 'one-time' ? 'one-time task' : `every ${task.frequencyDays}d`}
           </Text>
         </View>
         <View style={styles.taskMeta}>
@@ -185,7 +185,14 @@ export default function MaintenanceScreen() {
   const [whoSheet, setWhoSheet] = useState<{ task: MaintenanceTask } | null>(null);
   // Add task modal
   const [isAddVisible, setIsAddVisible] = useState(false);
-  const [newTask, setNewTask] = useState({ title: '', category: 'other', frequencyDays: '30', isCleanerTask: false });
+  const [newTask, setNewTask] = useState({
+    title: '',
+    category: 'other',
+    scheduleType: 'recurring' as 'recurring' | 'one-time',
+    frequencyDays: '30',
+    dueDate: '',
+    isCleanerTask: false,
+  });
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -214,23 +221,27 @@ export default function MaintenanceScreen() {
   };
 
   const handleCreate = () => {
-    if (!newTask.title || !selectedProperty) return;
-    const nextDate = addDays(new Date(), parseInt(newTask.frequencyDays, 10));
+    const isOneTime = newTask.scheduleType === 'one-time';
+    if (!newTask.title || !selectedProperty || (isOneTime && !/^\d{4}-\d{2}-\d{2}$/.test(newTask.dueDate))) return;
+    const nextDate = isOneTime
+      ? newTask.dueDate
+      : addDays(new Date(), parseInt(newTask.frequencyDays, 10) || 30).toISOString().split('T')[0];
     createTask.mutate(
       {
         data: {
           title: newTask.title,
           propertyId: selectedProperty.id,
           category: newTask.category as any,
-          frequencyDays: parseInt(newTask.frequencyDays, 10),
+          scheduleType: newTask.scheduleType,
+          frequencyDays: isOneTime ? undefined : parseInt(newTask.frequencyDays, 10) || 30,
           isCleanerTask: newTask.isCleanerTask,
-          nextDueDate: nextDate.toISOString().split('T')[0],
+          nextDueDate: nextDate,
         },
       },
       {
         onSuccess: () => {
           setIsAddVisible(false);
-          setNewTask({ title: '', category: 'other', frequencyDays: '30', isCleanerTask: false });
+          setNewTask({ title: '', category: 'other', scheduleType: 'recurring', frequencyDays: '30', dueDate: '', isCleanerTask: false });
           queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
         },
       },
@@ -374,15 +385,44 @@ export default function MaintenanceScreen() {
               />
             </View>
 
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.foreground }]}>Schedule</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                {[
+                  { value: 'recurring', label: 'Repeat' },
+                  { value: 'one-time', label: 'One time' },
+                ].map((option) => (
+                  <Pressable
+                    key={option.value}
+                    style={[
+                      styles.pill,
+                      newTask.scheduleType === option.value
+                        ? { backgroundColor: colors.primary }
+                        : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 },
+                    ]}
+                    onPress={() => setNewTask((p) => ({ ...p, scheduleType: option.value as 'recurring' | 'one-time' }))}
+                  >
+                    <Text style={[styles.pillText, { color: newTask.scheduleType === option.value ? colors.primaryForeground : colors.foreground }]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
             <View style={styles.formRow}>
               <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={[styles.label, { color: colors.foreground }]}>Every (days)</Text>
+                <Text style={[styles.label, { color: colors.foreground }]}>
+                  {newTask.scheduleType === 'one-time' ? 'Due date (YYYY-MM-DD)' : 'Every (days)'}
+                </Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                  value={newTask.frequencyDays}
-                  onChangeText={(t) => setNewTask((p) => ({ ...p, frequencyDays: t }))}
-                  keyboardType="number-pad"
-                  placeholder="30"
+                  value={newTask.scheduleType === 'one-time' ? newTask.dueDate : newTask.frequencyDays}
+                  onChangeText={(t) => setNewTask((p) => (
+                    newTask.scheduleType === 'one-time' ? { ...p, dueDate: t } : { ...p, frequencyDays: t }
+                  ))}
+                  keyboardType={newTask.scheduleType === 'one-time' ? 'numbers-and-punctuation' : 'number-pad'}
+                  placeholder={newTask.scheduleType === 'one-time' ? '2026-09-15' : '30'}
                   placeholderTextColor={colors.mutedForeground}
                 />
               </View>
@@ -426,11 +466,11 @@ export default function MaintenanceScreen() {
               style={({ pressed }) => [
                 styles.submitButton,
                 { backgroundColor: colors.primary },
-                (!newTask.title || !selectedProperty) && { opacity: 0.5 },
+                (!newTask.title || !selectedProperty || (newTask.scheduleType === 'one-time' && !/^\d{4}-\d{2}-\d{2}$/.test(newTask.dueDate))) && { opacity: 0.5 },
                 pressed && { opacity: 0.8 },
               ]}
               onPress={handleCreate}
-              disabled={!newTask.title || !selectedProperty || createTask.isPending}
+              disabled={!newTask.title || !selectedProperty || createTask.isPending || (newTask.scheduleType === 'one-time' && !/^\d{4}-\d{2}-\d{2}$/.test(newTask.dueDate))}
             >
               <Text style={[styles.submitButtonText, { color: colors.primaryForeground }]}>Add Task</Text>
             </Pressable>

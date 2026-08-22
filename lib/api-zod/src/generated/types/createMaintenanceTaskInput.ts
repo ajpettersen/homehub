@@ -6,13 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateMaintenanceTaskInputCategory } from './createMaintenanceTaskInputCategory';
+import type { CreateMaintenanceTaskInputScheduleType } from './createMaintenanceTaskInputScheduleType';
 
 export interface CreateMaintenanceTaskInput {
   title: string;
   description?: string | null;
   propertyId: string;
   category: CreateMaintenanceTaskInputCategory;
-  frequencyDays: number;
+  frequencyDays?: number | null;
+  scheduleType: CreateMaintenanceTaskInputScheduleType;
   isCleanerTask?: boolean;
   startDate?: Date | null;
   nextDueDate: Date;

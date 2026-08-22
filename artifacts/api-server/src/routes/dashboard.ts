@@ -7,7 +7,7 @@ import {
   mealPlansTable,
   propertiesTable,
 } from "@workspace/db";
-import { eq, and, lt, lte, isNull, sql } from "drizzle-orm";
+import { eq, and, lt, lte, isNull, ne, or, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -50,11 +50,16 @@ router.get("/dashboard", async (req, res) => {
         ),
       );
 
+    const activeMaintenance = or(
+      ne(maintenanceTasksTable.scheduleType, "one-time"),
+      eq(maintenanceTasksTable.isCompleted, false),
+    );
+
     // Maintenance overdue
     const [{ maintenanceOverdue }] = await db
       .select({ maintenanceOverdue: sql<number>`count(*)::int` })
       .from(maintenanceTasksTable)
-      .where(lt(maintenanceTasksTable.nextDueDate, todayStr));
+      .where(and(lt(maintenanceTasksTable.nextDueDate, todayStr), activeMaintenance));
 
     // Maintenance due within 7 days
     const [{ maintenanceDueSoon }] = await db
@@ -64,6 +69,7 @@ router.get("/dashboard", async (req, res) => {
         and(
           lte(maintenanceTasksTable.nextDueDate, sevenDaysStr),
           sql`${maintenanceTasksTable.nextDueDate} >= ${todayStr}`,
+          activeMaintenance,
         ),
       );
 
@@ -94,7 +100,7 @@ router.get("/dashboard", async (req, res) => {
       .select({ task: maintenanceTasksTable, propertyName: propertiesTable.name })
       .from(maintenanceTasksTable)
       .leftJoin(propertiesTable, eq(maintenanceTasksTable.propertyId, propertiesTable.id))
-      .where(lte(maintenanceTasksTable.nextDueDate, thirtyDaysStr))
+      .where(and(lte(maintenanceTasksTable.nextDueDate, thirtyDaysStr), activeMaintenance))
       .orderBy(maintenanceTasksTable.nextDueDate)
       .limit(8);
 
@@ -123,8 +129,13 @@ router.get("/dashboard", async (req, res) => {
           propertyId: String(r.task.propertyId),
           propertyName: r.propertyName ?? "",
           category: r.task.category,
-          frequencyDays: r.task.frequencyDays,
+          frequencyDays: r.task.frequencyDays ?? null,
+          scheduleType: r.task.scheduleType,
+          isCompleted: r.task.isCompleted,
+          isCleanerTask: r.task.isCleanerTask,
+          startDate: r.task.startDate ?? null,
           lastCompletedAt: r.task.lastCompletedAt?.toISOString() ?? null,
+          lastCompletedBy: r.task.lastCompletedBy ?? null,
           nextDueDate: r.task.nextDueDate,
           isOverdue,
           isDueSoon,

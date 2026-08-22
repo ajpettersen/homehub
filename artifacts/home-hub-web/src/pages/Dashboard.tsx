@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useGetDashboard, getGetDashboardQueryKey } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -329,55 +330,67 @@ export default function Dashboard() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="bg-primary/10 border-primary/20 shadow-sm relative overflow-hidden">
-          <div className="absolute -right-4 -top-4 opacity-10"><CheckCircle2 className="w-32 h-32" /></div>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-primary text-sm uppercase tracking-wider font-sans">Chores Due Today</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-5xl font-serif font-bold text-primary">{dashboard.choresToday}</div>
-            {dashboard.choresOverdue > 0 && (
-              <p className="text-sm font-medium text-destructive mt-2 flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" /> {dashboard.choresOverdue} overdue
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        <Link href="/chores" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+          <Card className="bg-primary/10 border-primary/20 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
+            <div className="absolute -right-4 -top-4 opacity-10"><CheckCircle2 className="w-32 h-32" /></div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-primary text-sm uppercase tracking-wider font-sans">Chores Due Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-5xl font-serif font-bold text-primary">{dashboard.choresToday}</div>
+              {dashboard.choresOverdue > 0 && (
+                <p className="text-sm font-medium text-destructive mt-2 flex items-center gap-1">
+                  <AlertTriangle className="w-4 h-4" /> {dashboard.choresOverdue} overdue
+                </p>
+              )}
+              <p className="text-xs font-semibold text-primary/70 mt-3">View chores →</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="bg-secondary/10 border-secondary/20 shadow-sm relative overflow-hidden">
-          <div className="absolute -right-4 -top-4 opacity-10"><Utensils className="w-32 h-32" /></div>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-secondary text-sm uppercase tracking-wider font-sans">Today's Meals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-5xl font-serif font-bold text-secondary">{dashboard.todaysMeals.length}</div>
-          </CardContent>
-        </Card>
+        <Link href="/meals" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+          <Card className="bg-secondary/10 border-secondary/20 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
+            <div className="absolute -right-4 -top-4 opacity-10"><Utensils className="w-32 h-32" /></div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-secondary text-sm uppercase tracking-wider font-sans">Today's Meals</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-5xl font-serif font-bold text-secondary">{dashboard.todaysMeals.length}</div>
+              <p className="text-xs font-semibold text-secondary/70 mt-3">Open meal plan →</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="bg-accent/20 border-accent/30 shadow-sm relative overflow-hidden">
-          <div className="absolute -right-4 -top-4 opacity-10 text-accent-foreground"><CheckSquare className="w-32 h-32" /></div>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-accent-foreground text-sm uppercase tracking-wider font-sans">Active Tasks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-5xl font-serif font-bold text-accent-foreground">{dashboard.activeTodoItems}</div>
-          </CardContent>
-        </Card>
+        <Link href="/tasks" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+          <Card className="bg-accent/20 border-accent/30 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
+            <div className="absolute -right-4 -top-4 opacity-10 text-accent-foreground"><CheckSquare className="w-32 h-32" /></div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-accent-foreground text-sm uppercase tracking-wider font-sans">Active Tasks</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-5xl font-serif font-bold text-accent-foreground">{dashboard.activeTodoItems}</div>
+              <p className="text-xs font-semibold text-accent-foreground/70 mt-3">Open tasks →</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="bg-orange-100 border-orange-200 dark:bg-orange-950 dark:border-orange-900 shadow-sm relative overflow-hidden">
-          <div className="absolute -right-4 -top-4 opacity-10 text-orange-600"><Clock className="w-32 h-32" /></div>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-orange-700 dark:text-orange-400 text-sm uppercase tracking-wider font-sans">Maintenance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-5xl font-serif font-bold text-orange-700 dark:text-orange-400">{dashboard.maintenanceDueSoon}</div>
-            {dashboard.maintenanceOverdue > 0 && (
-              <p className="text-sm font-medium text-destructive mt-2 flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" /> {dashboard.maintenanceOverdue} overdue
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        <Link href="/properties" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+          <Card className="bg-orange-100 border-orange-200 dark:bg-orange-950 dark:border-orange-900 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
+            <div className="absolute -right-4 -top-4 opacity-10 text-orange-600"><Clock className="w-32 h-32" /></div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-orange-700 dark:text-orange-400 text-sm uppercase tracking-wider font-sans">Maintenance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-5xl font-serif font-bold text-orange-700 dark:text-orange-400">{dashboard.maintenanceDueSoon}</div>
+              {dashboard.maintenanceOverdue > 0 && (
+                <p className="text-sm font-medium text-destructive mt-2 flex items-center gap-1">
+                  <AlertTriangle className="w-4 h-4" /> {dashboard.maintenanceOverdue} overdue
+                </p>
+              )}
+              <p className="text-xs font-semibold text-orange-700/70 dark:text-orange-400/70 mt-3">View maintenance →</p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Main content */}
@@ -385,13 +398,15 @@ export default function Dashboard() {
         <div className="space-y-6">
           <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2 inline-block">On the Menu</h2>
           {dashboard.todaysMeals.length === 0 ? (
-            <div className="p-6 border-2 border-dashed border-border rounded-2xl text-center">
+            <Link href="/meals" className="block p-6 border-2 border-dashed border-border rounded-2xl text-center hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               <p className="text-muted-foreground">Nothing planned for today yet.</p>
-            </div>
+              <p className="text-xs font-semibold text-primary mt-2">Plan a meal →</p>
+            </Link>
           ) : (
             <div className="space-y-4">
               {dashboard.todaysMeals.map(meal => (
-                <Card key={meal.id} className="border-l-4 border-l-secondary">
+                <Link key={meal.id} href="/meals" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+                  <Card className="border-l-4 border-l-secondary transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
                   <CardContent className="p-4 flex justify-between items-center">
                     <div>
                       <Badge variant="outline" className="mb-2 bg-secondary/10 text-secondary border-secondary/20">{meal.mealType}</Badge>
@@ -399,7 +414,8 @@ export default function Dashboard() {
                       {meal.notes && <p className="text-sm text-muted-foreground mt-1">{meal.notes}</p>}
                     </div>
                   </CardContent>
-                </Card>
+                  </Card>
+                </Link>
               ))}
             </div>
           )}
@@ -408,13 +424,15 @@ export default function Dashboard() {
         <div className="space-y-6">
           <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2 inline-block">Upcoming Maintenance</h2>
           {dashboard.upcomingMaintenance.length === 0 ? (
-            <div className="p-6 border-2 border-dashed border-border rounded-2xl text-center">
+            <Link href="/properties" className="block p-6 border-2 border-dashed border-border rounded-2xl text-center hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               <p className="text-muted-foreground">House is in top shape!</p>
-            </div>
+              <p className="text-xs font-semibold text-primary mt-2">View maintenance →</p>
+            </Link>
           ) : (
             <div className="space-y-4">
               {dashboard.upcomingMaintenance.map(task => (
-                <Card key={task.id} className={`border-l-4 ${task.isOverdue ? "border-l-destructive" : "border-l-orange-500"}`}>
+                <Link key={task.id} href="/properties" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+                  <Card className={`border-l-4 ${task.isOverdue ? "border-l-destructive" : "border-l-orange-500"} transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer`}>
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-semibold text-lg leading-tight">{task.title}</h3>
@@ -425,7 +443,8 @@ export default function Dashboard() {
                       <span className="flex items-center gap-1 text-primary">{task.propertyName}</span>
                     </div>
                   </CardContent>
-                </Card>
+                  </Card>
+                </Link>
               ))}
             </div>
           )}

@@ -125,7 +125,9 @@ export const GetDashboardResponse = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
-  "frequencyDays": zod.number(),
+  "frequencyDays": zod.number().nullable(),
+  "scheduleType": zod.enum(['recurring', 'one-time']),
+  "isCompleted": zod.boolean(),
   "isCleanerTask": zod.boolean(),
   "startDate": zod.coerce.date().nullish(),
   "lastCompletedAt": zod.coerce.date().nullish(),
@@ -990,7 +992,9 @@ export const GetMaintenanceTasksResponseItem = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
-  "frequencyDays": zod.number(),
+  "frequencyDays": zod.number().nullable(),
+  "scheduleType": zod.enum(['recurring', 'one-time']),
+  "isCompleted": zod.boolean(),
   "isCleanerTask": zod.boolean(),
   "startDate": zod.coerce.date().nullish(),
   "lastCompletedAt": zod.coerce.date().nullish(),
@@ -1010,7 +1014,8 @@ export const CreateMaintenanceTaskBody = zod.object({
   "description": zod.string().nullish(),
   "propertyId": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
-  "frequencyDays": zod.number(),
+  "frequencyDays": zod.number().nullish(),
+  "scheduleType": zod.enum(['recurring', 'one-time']),
   "isCleanerTask": zod.boolean().optional(),
   "startDate": zod.coerce.date().nullish(),
   "nextDueDate": zod.coerce.date()
@@ -1023,7 +1028,9 @@ export const CreateMaintenanceTaskResponse = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
-  "frequencyDays": zod.number(),
+  "frequencyDays": zod.number().nullable(),
+  "scheduleType": zod.enum(['recurring', 'one-time']),
+  "isCompleted": zod.boolean(),
   "isCleanerTask": zod.boolean(),
   "startDate": zod.coerce.date().nullish(),
   "lastCompletedAt": zod.coerce.date().nullish(),
@@ -1046,7 +1053,8 @@ export const UpdateMaintenanceTaskBody = zod.object({
   "description": zod.string().nullish(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']).optional(),
   "isCleanerTask": zod.boolean().optional(),
-  "frequencyDays": zod.number().optional(),
+  "frequencyDays": zod.number().nullish(),
+  "scheduleType": zod.enum(['recurring', 'one-time']).optional(),
   "startDate": zod.coerce.date().nullish(),
   "nextDueDate": zod.coerce.date().optional()
 })
@@ -1058,7 +1066,9 @@ export const UpdateMaintenanceTaskResponse = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
-  "frequencyDays": zod.number(),
+  "frequencyDays": zod.number().nullable(),
+  "scheduleType": zod.enum(['recurring', 'one-time']),
+  "isCompleted": zod.boolean(),
   "isCleanerTask": zod.boolean(),
   "startDate": zod.coerce.date().nullish(),
   "lastCompletedAt": zod.coerce.date().nullish(),
@@ -1080,7 +1090,7 @@ export const DeleteMaintenanceTaskResponse = zod.void()
 
 
 /**
- * @summary Mark a maintenance task as done (resets next due date)
+ * @summary Mark a maintenance task as done (reschedules recurring tasks)
  */
 export const CompleteMaintenanceTaskParams = zod.object({
   "id": zod.coerce.string()
@@ -1097,7 +1107,9 @@ export const CompleteMaintenanceTaskResponse = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
-  "frequencyDays": zod.number(),
+  "frequencyDays": zod.number().nullable(),
+  "scheduleType": zod.enum(['recurring', 'one-time']),
+  "isCompleted": zod.boolean(),
   "isCleanerTask": zod.boolean(),
   "startDate": zod.coerce.date().nullish(),
   "lastCompletedAt": zod.coerce.date().nullish(),

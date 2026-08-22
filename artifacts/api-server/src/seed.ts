@@ -401,6 +401,9 @@ export async function fixStaleMaintenanceDates() {
     logger.info({ count: stale.length }, "Fixing stale maintenance due dates");
 
     for (const task of stale) {
+      if (task.scheduleType !== "recurring" || task.isCompleted || !task.frequencyDays) {
+        continue;
+      }
       const fixed = advanceToFuture(task.nextDueDate, task.frequencyDays);
       await db
         .update(maintenanceTasksTable)
