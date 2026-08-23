@@ -8,7 +8,10 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:notifications": "node ./test/run-notifications-test.mjs"
+    "test:notifications": "node ./test/run-notifications-test.mjs",
+    "test:ai-context": "node ./test/run-test.mjs ai-context.integration.ts",
+    "test:household-migration": "node ./test/run-test.mjs household-migration.integration.ts",
+    "test:ssrf-guard": "node ./test/run-test.mjs ipAddress.test.ts"
   },
   "dependencies": {
     "@clerk/express": "^2.1.40",

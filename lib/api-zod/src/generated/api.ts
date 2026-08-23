@@ -13,7 +13,6 @@ import * as zod from 'zod';
  */
 
 
-
 export const ScanPantryBody = zod.object({
   "imagesBase64": zod.array(zod.string()).min(1)
 })
@@ -99,7 +98,6 @@ export const HealthCheckResponse = zod.object({
  */
 export const getDashboardResponseTodaysMealsItemDayOfWeekMin = 0;
 export const getDashboardResponseTodaysMealsItemDayOfWeekMax = 6;
-
 
 
 export const GetDashboardResponse = zod.object({
@@ -257,7 +255,6 @@ export const UpdateHouseholdResponse = zod.object({
 /**
  * @summary Seed the household from first-login setup (transactional and idempotent)
  */
-
 
 
 export const CompleteOnboardingBody = zod.object({
@@ -587,7 +584,6 @@ export const getMealPlansResponseDayOfWeekMin = 0;
 export const getMealPlansResponseDayOfWeekMax = 6;
 
 
-
 export const GetMealPlansResponseItem = zod.object({
   "id": zod.string(),
   "weekStart": zod.coerce.date(),
@@ -608,7 +604,6 @@ export const createMealPlanEntryBodyDayOfWeekMin = 0;
 export const createMealPlanEntryBodyDayOfWeekMax = 6;
 
 
-
 export const CreateMealPlanEntryBody = zod.object({
   "weekStart": zod.coerce.date(),
   "dayOfWeek": zod.number().min(createMealPlanEntryBodyDayOfWeekMin).max(createMealPlanEntryBodyDayOfWeekMax),
@@ -621,7 +616,6 @@ export const CreateMealPlanEntryBody = zod.object({
 
 export const createMealPlanEntryResponseDayOfWeekMin = 0;
 export const createMealPlanEntryResponseDayOfWeekMax = 6;
-
 
 
 export const CreateMealPlanEntryResponse = zod.object({
@@ -650,7 +644,6 @@ export const UpdateMealPlanEntryBody = zod.object({
 
 export const updateMealPlanEntryResponseDayOfWeekMin = 0;
 export const updateMealPlanEntryResponseDayOfWeekMax = 6;
-
 
 
 export const UpdateMealPlanEntryResponse = zod.object({

@@ -7,4 +7,4 @@ Any server-side fetch of a user-supplied URL must connect through a lookup pinne
 
 **Why:** An attacker-controlled hostname can return a public address during validation and a private, loopback, link-local, or metadata address when the HTTP client resolves it again. This DNS-rebinding gap turns an apparent allowlist into SSRF.
 
-**How to apply:** Validate every redirect hop, reject reserved address ranges, then pass only the validated addresses to the socket's lookup callback while retaining the original hostname for the Host header, TLS SNI, and certificate verification.
+**How to apply:** Validate every redirect hop, reject reserved address ranges, then pass only the validated addresses to the socket's lookup callback while retaining the original hostname for the Host header, TLS SNI, and certificate verification. Normalize IPv4-mapped IPv6 addresses before range checks: hexadecimal forms such as `::ffff:7f00:1` are loopback too, not public IPv6.

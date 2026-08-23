@@ -22,6 +22,11 @@ import net from "node:net";
 import http from "node:http";
 import https from "node:https";
 import type { LookupAddress } from "node:dns";
+import {
+  formatLiveSnapshot,
+  getLiveHouseholdSnapshot,
+} from "../lib/aiLiveContext";
+import { isBlockedIPv4, isBlockedIPv6 } from "../lib/ipAddress";
 
 // ── Authorization helper ──────────────────────────────────────────────────────
 
@@ -90,7 +95,6 @@ async function getPeopleContext(propertyIds: number[]): Promise<string> {
     return "";
   }
 }
-
 /** Extract and persist new memory facts from a conversation exchange (fire-and-forget). */
 function extractAndSaveMemories(
   householdId: number,
@@ -166,50 +170,6 @@ function stripPrefix(b64: string): string {
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_REDIRECTS = 3;
 const MAX_BODY_BYTES = 1024 * 1024; // ~1MB
-
-/** Reject IPv4 addresses that are private/loopback/link-local/reserved/etc. */
-function isBlockedIPv4(ip: string): boolean {
-  const parts = ip.split(".").map((p) => Number(p));
-  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
-    return true;
-  }
-  const [a, b] = parts;
-  if (a === 0) return true; // 0.0.0.0/8 "this" network
-  if (a === 10) return true; // 10.0.0.0/8 private
-  if (a === 127) return true; // 127.0.0.0/8 loopback
-  if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local
-  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
-  if (a === 192 && b === 0) return true; // 192.0.0.0/24 & 192.0.2.0/24 (documentation)
-  if (a === 192 && b === 88) return true; // 192.88.99.0/24 reserved (6to4 relay)
-  if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
-  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmarking
-  if (a === 198 && b === 51) return true; // 198.51.100.0/24 documentation
-  if (a === 203 && b === 0) return true; // 203.0.113.0/24 documentation
-  if (a >= 224 && a <= 239) return true; // 224.0.0.0/4 multicast
-  if (a >= 240) return true; // 240.0.0.0/4 reserved / 255.255.255.255 broadcast
-  return false;
-}
-
-/** Reject IPv6 addresses that are loopback/link-local/ULA/multicast/reserved/etc. */
-function isBlockedIPv6(ip: string): boolean {
-  const addr = ip.toLowerCase().split("%")[0]; // strip zone id
-  if (addr === "::" || addr === "::1") return true; // unspecified & loopback
-
-  // IPv4-mapped / IPv4-compatible addresses → evaluate the embedded IPv4.
-  const mapped = addr.match(/(?:::ffff:|::)((?:\d{1,3}\.){3}\d{1,3})$/);
-  if (mapped) return isBlockedIPv4(mapped[1]);
-
-  const firstGroup = addr.split(":")[0] ?? "";
-  const head = parseInt(firstGroup || "0", 16);
-  if (Number.isNaN(head)) return true;
-  if ((head & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
-  if ((head & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
-  if (head === 0xff00 || (head & 0xff00) === 0xff00) return true; // ff00::/8 multicast
-  if (addr.startsWith("2001:db8")) return true; // 2001:db8::/32 documentation
-  if (addr.startsWith("64:ff9b")) return true; // NAT64 well-known prefix
-  return false;
-}
-
 /** Throw if a single resolved address falls in a blocked range. */
 function assertSafeAddress(address: string, family: number): void {
   if (family === 4) {
@@ -494,35 +454,40 @@ router.post("/ai/scan-pantry", async (req, res) => {
 
     const photoWord = imagesBase64.length === 1 ? "photo" : `${imagesBase64.length} photos`;
 
-    const SYSTEM = `You are a family meal planner AI. Scan fridge/pantry photos and return a JSON object with: ingredients found and meal suggestions.
-${memoriesCtx}
-Recent meals to avoid repeating: ${mealHistory.slice(0, 20).join(", ") || "none"}
+    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
 
-Respond ONLY with valid JSON:
-{
-  "ingredients": ["chicken breast", "pasta"],
-  "mealSuggestions": [
-    { "name": "Pasta Primavera", "description": "...", "usesIngredients": ["pasta"], "missingIngredients": ["cream"] }
-  ]
-}`;
+Family members:
+${memberLines}
+
+Properties:
+${propertyLines}
+
+${formatLiveSnapshot(liveSnapshot, snapshotNow)}
+
+What you help with:
+- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
+- Meal planning & recipes: family-friendly, practical, low food waste.
+- Grocery & shopping: organized lists, pantry scanning.
+- Household maintenance: seasonal checklists for both properties.
+- Kids chores, schedules, organization, family planning.
+- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
+${memoriesCtx}
+${peopleCtx}
+Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
+      max_completion_tokens: 256,
       messages: [
-        { role: "system", content: SYSTEM },
         {
           role: "user",
-          content: [
-            { type: "text", text: `Please analyze ${photoWord} of my fridge/pantry and suggest meals.` },
-            ...imageContent,
-          ] as any,
+          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
         },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -530,14 +495,14 @@ Respond ONLY with valid JSON:
 
     res.json(JSON.parse(jsonMatch[0]));
   } catch (err) {
-    console.error("Pantry scan error:", err);
-    res.status(500).json({ error: "Failed to scan pantry" });
+    console.error("Suggest week error:", err);
+    res.status(500).json({ error: "Failed to suggest week" });
   }
 });
 
-// ── POST /ai/meal-recipe ─────────────────────────────────────────────────────
-// Returns a full recipe for a named meal, plus an optional AI-generated food photo
-router.post("/ai/meal-recipe", async (req, res) => {
+// ── POST /ai/extract-recipe-url ──────────────────────────────────────────────
+// Fetches a recipe page and uses AI to extract the meal name + summary
+router.post("/ai/extract-recipe-url", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
@@ -639,7 +604,7 @@ router.post("/ai/suggest-week", async (req, res) => {
       const mealName = mealPlanById.get(r.mealPlanId);
       if (!mealName) continue;
       if (!memberMealRatings.has(r.memberId)) memberMealRatings.set(r.memberId, new Map());
-      const mealMap = memberMealRatings.get(r.memberId)!;
+      const mealMap = memberMealRatings.get(member.id);
       if (!mealMap.has(mealName)) mealMap.set(mealName, []);
       mealMap.get(mealName)!.push(r.rating);
     }
@@ -667,43 +632,40 @@ router.post("/ai/suggest-week", async (req, res) => {
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
 
-    const SYSTEM = `You are a family meal planner. Suggest a full week of meals (breakfast, lunch, dinner for Mon–Sun) for a family with kids.
+    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
 
-Recent meals already eaten (vary from these): ${mealHistory.slice(0, 25).join(", ") || "none"}
+Family members:
+${memberLines}
 
-Per-member food preferences:
-${memberPreferenceLines.length > 0 ? memberPreferenceLines.join("\n") : "  - (no per-member ratings yet — use general family-friendly meals)"}
+Properties:
+${propertyLines}
 
+${formatLiveSnapshot(liveSnapshot, snapshotNow)}
+
+What you help with:
+- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
+- Meal planning & recipes: family-friendly, practical, low food waste.
+- Grocery & shopping: organized lists, pantry scanning.
+- Household maintenance: seasonal checklists for both properties.
+- Kids chores, schedules, organization, family planning.
+- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
 ${memoriesCtx}
-Rules:
-- Avoid meals marked as "refuses/skips" by any member whenever possible
-- Prioritize meals loved by most members
-- Keep meals practical and kid-friendly
-- Vary cuisines and protein types across the week
-
-Respond ONLY with valid JSON:
-{
-  "days": [
-    {
-      "dayName": "Monday",
-      "breakfast": "Scrambled Eggs & Toast",
-      "lunch": "PB&J Sandwiches",
-      "dinner": "Spaghetti Bolognese"
-    }
-  ]
-}`;
+${peopleCtx}
+Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
+      max_completion_tokens: 256,
       messages: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: "Please suggest a full week of meals for our family." },
+        {
+          role: "user",
+          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
+        },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -749,13 +711,13 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as { name?: string; error?: string };
+    const parsed = JSON.parse(jsonMatch[0]) as { items: Array<{ name: string; quantity: string; category: string }> };
     if (parsed.error) {
       res.status(422).json({ error: parsed.error });
       return;
@@ -876,14 +838,16 @@ router.post("/ai/chat", async (req, res) => {
     const MAX_MESSAGES = 12;
     const MAX_MSG_LEN = 2000;
     const MAX_IMAGES = 4;
+    const snapshotNow = new Date();
 
     // Load live household context + memories in parallel (scoped to this household)
-    const [members, properties, memoriesCtx, peopleCtx, existingRows] = await Promise.all([
+    const [members, properties, memoriesCtx, peopleCtx, existingRows, liveSnapshot] = await Promise.all([
       db.select().from(familyMembersTable).where(eq(familyMembersTable.householdId, scope.householdId)),
       db.select().from(propertiesTable).where(inArray(propertiesTable.id, scope.propertyIds)),
       getMemoriesContext(scope.householdId),
       getPeopleContext(scope.propertyIds),
       db.select({ content: aiMemoriesTable.content }).from(aiMemoriesTable).where(eq(aiMemoriesTable.householdId, scope.householdId)),
+      getLiveHouseholdSnapshot(scope.propertyIds, snapshotNow),
     ]);
 
     const existingMemories = existingRows.map(r => r.content);
@@ -901,6 +865,8 @@ ${memberLines}
 
 Properties:
 ${propertyLines}
+
+${formatLiveSnapshot(liveSnapshot, snapshotNow)}
 
 What you help with:
 - Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
