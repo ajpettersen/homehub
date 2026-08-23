@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedIfEmpty, fixStaleMaintenanceDates, fixStaleChoreDates } from "./seed";
-import { seedRecurringMaintenanceTasks } from "./seedMaintenance";
+import { fixStaleMaintenanceDates, fixStaleChoreDates } from "./seed";
+import { runOneTimeProdCleanup } from "./prodDataRepair";
 import { startNotificationScheduler } from "./notifications";
 
 const rawPort = process.env["PORT"];
@@ -25,9 +25,14 @@ app.listen(port, async (err) => {
   }
 
   logger.info({ port }, "Server listening");
-  await seedIfEmpty();
+  // Note: demo data is intentionally NOT seeded on startup. A fresh database
+  // stays empty so the onboarding wizard is the single source of initial data
+  // (seeding defaults here caused duplicate families in new installs).
+  // seedRecurringMaintenanceTasks was removed for the same reason: it
+  // auto-inserted a large curated task list onto any house+cabin property
+  // pair on every boot, which would re-pollute cleaned households.
+  await runOneTimeProdCleanup();
   await fixStaleMaintenanceDates();
   await fixStaleChoreDates();
-  await seedRecurringMaintenanceTasks();
   startNotificationScheduler();
 });

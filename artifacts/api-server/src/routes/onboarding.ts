@@ -7,6 +7,7 @@ import {
   groceryListsTable,
   choresTable,
   maintenanceTasksTable,
+  todoListsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
@@ -130,6 +131,16 @@ router.post("/onboarding", async (req, res) => {
         // A previous call already committed (its response may have been lost).
         return { status: 200 as const, alreadyCompleted: true };
       }
+
+      // The household has never been onboarded (nor skipped setup — skipping
+      // also sets the completion flag), so anything already in it can only be
+      // auto-seeded defaults. Clear them so the wizard's data is the single
+      // source of truth instead of piling on top of demo rows. Deleting
+      // properties cascades to their chores, maintenance tasks, and grocery
+      // lists.
+      await tx.delete(todoListsTable).where(eq(todoListsTable.householdId, scope.householdId));
+      await tx.delete(familyMembersTable).where(eq(familyMembersTable.householdId, scope.householdId));
+      await tx.delete(propertiesTable).where(eq(propertiesTable.householdId, scope.householdId));
 
       await tx
         .update(householdsTable)

@@ -3,6 +3,8 @@
 - [CRM property ownership](crm-property-ownership.md) — never infer a legacy contact’s property; unowned CRM rows stay hidden until explicitly assigned.
 - [Household account bootstrap](household-account-bootstrap.md) — only the configured Clerk identity can bootstrap family access; later profiles remain pending until approved.
 - [Household onboarding wizard](household-onboarding.md) — gate on the household-level completion flag; all setup seeding goes through the single transactional idempotent endpoint.
+- [Dev-domain artifact paths](dev-domain-artifact-paths.md) — `/` serves the Expo web app; the React web app is at `/home-hub-web/`. Test the right one.
+- [No startup demo seeding](no-startup-demo-seeding.md) — never seed demo data on server boot; fresh prod DBs got a fake household that collided with real signups.
 - [Household data migrations](household-data-migrations.md) — never default-assign ambiguous legacy rows; quarantine them for explicit ownership resolution.
 - [SSRF DNS pinning](ssrf-dns-pinning.md) — outbound URL fetches must connect to the exact public DNS answers they validated, not resolve again.
 - [Expo destructive confirmations](expo-destructive-confirmations.md) — use an in-app sheet instead of Alert.alert when confirmation must work on native and Expo web.

@@ -454,40 +454,35 @@ router.post("/ai/scan-pantry", async (req, res) => {
 
     const photoWord = imagesBase64.length === 1 ? "photo" : `${imagesBase64.length} photos`;
 
-    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
-
-Family members:
-${memberLines}
-
-Properties:
-${propertyLines}
-
-${formatLiveSnapshot(liveSnapshot, snapshotNow)}
-
-What you help with:
-- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
-- Meal planning & recipes: family-friendly, practical, low food waste.
-- Grocery & shopping: organized lists, pantry scanning.
-- Household maintenance: seasonal checklists for both properties.
-- Kids chores, schedules, organization, family planning.
-- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
+    const SYSTEM = `You are a family meal planner AI. Scan fridge/pantry photos and return a JSON object with: ingredients found and meal suggestions.
 ${memoriesCtx}
-${peopleCtx}
-Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
+Recent meals to avoid repeating: ${mealHistory.slice(0, 20).join(", ") || "none"}
+
+Respond ONLY with valid JSON:
+{
+  "ingredients": ["chicken breast", "pasta"],
+  "mealSuggestions": [
+    { "name": "Pasta Primavera", "description": "...", "usesIngredients": ["pasta"], "missingIngredients": ["cream"] }
+  ]
+}`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 256,
+      max_completion_tokens: 1024,
       messages: [
+        { role: "system", content: SYSTEM },
         {
           role: "user",
-          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
+          content: [
+            { type: "text", text: `Please analyze ${photoWord} of my fridge/pantry and suggest meals.` },
+            ...imageContent,
+          ] as any,
         },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -495,14 +490,14 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
 
     res.json(JSON.parse(jsonMatch[0]));
   } catch (err) {
-    console.error("Suggest week error:", err);
-    res.status(500).json({ error: "Failed to suggest week" });
+    console.error("Pantry scan error:", err);
+    res.status(500).json({ error: "Failed to scan pantry" });
   }
 });
 
-// ── POST /ai/extract-recipe-url ──────────────────────────────────────────────
-// Fetches a recipe page and uses AI to extract the meal name + summary
-router.post("/ai/extract-recipe-url", async (req, res) => {
+// ── POST /ai/meal-recipe ─────────────────────────────────────────────────────
+// Returns a full recipe for a named meal, plus an optional AI-generated food photo
+router.post("/ai/meal-recipe", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
@@ -604,7 +599,7 @@ router.post("/ai/suggest-week", async (req, res) => {
       const mealName = mealPlanById.get(r.mealPlanId);
       if (!mealName) continue;
       if (!memberMealRatings.has(r.memberId)) memberMealRatings.set(r.memberId, new Map());
-      const mealMap = memberMealRatings.get(member.id);
+      const mealMap = memberMealRatings.get(r.memberId)!;
       if (!mealMap.has(mealName)) mealMap.set(mealName, []);
       mealMap.get(mealName)!.push(r.rating);
     }
@@ -632,40 +627,43 @@ router.post("/ai/suggest-week", async (req, res) => {
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
 
-    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
+    const SYSTEM = `You are a family meal planner. Suggest a full week of meals (breakfast, lunch, dinner for Mon–Sun) for a family with kids.
 
-Family members:
-${memberLines}
+Recent meals already eaten (vary from these): ${mealHistory.slice(0, 25).join(", ") || "none"}
 
-Properties:
-${propertyLines}
+Per-member food preferences:
+${memberPreferenceLines.length > 0 ? memberPreferenceLines.join("\n") : "  - (no per-member ratings yet — use general family-friendly meals)"}
 
-${formatLiveSnapshot(liveSnapshot, snapshotNow)}
-
-What you help with:
-- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
-- Meal planning & recipes: family-friendly, practical, low food waste.
-- Grocery & shopping: organized lists, pantry scanning.
-- Household maintenance: seasonal checklists for both properties.
-- Kids chores, schedules, organization, family planning.
-- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
 ${memoriesCtx}
-${peopleCtx}
-Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
+Rules:
+- Avoid meals marked as "refuses/skips" by any member whenever possible
+- Prioritize meals loved by most members
+- Keep meals practical and kid-friendly
+- Vary cuisines and protein types across the week
+
+Respond ONLY with valid JSON:
+{
+  "days": [
+    {
+      "dayName": "Monday",
+      "breakfast": "Scrambled Eggs & Toast",
+      "lunch": "PB&J Sandwiches",
+      "dinner": "Spaghetti Bolognese"
+    }
+  ]
+}`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 256,
+      max_completion_tokens: 1024,
       messages: [
-        {
-          role: "user",
-          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
-        },
+        { role: "system", content: SYSTEM },
+        { role: "user", content: "Please suggest a full week of meals for our family." },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -711,13 +709,13 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as { items: Array<{ name: string; quantity: string; category: string }> };
+    const parsed = JSON.parse(jsonMatch[0]) as { name?: string; error?: string };
     if (parsed.error) {
       res.status(422).json({ error: parsed.error });
       return;

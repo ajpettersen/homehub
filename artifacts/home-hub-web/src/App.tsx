@@ -95,12 +95,14 @@ function ProfileInitializer() {
  * cleaners, already-onboarded households) sees the normal app.
  */
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
-  const { data: me } = useGetMe({
-    query: { enabled: !!(isLoaded && isSignedIn), queryKey: getGetMeQueryKey() },
-  });
+  // Intentionally not gated on Clerk's client-side isSignedIn: the API
+  // authenticates via the session cookie, so a successful /api/me response is
+  // the authoritative signal that the user is signed in. (Clerk's client
+  // state can lag or fail to hydrate while cookie auth still works, which
+  // previously let un-onboarded households slip past this gate.)
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
 
-  if (isSignedIn && me?.role === 'family' && !me.onboardingCompleted) {
+  if (me?.role === 'family' && !me.onboardingCompleted) {
     return <Onboarding />;
   }
   return <>{children}</>;
