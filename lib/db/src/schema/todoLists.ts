@@ -11,6 +11,8 @@ export const todoListsTable = pgTable("todo_lists", {
   name: text("name").notNull(),
   assigneeId: integer("assignee_id").references(() => familyMembersTable.id, { onDelete: "set null" }),
   propertyId: integer("property_id").references(() => propertiesTable.id, { onDelete: "set null" }),
+  // Higher sortOrder floats to the top of the Tasks page; 0 = natural order.
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

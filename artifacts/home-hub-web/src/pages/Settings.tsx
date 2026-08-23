@@ -47,6 +47,7 @@ interface TaskFormState {
   frequencyDays: number;
   dueDate: string;
   description: string;
+  assigneeId: string; // "" = anyone
 }
 const defaultTaskForm = (): TaskFormState => ({
   title: "",
@@ -55,6 +56,7 @@ const defaultTaskForm = (): TaskFormState => ({
   frequencyDays: 30,
   dueDate: new Date().toISOString().split("T")[0],
   description: "",
+  assigneeId: "",
 });
 
 // ── Accordion section wrapper ─────────────────────────────────────────────────
@@ -112,8 +114,8 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
 }
 
 // ── TaskForm ──────────────────────────────────────────────────────────────────
-function TaskForm({ initial, onSave, onCancel, saving }: {
-  initial: TaskFormState; onSave: (d: TaskFormState) => void; onCancel: () => void; saving: boolean;
+function TaskForm({ initial, members, onSave, onCancel, saving }: {
+  initial: TaskFormState; members: any[]; onSave: (d: TaskFormState) => void; onCancel: () => void; saving: boolean;
 }) {
   const [form, setForm] = useState<TaskFormState>(initial);
   const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm(f => ({ ...f, [k]: v }));
@@ -186,6 +188,39 @@ function TaskForm({ initial, onSave, onCancel, saving }: {
           </>
         )}
       </div>
+      <div>
+        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Assign to</label>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => set("assigneeId", "")}
+            className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+              !form.assigneeId
+                ? "bg-foreground text-background border-foreground"
+                : "border-border text-muted-foreground hover:border-foreground/40"
+            }`}
+          >
+            Anyone
+          </button>
+          {members.map(m => {
+            const active = form.assigneeId === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => set("assigneeId", m.id)}
+                data-testid={`button-settings-assign-${m.id}`}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+                  active ? "text-white border-transparent shadow-sm" : "border-border text-muted-foreground hover:border-foreground/40"
+                }`}
+                style={active ? { backgroundColor: m.color } : undefined}
+              >
+                {m.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <textarea value={form.description} onChange={e => set("description", e.target.value)}
         placeholder="Notes (optional)…" rows={2}
         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-muted-foreground focus:outline-none focus:border-primary resize-none"
@@ -211,6 +246,7 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
     { propertyId },
     { query: { queryKey: getGetMaintenanceTasksQueryKey({ propertyId }) } }
   );
+  const { data: members } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const createTask = useCreateMaintenanceTask();
   const updateTask = useUpdateMaintenanceTask();
   const deleteTask = useDeleteMaintenanceTask();
@@ -230,6 +266,7 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           frequencyDays: data.scheduleType === "recurring" ? data.frequencyDays : undefined,
           description: data.description || undefined,
           propertyId,
+          assigneeId: data.assigneeId || null,
           nextDueDate: data.dueDate,
         },
       },
@@ -248,6 +285,7 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           frequencyDays: data.scheduleType === "recurring" ? data.frequencyDays : undefined,
           nextDueDate: data.dueDate,
           description: data.description || undefined,
+          assigneeId: data.assigneeId || null,
         },
       },
       { onSuccess: () => { invalidate(); setEditingId(null); } }
@@ -275,6 +313,7 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           return (
             <TaskForm
               key={task.id}
+              members={members ?? []}
               initial={{
                 title: task.title,
                 category: task.category,
@@ -282,6 +321,7 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
                 frequencyDays: task.frequencyDays ?? 30,
                 dueDate: task.nextDueDate,
                 description: task.description ?? "",
+                assigneeId: task.assigneeId ?? "",
               }}
               onSave={data => handleEdit(task.id, data)}
               onCancel={() => setEditingId(null)}
@@ -296,6 +336,15 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
               <cat.Icon className={`w-3 h-3 ${cat.color}`} />
             </div>
             <span className="text-sm font-medium flex-1 min-w-0 truncate">{task.title}</span>
+            {task.assigneeName && (
+              <span
+                title={`Assigned to ${task.assigneeName}`}
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                style={{ backgroundColor: task.assigneeColor ?? "#C1440E" }}
+              >
+                {task.assigneeName.charAt(0).toUpperCase()}
+              </span>
+            )}
             <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
               {task.scheduleType === "one-time" ? (
                 <><CalendarDays className="w-3 h-3" /> One time</>
@@ -319,6 +368,7 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
 
       {adding ? (
         <TaskForm
+          members={members ?? []}
           initial={defaultTaskForm()}
           onSave={handleAdd}
           onCancel={() => setAdding(false)}
@@ -631,31 +681,12 @@ export default function Settings() {
         <p className="text-muted-foreground mt-1 font-medium">Manage your household, properties, and AI preferences.</p>
       </div>
 
-      {/* ── Properties ──────────────────────────────────────────────────────── */}
-      <AccordionSection
-        icon={<Home className="w-4 h-4" />}
-        title="Properties"
-        summary={<span className="text-xs text-muted-foreground">{properties?.length ?? 0} propert{properties?.length === 1 ? "y" : "ies"}</span>}
-        defaultOpen={true}
-      >
-        <div className="space-y-3">
-          {properties?.map(property => (
-            <PropertyRow
-              key={property.id}
-              property={property}
-              onSaveInfo={data => updateProperty.mutate({ id: property.id, data: { name: data.name, address: data.address || null } }, { onSuccess: invalidateProps })}
-              saving={updateProperty.isPending}
-            />
-          ))}
-        </div>
-      </AccordionSection>
-
-      {/* ── Family Members ──────────────────────────────────────────────────── */}
+      {/* ── Family Members (person-first: leads the page) ───────────────────── */}
       <AccordionSection
         icon={<Users className="w-4 h-4" />}
         title="Family Members"
         summary={memberSummary}
-        defaultOpen={false}
+        defaultOpen={true}
         action={
           !addingMember ? (
             <button onClick={() => { setAddingMember(true); setEditingMemberId(null); }}
@@ -698,6 +729,25 @@ export default function Settings() {
             <Plus className="w-4 h-4 text-primary/60" /> Add family member
           </button>
         )}
+      </AccordionSection>
+
+      {/* ── Properties ──────────────────────────────────────────────────────── */}
+      <AccordionSection
+        icon={<Home className="w-4 h-4" />}
+        title="Properties"
+        summary={<span className="text-xs text-muted-foreground">{properties?.length ?? 0} propert{properties?.length === 1 ? "y" : "ies"}</span>}
+        defaultOpen={false}
+      >
+        <div className="space-y-3">
+          {properties?.map(property => (
+            <PropertyRow
+              key={property.id}
+              property={property}
+              onSaveInfo={data => updateProperty.mutate({ id: property.id, data: { name: data.name, address: data.address || null } }, { onSuccess: invalidateProps })}
+              saving={updateProperty.isPending}
+            />
+          ))}
+        </div>
       </AccordionSection>
 
       {/* ── AI Memory ───────────────────────────────────────────────────────── */}

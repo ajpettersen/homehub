@@ -125,6 +125,9 @@ export const GetDashboardResponse = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
+  "assigneeId": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "assigneeColor": zod.string().nullish(),
   "frequencyDays": zod.number().nullable(),
   "scheduleType": zod.enum(['recurring', 'one-time']),
   "isCompleted": zod.boolean(),
@@ -895,6 +898,16 @@ export const DeleteTodoListResponse = zod.void()
 
 
 /**
+ * @summary Move a to-do list to the top of the Tasks page
+ */
+export const MoveTodoListToTopParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const MoveTodoListToTopResponse = zod.void()
+
+
+/**
  * @summary Get items in a to-do list
  */
 export const GetTodoItemsParams = zod.object({
@@ -1111,6 +1124,9 @@ export const GetMaintenanceTasksResponseItem = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
+  "assigneeId": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "assigneeColor": zod.string().nullish(),
   "frequencyDays": zod.number().nullable(),
   "scheduleType": zod.enum(['recurring', 'one-time']),
   "isCompleted": zod.boolean(),
@@ -1133,6 +1149,7 @@ export const CreateMaintenanceTaskBody = zod.object({
   "description": zod.string().nullish(),
   "propertyId": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
+  "assigneeId": zod.string().nullish(),
   "frequencyDays": zod.number().nullish(),
   "scheduleType": zod.enum(['recurring', 'one-time']),
   "isCleanerTask": zod.boolean().optional(),
@@ -1147,6 +1164,9 @@ export const CreateMaintenanceTaskResponse = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
+  "assigneeId": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "assigneeColor": zod.string().nullish(),
   "frequencyDays": zod.number().nullable(),
   "scheduleType": zod.enum(['recurring', 'one-time']),
   "isCompleted": zod.boolean(),
@@ -1171,6 +1191,7 @@ export const UpdateMaintenanceTaskBody = zod.object({
   "title": zod.string().optional(),
   "description": zod.string().nullish(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']).optional(),
+  "assigneeId": zod.string().nullish(),
   "isCleanerTask": zod.boolean().optional(),
   "frequencyDays": zod.number().nullish(),
   "scheduleType": zod.enum(['recurring', 'one-time']).optional(),
@@ -1185,6 +1206,9 @@ export const UpdateMaintenanceTaskResponse = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
+  "assigneeId": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "assigneeColor": zod.string().nullish(),
   "frequencyDays": zod.number().nullable(),
   "scheduleType": zod.enum(['recurring', 'one-time']),
   "isCompleted": zod.boolean(),
@@ -1226,6 +1250,9 @@ export const CompleteMaintenanceTaskResponse = zod.object({
   "propertyId": zod.string(),
   "propertyName": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
+  "assigneeId": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "assigneeColor": zod.string().nullish(),
   "frequencyDays": zod.number().nullable(),
   "scheduleType": zod.enum(['recurring', 'one-time']),
   "isCompleted": zod.boolean(),

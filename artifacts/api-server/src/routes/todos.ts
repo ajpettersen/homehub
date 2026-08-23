@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { todoListsTable, todoItemsTable, familyMembersTable, propertiesTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 import type { PropertyAuthorizationScope } from "../lib/propertyAuthorization";
 
@@ -44,7 +44,7 @@ router.get("/todo-lists", async (req, res) => {
       .leftJoin(todoItemsTable, eq(todoItemsTable.listId, todoListsTable.id))
       .where(eq(todoListsTable.householdId, scope.householdId))
       .groupBy(todoListsTable.id, familyMembersTable.name, propertiesTable.name)
-      .orderBy(todoListsTable.id);
+      .orderBy(desc(todoListsTable.sortOrder), todoListsTable.id);
 
     const visible = rows.filter(
       (r) => r.list.propertyId === null || scope.propertyIds.includes(r.list.propertyId),
@@ -150,6 +150,47 @@ async function resolveAccessibleList(
   if (list.propertyId !== null && !scope.propertyIds.includes(list.propertyId)) return null;
   return list;
 }
+
+router.post("/todo-lists/:id/move-to-top", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const listId = Number(req.params.id);
+    if (!Number.isInteger(listId)) {
+      res.status(400).json({ error: "Invalid list id" });
+      return;
+    }
+
+    const list = await resolveAccessibleList(listId, scope);
+    if (!list) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    // Float this list above every other list in the household. Run inside a
+    // transaction holding a per-household advisory lock so concurrent moves
+    // allocate distinct sort orders (a bare max+1 read/write can collide).
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${"todo_list_order:" + scope.householdId}))`
+      );
+
+      const [{ maxOrder }] = await tx
+        .select({ maxOrder: sql<number>`coalesce(max(${todoListsTable.sortOrder}), 0)::int` })
+        .from(todoListsTable)
+        .where(eq(todoListsTable.householdId, scope.householdId));
+
+      await tx
+        .update(todoListsTable)
+        .set({ sortOrder: maxOrder + 1 })
+        .where(eq(todoListsTable.id, listId));
+    });
+
+    res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Failed to move todo list to top");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.delete("/todo-lists/:id", async (req, res) => {
   try {

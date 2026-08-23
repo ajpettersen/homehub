@@ -147,6 +147,9 @@ export interface MaintenanceTask {
   propertyId: string;
   propertyName: string;
   category: MaintenanceTaskCategory;
+  assigneeId?: string | null;
+  assigneeName?: string | null;
+  assigneeColor?: string | null;
   frequencyDays: number | null;
   scheduleType: MaintenanceTaskScheduleType;
   isCompleted: boolean;
@@ -659,6 +662,7 @@ export interface CreateMaintenanceTaskInput {
   description?: string | null;
   propertyId: string;
   category: CreateMaintenanceTaskInputCategory;
+  assigneeId?: string | null;
   frequencyDays?: number | null;
   scheduleType: CreateMaintenanceTaskInputScheduleType;
   isCleanerTask?: boolean;
@@ -691,6 +695,7 @@ export interface UpdateMaintenanceTaskInput {
   title?: string;
   description?: string | null;
   category?: UpdateMaintenanceTaskInputCategory;
+  assigneeId?: string | null;
   isCleanerTask?: boolean;
   frequencyDays?: number | null;
   scheduleType?: UpdateMaintenanceTaskInputScheduleType;

@@ -12,6 +12,7 @@ export interface UpdateMaintenanceTaskInput {
   title?: string;
   description?: string | null;
   category?: UpdateMaintenanceTaskInputCategory;
+  assigneeId?: string | null;
   isCleanerTask?: boolean;
   frequencyDays?: number | null;
   scheduleType?: UpdateMaintenanceTaskInputScheduleType;

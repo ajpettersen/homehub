@@ -3434,6 +3434,77 @@ export const useDeleteTodoList = <TError = ErrorType<unknown>,
       return useMutation(getDeleteTodoListMutationOptions(options));
     }
 
+export const getMoveTodoListToTopUrl = (id: string,) => {
+
+
+
+
+  return `/api/todo-lists/${id}/move-to-top`
+}
+
+/**
+ * @summary Move a to-do list to the top of the Tasks page
+ */
+export const moveTodoListToTop = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getMoveTodoListToTopUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMoveTodoListToTopMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moveTodoListToTop>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moveTodoListToTop>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['moveTodoListToTop'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moveTodoListToTop>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  moveTodoListToTop(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MoveTodoListToTopMutationResult = NonNullable<Awaited<ReturnType<typeof moveTodoListToTop>>>
+
+    export type MoveTodoListToTopMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Move a to-do list to the top of the Tasks page
+ */
+export const useMoveTodoListToTop = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moveTodoListToTop>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moveTodoListToTop>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getMoveTodoListToTopMutationOptions(options));
+    }
+
 export const getGetTodoItemsUrl = (id: string,) => {
 
 

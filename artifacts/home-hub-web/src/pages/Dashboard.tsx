@@ -324,9 +324,6 @@ export default function Dashboard() {
         <p className="text-muted-foreground text-lg">Here's what's happening around the house today.</p>
       </div>
 
-      {/* HomeHub Assistant */}
-      <HouseholdChat />
-
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Link href="/chores" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
@@ -391,6 +388,9 @@ export default function Dashboard() {
           </Card>
         </Link>
       </div>
+
+      {/* HomeHub Assistant */}
+      <HouseholdChat />
 
       {/* Main content */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

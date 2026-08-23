@@ -13,6 +13,7 @@ export interface CreateMaintenanceTaskInput {
   description?: string | null;
   propertyId: string;
   category: CreateMaintenanceTaskInputCategory;
+  assigneeId?: string | null;
   frequencyDays?: number | null;
   scheduleType: CreateMaintenanceTaskInputScheduleType;
   isCleanerTask?: boolean;

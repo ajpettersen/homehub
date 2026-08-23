@@ -4,7 +4,7 @@ import {
   useGetTodoItems, getGetTodoItemsQueryKey, 
   useUpdateTodoItem, useAddTodoItem,
   useCreateTodoList, useDeleteTodoList,
-  useDeleteTodoItem
+  useDeleteTodoItem, useMoveTodoListToTop
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, Plus, Check, Trash2 } from "lucide-react";
+import { CheckSquare, Plus, Check, Trash2, ArrowUp } from "lucide-react";
 import { format } from "date-fns";
 
 export default function Tasks() {
@@ -72,8 +72,8 @@ export default function Tasks() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {lists?.map(list => (
-          <TodoListCard key={list.id} list={list} />
+        {lists?.map((list, index) => (
+          <TodoListCard key={list.id} list={list} isFirst={index === 0} />
         ))}
         {lists?.length === 0 && (
           <div className="col-span-full p-12 border-2 border-dashed border-border rounded-3xl text-center bg-card">
@@ -86,7 +86,7 @@ export default function Tasks() {
   );
 }
 
-function TodoListCard({ list }: { list: any }) {
+function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
   const queryClient = useQueryClient();
   const { data: items, isLoading } = useGetTodoItems(list.id, { query: { enabled: !!list.id, queryKey: getGetTodoItemsQueryKey(list.id) } });
   
@@ -94,6 +94,7 @@ function TodoListCard({ list }: { list: any }) {
   const addItem = useAddTodoItem();
   const deleteItem = useDeleteTodoItem();
   const deleteList = useDeleteTodoList();
+  const moveToTop = useMoveTodoListToTop();
   
   const [newItemContent, setNewItemContent] = useState("");
 
@@ -127,6 +128,12 @@ function TodoListCard({ list }: { list: any }) {
     });
   };
 
+  const handleMoveToTop = () => {
+    moveToTop.mutate({ id: list.id }, {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() })
+    });
+  };
+
   const handleDeleteList = () => {
     if (!confirm('Are you sure you want to delete this list and all its tasks?')) return;
     deleteList.mutate({ id: list.id }, {
@@ -141,9 +148,24 @@ function TodoListCard({ list }: { list: any }) {
           <h3 className="font-serif text-xl font-bold">{list.name}</h3>
           {list.assigneeName && <Badge variant="secondary" className="w-fit mt-1">{list.assigneeName}</Badge>}
         </div>
-        <Button variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground hover:text-destructive shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Trash2 className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          {!isFirst && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleMoveToTop}
+              disabled={moveToTop.isPending}
+              title="Move to top"
+              data-testid={`button-move-to-top-${list.id}`}
+              className="text-muted-foreground hover:text-primary"
+            >
+              <ArrowUp className="w-4 h-4" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
       <CardContent className="p-4 flex-1 overflow-y-auto space-y-2">
         {isLoading ? (

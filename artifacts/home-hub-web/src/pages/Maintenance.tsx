@@ -3,8 +3,10 @@ import {
   useGetMaintenanceTasks, getGetMaintenanceTasksQueryKey,
   useCompleteMaintenanceTask,
   useCreateMaintenanceTask,
+  useUpdateMaintenanceTask,
   useDeleteMaintenanceTask,
   useGetProperties, getGetPropertiesQueryKey,
+  useGetFamilyMembers, getGetFamilyMembersQueryKey,
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,12 +37,16 @@ function getCategoryConfig(key: string) {
 
 function TaskCard({
   task,
+  members,
   onComplete,
   onDelete,
+  onAssign,
 }: {
   task: any;
+  members: any[];
   onComplete: () => void;
   onDelete: () => void;
+  onAssign: (assigneeId: string | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const cat = getCategoryConfig(task.category);
@@ -83,6 +89,16 @@ function TaskCard({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {task.assigneeName && (
+            <span
+              title={`Assigned to ${task.assigneeName}`}
+              className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-sm"
+              style={{ backgroundColor: task.assigneeColor ?? "hsl(15 70% 50%)" }}
+              data-testid={`avatar-assignee-${task.id}`}
+            >
+              {task.assigneeName.charAt(0).toUpperCase()}
+            </span>
+          )}
           <button
             onClick={e => { e.stopPropagation(); onComplete(); }}
             className="w-8 h-8 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground rounded-lg transition-all"
@@ -95,18 +111,52 @@ function TaskCard({
       </div>
 
       {expanded && (
-        <div className="border-t border-border/50 px-4 py-3 bg-muted/20 flex items-start justify-between gap-3">
-          {task.description ? (
-            <p className="text-sm text-foreground/80 leading-relaxed flex-1">{task.description}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground italic flex-1">No notes.</p>
-          )}
-          <button
-            onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all shrink-0"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+        <div className="border-t border-border/50 px-4 py-3 bg-muted/20 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            {task.description ? (
+              <p className="text-sm text-foreground/80 leading-relaxed flex-1">{task.description}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground italic flex-1">No notes.</p>
+            )}
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(); }}
+              className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Assign to</p>
+            <div className="flex gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
+              <button
+                onClick={() => onAssign(null)}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+                  !task.assigneeId
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-border text-muted-foreground hover:border-foreground/40"
+                }`}
+              >
+                Anyone
+              </button>
+              {members.map(m => {
+                const active = task.assigneeId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => onAssign(m.id)}
+                    data-testid={`button-assign-${task.id}-${m.id}`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+                      active ? "text-white border-transparent shadow-sm" : "border-border text-muted-foreground hover:border-foreground/40"
+                    }`}
+                    style={active ? { backgroundColor: m.color } : undefined}
+                  >
+                    {m.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -117,12 +167,14 @@ function TaskCard({
 
 function AddTaskForm({
   properties,
+  members,
   onSubmit,
   onCancel,
   saving,
   defaultPropertyId,
 }: {
   properties: any[];
+  members: any[];
   onSubmit: (data: any) => void;
   onCancel: () => void;
   saving: boolean;
@@ -131,6 +183,7 @@ function AddTaskForm({
   const [title, setTitle] = useState("");
   const [propertyId, setPropertyId] = useState(defaultPropertyId ?? properties[0]?.id ?? "");
   const [category, setCategory] = useState("other");
+  const [assigneeId, setAssigneeId] = useState("");
   const [scheduleType, setScheduleType] = useState<"recurring" | "one-time">("recurring");
   const [freqDays, setFreqDays] = useState("30");
   const [description, setDescription] = useState("");
@@ -146,6 +199,7 @@ function AddTaskForm({
       description: description || null,
       propertyId,
       category,
+      assigneeId: assigneeId || null,
       scheduleType,
       frequencyDays: scheduleType === "recurring" ? parseInt(freqDays) || 30 : undefined,
       startDate: scheduleType === "recurring" ? startDate || null : null,
@@ -187,6 +241,38 @@ function AddTaskForm({
           >
             {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Assign to</label>
+        <div className="flex gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setAssigneeId("")}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${
+              !assigneeId ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:border-foreground/40"
+            }`}
+          >
+            Anyone
+          </button>
+          {members.map(m => {
+            const active = assigneeId === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setAssigneeId(m.id)}
+                data-testid={`button-form-assign-${m.id}`}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${
+                  active ? "text-white border-transparent shadow-sm" : "border-border text-muted-foreground hover:border-foreground/40"
+                }`}
+                style={active ? { backgroundColor: m.color } : undefined}
+              >
+                {m.name}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -279,9 +365,11 @@ export default function Properties() {
 
   const { data: tasks, isLoading } = useGetMaintenanceTasks({}, { query: { queryKey: getGetMaintenanceTasksQueryKey() } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
+  const { data: members } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
 
   const completeTask = useCompleteMaintenanceTask();
   const createTask = useCreateMaintenanceTask();
+  const updateTask = useUpdateMaintenanceTask();
   const deleteTask = useDeleteMaintenanceTask();
 
   const house = properties?.find(p => p.type === "house");
@@ -309,6 +397,10 @@ export default function Properties() {
     createTask.mutate({ data }, {
       onSuccess: () => { setAdding(false); invalidate(); }
     });
+  };
+
+  const handleAssign = (id: string, assigneeId: string | null) => {
+    updateTask.mutate({ id, data: { assigneeId } }, { onSuccess: invalidate });
   };
 
   const currentProperty = activeProperty === "cabin" ? cabin : house;
@@ -377,6 +469,7 @@ export default function Properties() {
       {adding && (
         <AddTaskForm
           properties={properties ?? []}
+          members={members ?? []}
           defaultPropertyId={currentProperty?.id}
           onSubmit={handleCreate}
           onCancel={() => setAdding(false)}
@@ -427,7 +520,7 @@ export default function Properties() {
                 <AlertTriangle className="w-3.5 h-3.5" /> Overdue ({overdue.length})
               </h2>
               <div className="space-y-2">
-                {overdue.map(t => <TaskCard key={t.id} task={t} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} />)}
+                {overdue.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} />)}
               </div>
             </section>
           )}
@@ -438,7 +531,7 @@ export default function Properties() {
                 <Clock className="w-3.5 h-3.5" /> Coming Up ({dueSoon.length})
               </h2>
               <div className="space-y-2">
-                {dueSoon.map(t => <TaskCard key={t.id} task={t} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} />)}
+                {dueSoon.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} />)}
               </div>
             </section>
           )}
@@ -449,7 +542,7 @@ export default function Properties() {
                 Scheduled ({upcoming.length})
               </h2>
               <div className="space-y-2">
-                {upcoming.map(t => <TaskCard key={t.id} task={t} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} />)}
+                {upcoming.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} />)}
               </div>
             </section>
           )}

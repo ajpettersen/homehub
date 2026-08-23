@@ -6,11 +6,11 @@ import { useState } from "react";
 
 const navItems = [
   { href: "/",           label: "Home",       icon: Home },
+  { href: "/properties", label: "Properties", icon: Mountain },
   { href: "/chores",     label: "Chores",     icon: Brush },
   { href: "/meals",      label: "Meals",      icon: Utensils },
   { href: "/tasks",      label: "Tasks",      icon: CheckSquare },
   { href: "/workouts",   label: "Workouts",   icon: Dumbbell },
-  { href: "/properties", label: "Properties", icon: Mountain },
   { href: "/people",     label: "People",     icon: UsersRound },
   { href: "/settings",   label: "Settings",   icon: Settings },
 ];
@@ -184,12 +184,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
               key={item.href}
               href={item.href}
               data-testid={`nav-${item.label.toLowerCase()}`}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors ${
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 min-h-[64px] transition-colors ${
                 isActive ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <item.icon className={`w-5 h-5 ${isActive ? "text-primary" : ""}`} />
-              <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+              <item.icon className={`w-[26px] h-[26px] ${isActive ? "text-primary" : ""}`} />
+              <span className="text-[11px] font-semibold leading-tight">{item.label}</span>
             </Link>
           );
         })}

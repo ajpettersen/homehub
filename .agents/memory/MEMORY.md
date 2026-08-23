@@ -5,3 +5,4 @@
 - [Household onboarding wizard](household-onboarding.md) — gate on the household-level completion flag; all setup seeding goes through the single transactional idempotent endpoint.
 - [SSRF DNS pinning](ssrf-dns-pinning.md) — outbound URL fetches must connect to the exact public DNS answers they validated, not resolve again.
 - [Expo destructive confirmations](expo-destructive-confirmations.md) — use an in-app sheet instead of Alert.alert when confirmation must work on native and Expo web.
+- [List ordering allocation](list-ordering-allocation.md) — sort_order max+1 must be allocated under a per-household advisory lock or concurrent moves collide.

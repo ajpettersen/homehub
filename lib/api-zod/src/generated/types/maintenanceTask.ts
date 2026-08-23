@@ -15,6 +15,9 @@ export interface MaintenanceTask {
   propertyId: string;
   propertyName: string;
   category: MaintenanceTaskCategory;
+  assigneeId?: string | null;
+  assigneeName?: string | null;
+  assigneeColor?: string | null;
   frequencyDays: number | null;
   scheduleType: MaintenanceTaskScheduleType;
   isCompleted: boolean;

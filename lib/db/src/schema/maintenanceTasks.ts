@@ -2,6 +2,7 @@ import { pgTable, serial, text, integer, date, timestamp, boolean } from "drizzl
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { propertiesTable } from "./properties";
+import { familyMembersTable } from "./familyMembers";
 
 export const maintenanceTasksTable = pgTable("maintenance_tasks", {
   id: serial("id").primaryKey(),
@@ -9,6 +10,7 @@ export const maintenanceTasksTable = pgTable("maintenance_tasks", {
   description: text("description"),
   propertyId: integer("property_id").notNull().references(() => propertiesTable.id, { onDelete: "cascade" }),
   category: text("category").notNull().default("other"), // filter | water | seasonal | appliance | yard | other | cleaning
+  assigneeId: integer("assignee_id").references(() => familyMembersTable.id, { onDelete: "set null" }),
   // Null for a one-time task; recurring tasks always have a positive interval.
   frequencyDays: integer("frequency_days"),
   scheduleType: text("schedule_type").notNull().default("recurring"), // recurring | one-time

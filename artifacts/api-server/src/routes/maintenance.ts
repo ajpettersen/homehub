@@ -1,10 +1,56 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { maintenanceTasksTable, propertiesTable } from "@workspace/db";
+import { maintenanceTasksTable, propertiesTable, familyMembersTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
+
+/**
+ * Validates an optional assignee id: it must be a family member of the scope's
+ * household. Returns { ok: true, value } (null when unassigned) or an error status.
+ */
+async function resolveAssigneeId(
+  rawAssigneeId: unknown,
+  householdId: number,
+): Promise<{ ok: true; value: number | null } | { ok: false; status: 400 | 403 }> {
+  if (rawAssigneeId === undefined || rawAssigneeId === null || rawAssigneeId === "") {
+    return { ok: true, value: null };
+  }
+  const assigneeId = Number(rawAssigneeId);
+  if (!Number.isInteger(assigneeId)) {
+    return { ok: false, status: 400 };
+  }
+  const [member] = await db
+    .select({ id: familyMembersTable.id })
+    .from(familyMembersTable)
+    .where(and(
+      eq(familyMembersTable.id, assigneeId),
+      eq(familyMembersTable.householdId, householdId),
+    ))
+    .limit(1);
+  if (!member) {
+    return { ok: false, status: 403 };
+  }
+  return { ok: true, value: assigneeId };
+}
+
+/** Re-reads one task with its property and assignee joined, formatted for the API. */
+async function fetchFormattedTask(id: number) {
+  const rows = await db
+    .select({
+      task: maintenanceTasksTable,
+      propertyName: propertiesTable.name,
+      assigneeName: familyMembersTable.name,
+      assigneeColor: familyMembersTable.color,
+    })
+    .from(maintenanceTasksTable)
+    .leftJoin(propertiesTable, eq(maintenanceTasksTable.propertyId, propertiesTable.id))
+    .leftJoin(familyMembersTable, eq(maintenanceTasksTable.assigneeId, familyMembersTable.id))
+    .where(eq(maintenanceTasksTable.id, id));
+  if (!rows.length) return null;
+  return formatTask(rows[0].task, rows[0].propertyName ?? "", rows[0].assigneeName, rows[0].assigneeColor);
+}
 
 /**
  * Given a startDate anchor and a frequency, return the next occurrence on or
@@ -28,6 +74,8 @@ function getNextAnchoredDate(startDate: string, frequencyDays: number, afterDate
 function formatTask(
   task: typeof maintenanceTasksTable.$inferSelect,
   propertyName: string,
+  assigneeName: string | null = null,
+  assigneeColor: string | null = null,
 ) {
   const today = new Date().toISOString().split("T")[0];
   const sevenDaysOut = new Date();
@@ -44,6 +92,9 @@ function formatTask(
     propertyId: String(task.propertyId),
     propertyName,
     category: task.category,
+    assigneeId: task.assigneeId ? String(task.assigneeId) : null,
+    assigneeName: task.assigneeId ? assigneeName : null,
+    assigneeColor: task.assigneeId ? assigneeColor : null,
     frequencyDays: task.frequencyDays ?? null,
     scheduleType: task.scheduleType,
     isCompleted: task.isCompleted,
@@ -85,9 +136,12 @@ router.get("/maintenance-tasks", async (req, res) => {
       .select({
         task: maintenanceTasksTable,
         propertyName: propertiesTable.name,
+        assigneeName: familyMembersTable.name,
+        assigneeColor: familyMembersTable.color,
       })
       .from(maintenanceTasksTable)
       .leftJoin(propertiesTable, eq(maintenanceTasksTable.propertyId, propertiesTable.id))
+      .leftJoin(familyMembersTable, eq(maintenanceTasksTable.assigneeId, familyMembersTable.id))
       .where(inArray(maintenanceTasksTable.propertyId, scopedPropertyIds))
       .orderBy(maintenanceTasksTable.nextDueDate);
 
@@ -95,7 +149,7 @@ router.get("/maintenance-tasks", async (req, res) => {
       ({ task }) => !(task.scheduleType === "one-time" && task.isCompleted),
     );
 
-    res.json(filtered.map((r) => formatTask(r.task, r.propertyName ?? "")));
+    res.json(filtered.map((r) => formatTask(r.task, r.propertyName ?? "", r.assigneeName, r.assigneeColor)));
   } catch (err) {
     req.log.error({ err }, "Failed to get maintenance tasks");
     res.status(500).json({ error: "Internal server error" });
@@ -105,7 +159,7 @@ router.get("/maintenance-tasks", async (req, res) => {
 router.post("/maintenance-tasks", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
-    const { title, description, propertyId, category, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
+    const { title, description, propertyId, category, assigneeId, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
     const effectiveScheduleType = scheduleType ?? "recurring";
     if (!title || !propertyId || !category) {
       res.status(400).json({ error: "title, propertyId, and category are required" });
@@ -137,6 +191,14 @@ router.post("/maintenance-tasks", async (req, res) => {
       return;
     }
 
+    const assignee = await resolveAssigneeId(assigneeId, scope.householdId);
+    if (!assignee.ok) {
+      res.status(assignee.status).json({
+        error: assignee.status === 400 ? "Invalid assigneeId" : "Assignee not accessible",
+      });
+      return;
+    }
+
     let resolvedNextDueDate: string;
     if (effectiveScheduleType === "recurring" && startDate) {
       resolvedNextDueDate = getNextAnchoredDate(startDate, freq!, new Date());
@@ -151,6 +213,7 @@ router.post("/maintenance-tasks", async (req, res) => {
         description: description ?? null,
         propertyId: propertyIdNum,
         category,
+        assigneeId: assignee.value,
         frequencyDays: freq,
         scheduleType: effectiveScheduleType,
         isCompleted: false,
@@ -160,8 +223,7 @@ router.post("/maintenance-tasks", async (req, res) => {
       })
       .returning();
 
-    const [prop] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, task.propertyId));
-    res.status(201).json(formatTask(task, prop?.name ?? ""));
+    res.status(201).json(await fetchFormattedTask(task.id));
   } catch (err) {
     req.log.error({ err }, "Failed to create maintenance task");
     res.status(500).json({ error: "Internal server error" });
@@ -180,7 +242,7 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    const { title, description, propertyId, category, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
+    const { title, description, propertyId, category, assigneeId, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
 
     const [existing] = await db
       .select()
@@ -215,6 +277,19 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
       return;
     }
 
+    // An assignee change, if supplied, must reference a member of this household.
+    let resolvedAssigneeId: number | null | undefined;
+    if (assigneeId !== undefined) {
+      const assignee = await resolveAssigneeId(assigneeId, scope.householdId);
+      if (!assignee.ok) {
+        res.status(assignee.status).json({
+          error: assignee.status === 400 ? "Invalid assigneeId" : "Assignee not accessible",
+        });
+        return;
+      }
+      resolvedAssigneeId = assignee.value;
+    }
+
     const effectiveFrequencyDays = effectiveScheduleType === "recurring"
       ? (frequencyDays !== undefined ? Number(frequencyDays) : existing.frequencyDays)
       : null;
@@ -243,6 +318,7 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
         ...(description !== undefined && { description: description ?? null }),
         ...(propertyIdNum !== undefined && { propertyId: propertyIdNum }),
         ...(category !== undefined && { category }),
+        ...(resolvedAssigneeId !== undefined && { assigneeId: resolvedAssigneeId }),
         frequencyDays: effectiveFrequencyDays,
         scheduleType: effectiveScheduleType,
         startDate: effectiveStartDate ?? null,
@@ -255,17 +331,12 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
         inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
       ));
 
-    const rows = await db
-      .select({ task: maintenanceTasksTable, propertyName: propertiesTable.name })
-      .from(maintenanceTasksTable)
-      .leftJoin(propertiesTable, eq(maintenanceTasksTable.propertyId, propertiesTable.id))
-      .where(eq(maintenanceTasksTable.id, id));
-
-    if (!rows.length) {
+    const formatted = await fetchFormattedTask(id);
+    if (!formatted) {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    res.json(formatTask(rows[0].task, rows[0].propertyName ?? ""));
+    res.json(formatted);
   } catch (err) {
     req.log.error({ err }, "Failed to update maintenance task");
     res.status(500).json({ error: "Internal server error" });
@@ -371,13 +442,7 @@ router.post("/maintenance-tasks/:id/complete", async (req, res) => {
         ));
     }
 
-    const rows = await db
-      .select({ task: maintenanceTasksTable, propertyName: propertiesTable.name })
-      .from(maintenanceTasksTable)
-      .leftJoin(propertiesTable, eq(maintenanceTasksTable.propertyId, propertiesTable.id))
-      .where(eq(maintenanceTasksTable.id, id));
-
-    res.json(formatTask(rows[0].task, rows[0].propertyName ?? ""));
+    res.json(await fetchFormattedTask(id));
   } catch (err) {
     req.log.error({ err }, "Failed to complete maintenance task");
     res.status(500).json({ error: "Internal server error" });
