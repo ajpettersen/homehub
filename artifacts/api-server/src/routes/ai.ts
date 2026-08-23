@@ -10,6 +10,10 @@ import {
   mealRatingsTable,
   peopleTable,
   contractorsTable,
+  groceryListsTable,
+  groceryItemsTable,
+  maintenanceTasksTable,
+  choresTable,
 } from "@workspace/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
@@ -147,6 +151,7 @@ const VALID_CATEGORIES = [
   "grains", "canned", "snacks", "frozen", "beverages", "household", "other",
 ];
 
+const VALID_MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
 const router = Router();
 
 /** Detect MIME type from a base64 string (with or without data-URI prefix). */
@@ -454,35 +459,51 @@ router.post("/ai/scan-pantry", async (req, res) => {
 
     const photoWord = imagesBase64.length === 1 ? "photo" : `${imagesBase64.length} photos`;
 
-    const SYSTEM = `You are a family meal planner AI. Scan fridge/pantry photos and return a JSON object with: ingredients found and meal suggestions.
-${memoriesCtx}
-Recent meals to avoid repeating: ${mealHistory.slice(0, 20).join(", ") || "none"}
+    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
 
-Respond ONLY with valid JSON:
-{
-  "ingredients": ["chicken breast", "pasta"],
-  "mealSuggestions": [
-    { "name": "Pasta Primavera", "description": "...", "usesIngredients": ["pasta"], "missingIngredients": ["cream"] }
-  ]
-}`;
+Family members:
+${memberLines}
+
+Properties:
+${propertyLines}
+
+${formatLiveSnapshot(liveSnapshot, snapshotNow)}
+
+What you help with:
+- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
+- Meal planning & recipes: family-friendly, practical, low food waste.
+- Grocery & shopping: organized lists, pantry scanning.
+- Household maintenance: seasonal checklists for both properties.
+- Kids chores, schedules, organization, family planning.
+- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
+${memoriesCtx}
+${peopleCtx}
+Shopping lists:
+${groceryListLines}
+
+You can take household actions with the available tools:
+- Use a tool only when the user explicitly asks you to add, create, or schedule something.
+- Never claim an action was completed unless its tool result says it succeeded. After every successful action, clearly confirm what you did.
+- Use the supplied property, family member, and shopping-list IDs exactly. Do not invent IDs.
+- When the household has a House/Home property and the user does not name a property, use that for meals and chores; otherwise ask a clarification instead of guessing.
+- A single reminder is a one-time maintenance task. Use recurring only when the user asks for a repeated task.
+- For dates such as "Thursday" or "in 3 months", calculate an exact YYYY-MM-DD date using today: ${snapshotNow.toISOString().slice(0, 10)}.
+
+Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
+      max_completion_tokens: 256,
       messages: [
-        { role: "system", content: SYSTEM },
         {
           role: "user",
-          content: [
-            { type: "text", text: `Please analyze ${photoWord} of my fridge/pantry and suggest meals.` },
-            ...imageContent,
-          ] as any,
+          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
         },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -490,14 +511,14 @@ Respond ONLY with valid JSON:
 
     res.json(JSON.parse(jsonMatch[0]));
   } catch (err) {
-    console.error("Pantry scan error:", err);
-    res.status(500).json({ error: "Failed to scan pantry" });
+    console.error("Suggest week error:", err);
+    res.status(500).json({ error: "Failed to suggest week" });
   }
 });
 
-// ── POST /ai/meal-recipe ─────────────────────────────────────────────────────
-// Returns a full recipe for a named meal, plus an optional AI-generated food photo
-router.post("/ai/meal-recipe", async (req, res) => {
+// ── POST /ai/extract-recipe-url ──────────────────────────────────────────────
+// Fetches a recipe page and uses AI to extract the meal name + summary
+router.post("/ai/extract-recipe-url", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
@@ -599,7 +620,7 @@ router.post("/ai/suggest-week", async (req, res) => {
       const mealName = mealPlanById.get(r.mealPlanId);
       if (!mealName) continue;
       if (!memberMealRatings.has(r.memberId)) memberMealRatings.set(r.memberId, new Map());
-      const mealMap = memberMealRatings.get(r.memberId)!;
+      const mealMap = memberMealRatings.get(member.id);
       if (!mealMap.has(mealName)) mealMap.set(mealName, []);
       mealMap.get(mealName)!.push(r.rating);
     }
@@ -627,43 +648,51 @@ router.post("/ai/suggest-week", async (req, res) => {
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
 
-    const SYSTEM = `You are a family meal planner. Suggest a full week of meals (breakfast, lunch, dinner for Mon–Sun) for a family with kids.
+    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
 
-Recent meals already eaten (vary from these): ${mealHistory.slice(0, 25).join(", ") || "none"}
+Family members:
+${memberLines}
 
-Per-member food preferences:
-${memberPreferenceLines.length > 0 ? memberPreferenceLines.join("\n") : "  - (no per-member ratings yet — use general family-friendly meals)"}
+Properties:
+${propertyLines}
 
+${formatLiveSnapshot(liveSnapshot, snapshotNow)}
+
+What you help with:
+- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
+- Meal planning & recipes: family-friendly, practical, low food waste.
+- Grocery & shopping: organized lists, pantry scanning.
+- Household maintenance: seasonal checklists for both properties.
+- Kids chores, schedules, organization, family planning.
+- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
 ${memoriesCtx}
-Rules:
-- Avoid meals marked as "refuses/skips" by any member whenever possible
-- Prioritize meals loved by most members
-- Keep meals practical and kid-friendly
-- Vary cuisines and protein types across the week
+${peopleCtx}
+Shopping lists:
+${groceryListLines}
 
-Respond ONLY with valid JSON:
-{
-  "days": [
-    {
-      "dayName": "Monday",
-      "breakfast": "Scrambled Eggs & Toast",
-      "lunch": "PB&J Sandwiches",
-      "dinner": "Spaghetti Bolognese"
-    }
-  ]
-}`;
+You can take household actions with the available tools:
+- Use a tool only when the user explicitly asks you to add, create, or schedule something.
+- Never claim an action was completed unless its tool result says it succeeded. After every successful action, clearly confirm what you did.
+- Use the supplied property, family member, and shopping-list IDs exactly. Do not invent IDs.
+- When the household has a House/Home property and the user does not name a property, use that for meals and chores; otherwise ask a clarification instead of guessing.
+- A single reminder is a one-time maintenance task. Use recurring only when the user asks for a repeated task.
+- For dates such as "Thursday" or "in 3 months", calculate an exact YYYY-MM-DD date using today: ${snapshotNow.toISOString().slice(0, 10)}.
+
+Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
+      max_completion_tokens: 256,
       messages: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: "Please suggest a full week of meals for our family." },
+        {
+          role: "user",
+          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
+        },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -709,13 +738,13 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as { name?: string; error?: string };
+    const parsed = JSON.parse(jsonMatch[0]) as { items: Array<{ name: string; quantity: string; category: string }> };
     if (parsed.error) {
       res.status(422).json({ error: parsed.error });
       return;
@@ -838,24 +867,33 @@ router.post("/ai/chat", async (req, res) => {
     const MAX_IMAGES = 4;
     const snapshotNow = new Date();
 
-    // Load live household context + memories in parallel (scoped to this household)
-    const [members, properties, memoriesCtx, peopleCtx, existingRows, liveSnapshot] = await Promise.all([
+    const [members, properties, memoriesCtx, peopleCtx, existingRows, liveSnapshot, groceryLists] = await Promise.all([
       db.select().from(familyMembersTable).where(eq(familyMembersTable.householdId, scope.householdId)),
       db.select().from(propertiesTable).where(inArray(propertiesTable.id, scope.propertyIds)),
       getMemoriesContext(scope.householdId),
       getPeopleContext(scope.propertyIds),
       db.select({ content: aiMemoriesTable.content }).from(aiMemoriesTable).where(eq(aiMemoriesTable.householdId, scope.householdId)),
       getLiveHouseholdSnapshot(scope.propertyIds, snapshotNow),
+      db
+        .select({
+          id: groceryListsTable.id,
+          name: groceryListsTable.name,
+          propertyId: groceryListsTable.propertyId,
+        })
+        .from(groceryListsTable)
+        .where(inArray(groceryListsTable.propertyId, scope.propertyIds)),
     ]);
-
     const existingMemories = existingRows.map(r => r.content);
     const memberLines = members.length > 0
-      ? members.map(m => `- ${m.name} (${m.role ?? "member"})`).join("\n")
+      ? members.map(m => `- ${m.name} (${m.role ?? "member"}; id: ${m.id})`).join("\n")
       : "- (no family members recorded yet)";
     const propertyLines = properties.length > 0
-      ? properties.map(p => `- ${p.name}${p.address ? ` — ${p.address}` : ""}`).join("\n")
+      ? properties.map(p => `- ${p.name} (${p.type}; id: ${p.id})${p.address ? ` — ${p.address}` : ""}`).join("\n")
       : "- (no properties recorded yet)";
 
+    const groceryListLines = groceryLists.length > 0
+      ? groceryLists.map(list => `- ${list.name} (id: ${list.id}; property id: ${list.propertyId})`).join("\n")
+      : "- (no shopping list exists yet)";
     const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
 
 Family members:
@@ -875,6 +913,17 @@ What you help with:
 - Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
 ${memoriesCtx}
 ${peopleCtx}
+Shopping lists:
+${groceryListLines}
+
+You can take household actions with the available tools:
+- Use a tool only when the user explicitly asks you to add, create, or schedule something.
+- Never claim an action was completed unless its tool result says it succeeded. After every successful action, clearly confirm what you did.
+- Use the supplied property, family member, and shopping-list IDs exactly. Do not invent IDs.
+- When the household has a House/Home property and the user does not name a property, use that for meals and chores; otherwise ask a clarification instead of guessing.
+- A single reminder is a one-time maintenance task. Use recurring only when the user asks for a repeated task.
+- For dates such as "Thursday" or "in 3 months", calculate an exact YYYY-MM-DD date using today: ${snapshotNow.toISOString().slice(0, 10)}.
+
 Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
     const trimmedMessages = messages.slice(-MAX_MESSAGES).map(m => ({
@@ -900,14 +949,25 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
       return { role: m.role, content: m.content };
     });
 
-    const chatResponse = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
-      messages: [{ role: "system", content: SYSTEM }, ...builtMessages],
-    });
+    const toolContext: AiActionContext = {
+      scope,
+      propertyIds: scope.propertyIds,
+      members: members.map(({ id, name }) => ({ id, name })),
+      groceryLists,
+      now: snapshotNow,
+    };
+      const chatResponse = await openai.chat.completions.create({
+        model: "gpt-5.6-luna",
+        max_completion_tokens: 1024,
+        messages: conversation,
+        tools: AI_ACTION_TOOLS as any,
+        tool_choice: "auto",
+      });
 
-    const reply = chatResponse.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
+      const assistantMessage = chatResponse.choices[0]?.message;
+    let reply = "";
 
+    for (let round = 0; round < 4; round += 1) {
     const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
     const newMemories = lastUserMsg
       ? await extractAndSaveMemories(scope.householdId, lastUserMsg.content, reply, existingMemories)
@@ -976,3 +1036,370 @@ router.delete("/ai/memories/:id", async (req, res) => {
 });
 
 export default router;
+
+const VALID_CHORE_FREQUENCIES = ["daily", "weekly", "biweekly", "monthly", "custom"] as const;
+
+function mondayForDate(date: string): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  const day = parsed.getUTCDay();
+  parsed.setUTCDate(parsed.getUTCDate() - (day === 0 ? 6 : day - 1));
+  return parsed.toISOString().slice(0, 10);
+}
+
+const OPTIONAL_ACTION_FIELDS: Record<string, string[]> = {
+  add_meal_plan_entry: ["notes"],
+  add_grocery_item: ["quantity", "listId", "listName", "propertyId"],
+  create_maintenance_task: ["description", "frequencyDays"],
+  add_chore: ["dueDate", "assigneeId", "points"],
+};
+
+function cleanActionString(value: unknown, field: string, maxLength = 300): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required`);
+  const cleaned = value.trim();
+  if (cleaned.length > maxLength) throw new Error(`${field} is too long`);
+  return cleaned;
+}
+
+function optionalActionString(value: unknown, maxLength = 500): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") throw new Error("Expected a string");
+  const cleaned = value.trim();
+  if (cleaned.length > maxLength) throw new Error("Text value is too long");
+  return cleaned || null;
+}
+
+    const outcomes = [...confirmations, ...failures].join("\n");
+
+          const fingerprint = actionFingerprint(toolName, args);
+
+type AiActionResult = {
+  ok: boolean;
+  confirmation?: string;
+  error?: string;
+};
+
+    const confirmations: string[] = [];
+
+      const toolCalls = (assistantMessage.tool_calls ?? []) as any[];
+
+const AI_ACTION_TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "add_meal_plan_entry",
+      description: "Add one meal to a specific calendar date and meal slot. Only call this when the user explicitly asks to add or plan a meal.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          meal: { type: "string", description: "The meal name, for example tacos" },
+          date: { type: "string", description: "Calendar date in YYYY-MM-DD format. Resolve relative dates using today's date from the system prompt." },
+          mealType: { type: "string", enum: VALID_MEAL_TYPES, description: "The meal slot" },
+          propertyId: { type: "integer", description: "ID of the property for this meal" },
+          notes: { type: ["string", "null"], description: "Optional notes for the meal" },
+        },
+        required: ["meal", "date", "mealType", "propertyId"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "add_grocery_item",
+      description: "Add one item to the household shopping list. Only call this when the user explicitly asks to add groceries or shopping items.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string", description: "Item name" },
+          quantity: { type: ["string", "null"], description: "Optional amount, such as 2 cartons" },
+          category: { type: "string", enum: VALID_CATEGORIES, description: "Grocery category" },
+          listId: { type: ["integer", "null"], description: "Existing shopping list ID from the household context, when known" },
+          listName: { type: ["string", "null"], description: "Shopping list name, when the user specified one" },
+          propertyId: { type: ["integer", "null"], description: "Property ID when a new list must be created" },
+        },
+        required: ["name", "quantity", "category"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "create_maintenance_task",
+      description: "Create a household maintenance reminder. Use one-time for a single reminder such as 'in 3 months'; use recurring only when the user asks for repetition.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string", description: "Short task title" },
+          description: { type: ["string", "null"], description: "Optional task details" },
+          propertyId: { type: "integer", description: "ID of the property for this task" },
+          category: { type: "string", enum: VALID_MAINTENANCE_CATEGORIES },
+          scheduleType: { type: "string", enum: ["one-time", "recurring"] },
+          dueDate: { type: "string", description: "Due date in YYYY-MM-DD format" },
+          frequencyDays: { type: ["integer", "null"], description: "Positive repeat interval in days for recurring tasks" },
+        },
+        required: ["title", "propertyId", "category", "scheduleType", "dueDate"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "add_chore",
+      description: "Add a chore for the household. Only call this when the user explicitly asks to create or add a chore.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string", description: "Chore title" },
+          propertyId: { type: "integer", description: "ID of the property for this chore" },
+          frequency: { type: "string", enum: VALID_CHORE_FREQUENCIES },
+          dueDate: { type: ["string", "null"], description: "Optional due date in YYYY-MM-DD format" },
+          assigneeId: { type: ["integer", "null"], description: "Optional family member ID from the household context" },
+          points: { type: ["integer", "null"], description: "Optional reward points, defaults to 10" },
+        },
+        required: ["title", "propertyId", "frequency"],
+      },
+    },
+  },
+] as const;
+
+function nextRecurringDueDate(startDate: string, frequencyDays: number, now: Date): string {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  if (start >= today) return startDate;
+
+  const elapsedDays = Math.ceil((today.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+  const repeats = Math.ceil(elapsedDays / frequencyDays);
+  start.setUTCDate(start.getUTCDate() + repeats * frequencyDays);
+  return start.toISOString().slice(0, 10);
+}
+
+        const toolName = toolCall.type === "function" ? toolCall.function.name : "";
+
+        let result: AiActionResult;
+
+function actionFingerprint(name: string, rawArgs: unknown): string {
+  const args = (rawArgs && typeof rawArgs === "object" ? rawArgs : {}) as Record<string, unknown>;
+  const normalized: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(args), ...(OPTIONAL_ACTION_FIELDS[name] ?? [])]);
+
+  for (const key of [...keys].sort()) {
+    const value = args[key];
+    if (value === undefined || value === null || value === "") {
+      normalized[key] = null;
+    } else if (NUMERIC_ACTION_FIELDS.has(key)) {
+      normalized[key] = Number(value);
+    } else if (typeof value === "string") {
+      normalized[key] = value.trim();
+    } else {
+      normalized[key] = value;
+    }
+  }
+  return `${name}:${JSON.stringify(normalized)}`;
+}
+
+/** Parse a strict calendar date and reject values JavaScript would normalize. */
+function parseActionDate(value: unknown, field: string): string {
+  const date = cleanActionString(value, field, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`${field} must be YYYY-MM-DD`);
+  const [year, month, day] = date.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new Error(`${field} is not a valid date`);
+  }
+  return date;
+}
+
+const VALID_MAINTENANCE_CATEGORIES = ["filter", "water", "seasonal", "appliance", "yard", "other", "cleaning"] as const;
+
+function resolveGroceryList(
+  args: Record<string, unknown>,
+  context: AiActionContext,
+): { id: number; name: string; propertyId: number } | null {
+  const rawListId = args.listId;
+  if (rawListId !== undefined && rawListId !== null) {
+    const listId = Number(rawListId);
+    if (!Number.isInteger(listId)) throw new Error("Invalid shopping list");
+    const list = context.groceryLists.find((candidate) => candidate.id === listId);
+    if (!list) throw new Error("That shopping list is not available to this household");
+    return list;
+  }
+
+  const listName = optionalActionString(args.listName, 100)?.toLowerCase();
+  if (listName) {
+    const list = context.groceryLists.find((candidate) => candidate.name.toLowerCase() === listName);
+    if (!list) throw new Error(`No shopping list named "${args.listName}" was found`);
+    return list;
+  }
+
+  if (context.groceryLists.length === 1) return context.groceryLists[0];
+  const preferred = context.groceryLists.find((list) => /^(groceries|shopping|shopping list)$/i.test(list.name));
+  if (preferred) return preferred;
+  if (context.groceryLists.length > 1) {
+    throw new Error("There is more than one shopping list; ask which list to use");
+  }
+  return null;
+}
+
+    const completedActions = new Set<string>();
+
+function authorizedPropertyId(value: unknown, propertyIds: number[]): number {
+  const propertyId = Number(value);
+  if (!Number.isInteger(propertyId) || !propertyIds.includes(propertyId)) {
+    throw new Error("That property is not available to this household");
+  }
+  return propertyId;
+}
+
+async function executeAiAction(
+  name: string,
+  rawArgs: unknown,
+  context: AiActionContext,
+): Promise<AiActionResult> {
+  try {
+    const args = (rawArgs && typeof rawArgs === "object" ? rawArgs : {}) as Record<string, unknown>;
+
+    if (name === "add_meal_plan_entry") {
+      const meal = cleanActionString(args.meal, "meal");
+      const date = parseActionDate(args.date, "date");
+      const mealType = cleanActionString(args.mealType, "mealType", 20);
+      if (!(VALID_MEAL_TYPES as readonly string[]).includes(mealType)) throw new Error("Invalid meal type");
+      const propertyId = authorizedPropertyId(args.propertyId, context.propertyIds);
+      const notes = optionalActionString(args.notes);
+      await db.insert(mealPlansTable).values({
+        weekStart: mondayForDate(date),
+        dayOfWeek: new Date(`${date}T00:00:00Z`).getUTCDay(),
+        mealType,
+        meal,
+        notes,
+        propertyId,
+      });
+      return { ok: true, confirmation: `Done — I added ${meal} to ${date}'s ${mealType} slot.` };
+    }
+
+    if (name === "add_grocery_item") {
+      const itemName = cleanActionString(args.name, "name", 200);
+      const category = cleanActionString(args.category, "category", 30);
+      if (!(VALID_CATEGORIES as readonly string[]).includes(category)) throw new Error("Invalid grocery category");
+      const quantity = optionalActionString(args.quantity, 100);
+      let list = resolveGroceryList(args, context);
+      if (!list) {
+        const propertyId = authorizedPropertyId(
+          args.propertyId ?? (context.propertyIds.length === 1 ? context.propertyIds[0] : undefined),
+          context.propertyIds,
+        );
+        const [createdList] = await db
+          .insert(groceryListsTable)
+          .values({ name: "Shopping List", propertyId })
+          .returning({ id: groceryListsTable.id, name: groceryListsTable.name, propertyId: groceryListsTable.propertyId });
+        list = createdList;
+        context.groceryLists.push(createdList);
+      }
+      await db.insert(groceryItemsTable).values({
+        listId: list.id,
+        name: itemName,
+        quantity,
+        category,
+        addedBy: "HomeHub Assistant",
+      });
+      return { ok: true, confirmation: `Done — I added ${itemName}${quantity ? ` (${quantity})` : ""} to ${list.name}.` };
+    }
+
+    if (name === "create_maintenance_task") {
+      const title = cleanActionString(args.title, "title");
+      const description = optionalActionString(args.description);
+      const propertyId = authorizedPropertyId(args.propertyId, context.propertyIds);
+      const category = cleanActionString(args.category, "category", 30);
+      if (!(VALID_MAINTENANCE_CATEGORIES as readonly string[]).includes(category)) throw new Error("Invalid maintenance category");
+      const scheduleType = cleanActionString(args.scheduleType, "scheduleType", 20);
+      if (scheduleType !== "one-time" && scheduleType !== "recurring") throw new Error("Invalid maintenance schedule");
+      const dueDate = parseActionDate(args.dueDate, "dueDate");
+      const frequencyDays = args.frequencyDays === undefined || args.frequencyDays === null
+        ? null
+        : Number(args.frequencyDays);
+      if (scheduleType === "recurring" && (!Number.isInteger(frequencyDays) || (frequencyDays ?? 0) < 1)) {
+        throw new Error("Recurring maintenance needs a positive frequencyDays");
+      }
+      const nextDueDate = scheduleType === "recurring"
+        ? nextRecurringDueDate(dueDate, frequencyDays!, context.now)
+        : dueDate;
+      await db.insert(maintenanceTasksTable).values({
+        title,
+        description,
+        propertyId,
+        category,
+        assigneeId: null,
+        frequencyDays: scheduleType === "recurring" ? frequencyDays : null,
+        scheduleType,
+        isCompleted: false,
+        isCleanerTask: false,
+        startDate: scheduleType === "recurring" ? dueDate : null,
+        nextDueDate,
+      });
+      return { ok: true, confirmation: `Done — I created the ${scheduleType === "one-time" ? "reminder" : "recurring task"} “${title}” for ${nextDueDate}.` };
+    }
+
+    if (name === "add_chore") {
+      const title = cleanActionString(args.title, "title");
+      const propertyId = authorizedPropertyId(args.propertyId, context.propertyIds);
+      const frequency = cleanActionString(args.frequency, "frequency", 20);
+      if (!(VALID_CHORE_FREQUENCIES as readonly string[]).includes(frequency)) throw new Error("Invalid chore frequency");
+      const dueDate = args.dueDate === undefined || args.dueDate === null ? null : parseActionDate(args.dueDate, "dueDate");
+      const points = args.points === undefined || args.points === null ? 10 : Number(args.points);
+      if (!Number.isInteger(points) || points < 0 || points > 1000) throw new Error("points must be a whole number from 0 to 1000");
+      const assigneeId = args.assigneeId === undefined || args.assigneeId === null ? null : Number(args.assigneeId);
+      let assigneeName: string | null = null;
+      if (assigneeId !== null) {
+        const assignee = context.members.find((member) => member.id === assigneeId);
+        if (!assignee) throw new Error("That family member is not available to this household");
+        assigneeName = assignee.name;
+      }
+      await db.insert(choresTable).values({
+        title,
+        assigneeId,
+        propertyId,
+        frequency,
+        dueDate,
+        points,
+      });
+      return {
+        ok: true,
+        confirmation: `Done — I added the chore “${title}”${assigneeName ? ` for ${assigneeName}` : ""}${dueDate ? `, due ${dueDate}` : ""}.`,
+      };
+    }
+
+    return { ok: false, error: `Unknown assistant action: ${name}` };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The action could not be completed" };
+  }
+}
+
+    const conversation: any[] = [{ role: "system", content: SYSTEM }, ...builtMessages];
+
+    const failures: string[] = [];
+
+const NUMERIC_ACTION_FIELDS = new Set([
+  "propertyId",
+  "listId",
+  "assigneeId",
+  "points",
+  "frequencyDays",
+]);
+
+          const args = toolCall.type === "function"
+            ? JSON.parse(toolCall.function.arguments || "{}")
+            : {};
+
+type AiActionContext = {
+  scope: PropertyAuthorizationScope;
+  propertyIds: number[];
+  members: { id: number; name: string }[];
+  groceryLists: { id: number; name: string; propertyId: number }[];
+  now: Date;
+};
