@@ -234,6 +234,112 @@ export interface Property {
   address?: string | null;
 }
 
+export type CreatePropertyInputType = typeof CreatePropertyInputType[keyof typeof CreatePropertyInputType];
+
+
+export const CreatePropertyInputType = {
+  house: 'house',
+  cabin: 'cabin',
+} as const;
+
+export interface CreatePropertyInput {
+  name: string;
+  type?: CreatePropertyInputType;
+  icon?: string;
+  address?: string | null;
+}
+
+export interface Household {
+  id: string;
+  name: string;
+  onboardingCompleted: boolean;
+}
+
+export interface UpdateHouseholdInput {
+  name?: string;
+  /** Completion is one-way; only true is accepted. */
+  onboardingCompleted?: true;
+}
+
+export type OnboardingPropertyInputType = typeof OnboardingPropertyInputType[keyof typeof OnboardingPropertyInputType];
+
+
+export const OnboardingPropertyInputType = {
+  house: 'house',
+  cabin: 'cabin',
+} as const;
+
+export interface OnboardingPropertyInput {
+  name: string;
+  type?: OnboardingPropertyInputType;
+  address?: string | null;
+}
+
+export type OnboardingMemberInputRole = typeof OnboardingMemberInputRole[keyof typeof OnboardingMemberInputRole];
+
+
+export const OnboardingMemberInputRole = {
+  parent: 'parent',
+  child: 'child',
+  pet: 'pet',
+} as const;
+
+export interface OnboardingMemberInput {
+  name: string;
+  role: OnboardingMemberInputRole;
+  color: string;
+}
+
+export type OnboardingChoreInputFrequency = typeof OnboardingChoreInputFrequency[keyof typeof OnboardingChoreInputFrequency];
+
+
+export const OnboardingChoreInputFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  biweekly: 'biweekly',
+  monthly: 'monthly',
+  custom: 'custom',
+} as const;
+
+export interface OnboardingChoreInput {
+  title: string;
+  frequency: OnboardingChoreInputFrequency;
+}
+
+export type OnboardingMaintenanceInputCategory = typeof OnboardingMaintenanceInputCategory[keyof typeof OnboardingMaintenanceInputCategory];
+
+
+export const OnboardingMaintenanceInputCategory = {
+  filter: 'filter',
+  water: 'water',
+  seasonal: 'seasonal',
+  appliance: 'appliance',
+  yard: 'yard',
+  other: 'other',
+  cleaning: 'cleaning',
+} as const;
+
+export interface OnboardingMaintenanceInput {
+  title: string;
+  category: OnboardingMaintenanceInputCategory;
+  /** @minimum 1 */
+  frequencyDays: number;
+}
+
+export interface OnboardingInput {
+  householdName: string;
+  property: OnboardingPropertyInput;
+  familyMembers: OnboardingMemberInput[];
+  groceryListName?: string | null;
+  chores?: OnboardingChoreInput[];
+  maintenanceTasks?: OnboardingMaintenanceInput[];
+}
+
+export interface OnboardingResult {
+  onboardingCompleted: boolean;
+  alreadyCompleted: boolean;
+}
+
 export type UpdatePropertyInputType = typeof UpdatePropertyInputType[keyof typeof UpdatePropertyInputType];
 
 
@@ -635,6 +741,8 @@ export const UserProfileRole = {
 export interface UserProfile {
   clerkId: string;
   role: UserProfileRole;
+  householdName?: string | null;
+  onboardingCompleted: boolean;
   allowedPropertyId?: string | null;
   allowedPropertyName?: string | null;
   linkedFamilyMemberId?: string | null;

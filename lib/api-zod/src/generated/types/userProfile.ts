@@ -10,6 +10,8 @@ import type { UserProfileRole } from './userProfileRole';
 export interface UserProfile {
   clerkId: string;
   role: UserProfileRole;
+  householdName?: string | null;
+  onboardingCompleted: boolean;
   allowedPropertyId?: string | null;
   allowedPropertyName?: string | null;
   linkedFamilyMemberId?: string | null;

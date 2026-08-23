@@ -229,6 +229,69 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Property"
+    post:
+      operationId: createProperty
+      tags: [properties]
+      summary: Create a property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePropertyInput"
+      responses:
+        "201":
+          description: Created property
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+        "403":
+          description: Forbidden
+
+  /household:
+    patch:
+      operationId: updateHousehold
+      tags: [users]
+      summary: Rename the household or mark onboarding complete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateHouseholdInput"
+      responses:
+        "200":
+          description: Updated household
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Household"
+        "403":
+          description: Forbidden
+
+  /onboarding:
+    post:
+      operationId: completeOnboarding
+      tags: [users]
+      summary: Seed the household from first-login setup (transactional and idempotent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingInput"
+      responses:
+        "200":
+          description: Onboarding completed (or was already completed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingResult"
+        "400":
+          description: Invalid input
+        "403":
+          description: Forbidden
 
   /properties/{id}:
     put:
@@ -1596,6 +1659,141 @@ components:
         - type
         - icon
 
+    CreatePropertyInput:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [house, cabin]
+        icon:
+          type: string
+        address:
+          type: string
+          nullable: true
+      required:
+        - name
+
+    Household:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        onboardingCompleted:
+          type: boolean
+      required:
+        - id
+        - name
+        - onboardingCompleted
+
+    UpdateHouseholdInput:
+      type: object
+      properties:
+        name:
+          type: string
+        onboardingCompleted:
+          type: boolean
+          enum: [true]
+          description: Completion is one-way; only true is accepted.
+
+    OnboardingPropertyInput:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [house, cabin]
+        address:
+          type: string
+          nullable: true
+      required:
+        - name
+
+    OnboardingMemberInput:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+          enum: [parent, child, pet]
+        color:
+          type: string
+      required:
+        - name
+        - role
+        - color
+
+    OnboardingChoreInput:
+      type: object
+      properties:
+        title:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekly, biweekly, monthly, custom]
+      required:
+        - title
+        - frequency
+
+    OnboardingMaintenanceInput:
+      type: object
+      properties:
+        title:
+          type: string
+        category:
+          type: string
+          enum: [filter, water, seasonal, appliance, yard, other, cleaning]
+        frequencyDays:
+          type: integer
+          minimum: 1
+      required:
+        - title
+        - category
+        - frequencyDays
+
+    OnboardingInput:
+      type: object
+      properties:
+        householdName:
+          type: string
+        property:
+          $ref: "#/components/schemas/OnboardingPropertyInput"
+        familyMembers:
+          type: array
+          items:
+            $ref: "#/components/schemas/OnboardingMemberInput"
+        groceryListName:
+          type: string
+          nullable: true
+        chores:
+          type: array
+          items:
+            $ref: "#/components/schemas/OnboardingChoreInput"
+        maintenanceTasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/OnboardingMaintenanceInput"
+      required:
+        - householdName
+        - property
+        - familyMembers
+
+    OnboardingResult:
+      type: object
+      properties:
+        onboardingCompleted:
+          type: boolean
+        alreadyCompleted:
+          type: boolean
+      required:
+        - onboardingCompleted
+        - alreadyCompleted
+
     UpdatePropertyInput:
       type: object
       properties:
@@ -2294,13 +2492,18 @@ components:
 
     UserProfile:
       type: object
-      required: [clerkId, role]
+      required: [clerkId, role, onboardingCompleted]
       properties:
         clerkId:
           type: string
         role:
           type: string
           enum: [family, cleaner, pending]
+        householdName:
+          type: string
+          nullable: true
+        onboardingCompleted:
+          type: boolean
         allowedPropertyId:
           type: string
           nullable: true

@@ -35,6 +35,7 @@ import type {
   CreateMaintenanceTaskInput,
   CreateMealPlanEntryInput,
   CreatePersonInput,
+  CreatePropertyInput,
   CreateRecipeInput,
   CreateTodoItemInput,
   CreateTodoListInput,
@@ -53,11 +54,14 @@ import type {
   GroceryItem,
   GroceryList,
   HealthStatus,
+  Household,
   MaintenanceTask,
   MealPlanEntry,
   MealRating,
   MealRatingList,
   MealRecipeResult,
+  OnboardingInput,
+  OnboardingResult,
   PantryScanResult,
   Person,
   Property,
@@ -71,6 +75,7 @@ import type {
   UpdateContractorInput,
   UpdateFamilyMemberInput,
   UpdateGroceryItemInput,
+  UpdateHouseholdInput,
   UpdateMaintenanceTaskInput,
   UpdateMealPlanEntryInput,
   UpdatePersonInput,
@@ -918,6 +923,219 @@ export function useGetProperties<TData = Awaited<ReturnType<typeof getProperties
 
 
 
+
+export const getCreatePropertyUrl = () => {
+
+
+
+
+  return `/api/properties`
+}
+
+/**
+ * @summary Create a property
+ */
+export const createProperty = async (createPropertyInput: CreatePropertyInput, options?: RequestInit): Promise<Property> => {
+
+  return customFetch<Property>(getCreatePropertyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPropertyInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePropertyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProperty>>, TError,{data: BodyType<CreatePropertyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createProperty>>, TError,{data: BodyType<CreatePropertyInput>}, TContext> => {
+
+const mutationKey = ['createProperty'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createProperty>>, {data: BodyType<CreatePropertyInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createProperty(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePropertyMutationResult = NonNullable<Awaited<ReturnType<typeof createProperty>>>
+    export type CreatePropertyMutationBody = BodyType<CreatePropertyInput>
+    export type CreatePropertyMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a property
+ */
+export const useCreateProperty = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProperty>>, TError,{data: BodyType<CreatePropertyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createProperty>>,
+        TError,
+        {data: BodyType<CreatePropertyInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePropertyMutationOptions(options));
+    }
+
+export const getUpdateHouseholdUrl = () => {
+
+
+
+
+  return `/api/household`
+}
+
+/**
+ * @summary Rename the household or mark onboarding complete
+ */
+export const updateHousehold = async (updateHouseholdInput: UpdateHouseholdInput, options?: RequestInit): Promise<Household> => {
+
+  return customFetch<Household>(getUpdateHouseholdUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateHouseholdInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateHouseholdMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateHousehold>>, TError,{data: BodyType<UpdateHouseholdInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateHousehold>>, TError,{data: BodyType<UpdateHouseholdInput>}, TContext> => {
+
+const mutationKey = ['updateHousehold'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateHousehold>>, {data: BodyType<UpdateHouseholdInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateHousehold(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateHouseholdMutationResult = NonNullable<Awaited<ReturnType<typeof updateHousehold>>>
+    export type UpdateHouseholdMutationBody = BodyType<UpdateHouseholdInput>
+    export type UpdateHouseholdMutationError = ErrorType<void>
+
+    /**
+ * @summary Rename the household or mark onboarding complete
+ */
+export const useUpdateHousehold = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateHousehold>>, TError,{data: BodyType<UpdateHouseholdInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateHousehold>>,
+        TError,
+        {data: BodyType<UpdateHouseholdInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateHouseholdMutationOptions(options));
+    }
+
+export const getCompleteOnboardingUrl = () => {
+
+
+
+
+  return `/api/onboarding`
+}
+
+/**
+ * @summary Seed the household from first-login setup (transactional and idempotent)
+ */
+export const completeOnboarding = async (onboardingInput: OnboardingInput, options?: RequestInit): Promise<OnboardingResult> => {
+
+  return customFetch<OnboardingResult>(getCompleteOnboardingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(onboardingInput)
+  }
+);}
+
+
+
+
+
+export const getCompleteOnboardingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,{data: BodyType<OnboardingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,{data: BodyType<OnboardingInput>}, TContext> => {
+
+const mutationKey = ['completeOnboarding'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeOnboarding>>, {data: BodyType<OnboardingInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  completeOnboarding(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteOnboardingMutationResult = NonNullable<Awaited<ReturnType<typeof completeOnboarding>>>
+    export type CompleteOnboardingMutationBody = BodyType<OnboardingInput>
+    export type CompleteOnboardingMutationError = ErrorType<void>
+
+    /**
+ * @summary Seed the household from first-login setup (transactional and idempotent)
+ */
+export const useCompleteOnboarding = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,{data: BodyType<OnboardingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeOnboarding>>,
+        TError,
+        {data: BodyType<OnboardingInput>},
+        TContext
+      > => {
+      return useMutation(getCompleteOnboardingMutationOptions(options));
+    }
 
 export const getUpdatePropertyUrl = (id: string,) => {
 

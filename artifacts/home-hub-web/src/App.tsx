@@ -4,9 +4,11 @@ import { ClerkProvider, SignIn, SignUp, useAuth } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
+import { useGetMe, getGetMeQueryKey } from '@workspace/api-client-react';
 import { ActiveMemberProvider } from '@/context/ActiveMemberContext';
 import { Shell } from '@/components/layout/Shell';
 
+import Onboarding from '@/pages/Onboarding';
 import Dashboard from '@/pages/Dashboard';
 import Chores from '@/pages/Chores';
 import Kitchen from '@/pages/Kitchen';
@@ -87,12 +89,30 @@ function ProfileInitializer() {
   return null;
 }
 
+/**
+ * Shows the first-login setup wizard to approved household owners whose
+ * household has not completed onboarding yet. Everyone else (pending users,
+ * cleaners, already-onboarded households) sees the normal app.
+ */
+function OnboardingGate({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { data: me } = useGetMe({
+    query: { enabled: !!(isLoaded && isSignedIn), queryKey: getGetMeQueryKey() },
+  });
+
+  if (isSignedIn && me?.role === 'family' && !me.onboardingCompleted) {
+    return <Onboarding />;
+  }
+  return <>{children}</>;
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
       <Route>
+        <OnboardingGate>
         <Shell>
           <Switch>
         <Route path="/" component={Dashboard} />
@@ -106,6 +126,7 @@ function Router() {
         <Route component={NotFound} />
           </Switch>
         </Shell>
+        </OnboardingGate>
       </Route>
     </Switch>
   );

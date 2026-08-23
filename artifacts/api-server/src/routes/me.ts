@@ -6,15 +6,36 @@ import { isConfiguredBootstrapIdentity } from "../lib/bootstrapIdentity";
 
 const router = Router();
 
+interface HouseholdSummary {
+  name: string;
+  onboardingCompletedAt: Date | null;
+}
+
+async function getHouseholdSummary(householdId: number | null): Promise<HouseholdSummary | null> {
+  if (!householdId) return null;
+  const [household] = await db
+    .select({
+      name: householdsTable.name,
+      onboardingCompletedAt: householdsTable.onboardingCompletedAt,
+    })
+    .from(householdsTable)
+    .where(eq(householdsTable.id, householdId))
+    .limit(1);
+  return household ?? null;
+}
+
 function formatProfile(
   profile: typeof userProfilesTable.$inferSelect,
   member: typeof familyMembersTable.$inferSelect | null,
   property: typeof propertiesTable.$inferSelect | null,
+  household: HouseholdSummary | null,
 ) {
   return {
     clerkId: profile.clerkId,
     role: profile.role,
     householdId: profile.householdId ? String(profile.householdId) : null,
+    householdName: household?.name ?? null,
+    onboardingCompleted: household ? household.onboardingCompletedAt !== null : false,
     allowedPropertyId: profile.allowedPropertyId ? String(profile.allowedPropertyId) : null,
     allowedPropertyName: property?.name ?? null,
     linkedFamilyMemberId: profile.linkedFamilyMemberId ? String(profile.linkedFamilyMemberId) : null,
@@ -84,7 +105,12 @@ router.get("/me", async (req, res): Promise<void> => {
       if (profile.role === "pending") {
         const isBootstrapOwner = await isConfiguredBootstrapIdentity(clerkId);
         if (!isBootstrapOwner && profile.householdId) {
-          res.json(formatProfile(profile, member ?? null, property ?? null));
+          res.json(formatProfile(
+            profile,
+            member ?? null,
+            property ?? null,
+            await getHouseholdSummary(profile.householdId),
+          ));
           return;
         }
 
@@ -110,11 +136,21 @@ router.get("/me", async (req, res): Promise<void> => {
 
           return [currentProfile ?? profile];
         });
-        res.json(formatProfile(resolvedProfile, member ?? null, property ?? null));
+        res.json(formatProfile(
+          resolvedProfile,
+          member ?? null,
+          property ?? null,
+          await getHouseholdSummary(resolvedProfile.householdId),
+        ));
         return;
       }
 
-      res.json(formatProfile(profile, member ?? null, property ?? null));
+      res.json(formatProfile(
+        profile,
+        member ?? null,
+        property ?? null,
+        await getHouseholdSummary(profile.householdId),
+      ));
       return;
     }
 
@@ -155,7 +191,12 @@ router.get("/me", async (req, res): Promise<void> => {
         .returning();
     });
 
-    res.status(201).json(formatProfile(newProfile, null, null));
+    res.status(201).json(formatProfile(
+      newProfile,
+      null,
+      null,
+      await getHouseholdSummary(newProfile.householdId),
+    ));
   } catch (err) {
     req.log.error({ err }, "Failed to get/create user profile");
     res.status(500).json({ error: "Internal server error" });
@@ -175,8 +216,9 @@ router.get("/admin/users", async (req, res) => {
       .where(eq(userProfilesTable.householdId, admin.householdId))
       .orderBy(userProfilesTable.createdAt);
 
+    const household = await getHouseholdSummary(admin.householdId);
     res.json(rows.map(({ profile, member, property }) =>
-      formatProfile(profile, member ?? null, property ?? null),
+      formatProfile(profile, member ?? null, property ?? null, household),
     ));
   } catch (err) {
     req.log.error({ err }, "Failed to list users");

@@ -218,6 +218,76 @@ export const GetPropertiesResponse = zod.array(GetPropertiesResponseItem)
 
 
 /**
+ * @summary Create a property
+ */
+export const CreatePropertyBody = zod.object({
+  "name": zod.string(),
+  "type": zod.enum(['house', 'cabin']).optional(),
+  "icon": zod.string().optional(),
+  "address": zod.string().nullish()
+})
+
+export const CreatePropertyResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.enum(['house', 'cabin']),
+  "icon": zod.string(),
+  "address": zod.string().nullish()
+})
+
+
+/**
+ * @summary Rename the household or mark onboarding complete
+ */
+export const UpdateHouseholdBody = zod.object({
+  "name": zod.string().optional(),
+  "onboardingCompleted": zod.literal(true).optional().describe('Completion is one-way; only true is accepted.')
+})
+
+export const UpdateHouseholdResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "onboardingCompleted": zod.boolean()
+})
+
+
+/**
+ * @summary Seed the household from first-login setup (transactional and idempotent)
+ */
+
+
+
+export const CompleteOnboardingBody = zod.object({
+  "householdName": zod.string(),
+  "property": zod.object({
+  "name": zod.string(),
+  "type": zod.enum(['house', 'cabin']).optional(),
+  "address": zod.string().nullish()
+}),
+  "familyMembers": zod.array(zod.object({
+  "name": zod.string(),
+  "role": zod.enum(['parent', 'child', 'pet']),
+  "color": zod.string()
+})),
+  "groceryListName": zod.string().nullish(),
+  "chores": zod.array(zod.object({
+  "title": zod.string(),
+  "frequency": zod.enum(['daily', 'weekly', 'biweekly', 'monthly', 'custom'])
+})).optional(),
+  "maintenanceTasks": zod.array(zod.object({
+  "title": zod.string(),
+  "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
+  "frequencyDays": zod.number().min(1)
+})).optional()
+})
+
+export const CompleteOnboardingResponse = zod.object({
+  "onboardingCompleted": zod.boolean(),
+  "alreadyCompleted": zod.boolean()
+})
+
+
+/**
  * @summary Update a property
  */
 export const UpdatePropertyParams = zod.object({
@@ -732,6 +802,8 @@ export const DeleteRecipeResponse = zod.void()
 export const GetMeResponse = zod.object({
   "clerkId": zod.string(),
   "role": zod.enum(['family', 'cleaner', 'pending']),
+  "householdName": zod.string().nullish(),
+  "onboardingCompleted": zod.boolean(),
   "allowedPropertyId": zod.string().nullish(),
   "allowedPropertyName": zod.string().nullish(),
   "linkedFamilyMemberId": zod.string().nullish(),
@@ -746,6 +818,8 @@ export const GetMeResponse = zod.object({
 export const ListUsersResponseItem = zod.object({
   "clerkId": zod.string(),
   "role": zod.enum(['family', 'cleaner', 'pending']),
+  "householdName": zod.string().nullish(),
+  "onboardingCompleted": zod.boolean(),
   "allowedPropertyId": zod.string().nullish(),
   "allowedPropertyName": zod.string().nullish(),
   "linkedFamilyMemberId": zod.string().nullish(),

@@ -35,6 +35,57 @@ router.get("/properties", async (req, res) => {
   }
 });
 
+router.post("/properties", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+
+    // Only family members may create properties.
+    if (scope.role !== "family") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const { name, type, icon, address } = req.body as {
+      name?: string;
+      type?: string;
+      icon?: string;
+      address?: string | null;
+    };
+
+    if (typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "Property name is required" });
+      return;
+    }
+    const normalizedType = type ?? "house";
+    if (!["house", "cabin"].includes(normalizedType)) {
+      res.status(400).json({ error: "Invalid property type" });
+      return;
+    }
+
+    const [created] = await db
+      .insert(propertiesTable)
+      .values({
+        householdId: scope.householdId,
+        name: name.trim(),
+        type: normalizedType,
+        icon: icon ?? (normalizedType === "cabin" ? "mountain" : "home"),
+        address: address?.trim() || null,
+      })
+      .returning();
+
+    res.status(201).json({
+      id: String(created.id),
+      name: created.name,
+      type: created.type,
+      icon: created.icon,
+      address: created.address ?? null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create property");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.put("/properties/:id", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
