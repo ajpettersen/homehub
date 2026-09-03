@@ -15,6 +15,7 @@ import {
   type FamilyMember, type MealRating,
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
+import { usePreferences } from "@/context/PreferencesContext";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
@@ -820,6 +821,7 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
 
 export default function Meals() {
   const queryClient = useQueryClient();
+  const { preferences } = usePreferences();
 
   // Week state (Mon-anchored)
   const [weekOffset, setWeekOffset] = useState(0);
@@ -845,7 +847,7 @@ export default function Meals() {
 
   // Tab + UI state — declared before the recipe query so `activeTab` is in scope
   const [aiLoading, setAiLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"meals" | "shopping" | "recipes">("meals");
+  const [activeTab, setActiveTab] = useState<"meals" | "shopping" | "recipes">(() => preferences.tabs.meals.defaultView);
   const [pendingRecipeName, setPendingRecipeName] = useState<string | null>(null);
 
   // Recipes (cookbook) — scoped to house property.

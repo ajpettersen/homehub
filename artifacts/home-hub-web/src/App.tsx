@@ -6,6 +6,7 @@ import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
 import { useGetMe, getGetMeQueryKey } from '@workspace/api-client-react';
 import { ActiveMemberProvider } from '@/context/ActiveMemberContext';
+import { PreferencesProvider } from '@/context/PreferencesContext';
 import { Shell } from '@/components/layout/Shell';
 
 import Onboarding from '@/pages/Onboarding';
@@ -181,7 +182,9 @@ function ClerkApp() {
       <ProfileInitializer />
       <QueryClientProvider client={queryClient}>
         <ActiveMemberProvider>
-          <Router />
+          <PreferencesProvider>
+            <Router />
+          </PreferencesProvider>
         </ActiveMemberProvider>
       </QueryClientProvider>
     </ClerkProvider>

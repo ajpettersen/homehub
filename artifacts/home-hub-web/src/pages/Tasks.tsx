@@ -14,9 +14,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckSquare, Plus, Check, Trash2, ArrowUp } from "lucide-react";
 import { format } from "date-fns";
+import { usePreferences } from "@/context/PreferencesContext";
 
 export default function Tasks() {
   const queryClient = useQueryClient();
+  const { preferences } = usePreferences();
   const { data: lists, isLoading: loadingLists } = useGetTodoLists({ query: { queryKey: getGetTodoListsQueryKey() } });
   
   const createList = useCreateTodoList();
@@ -71,7 +73,7 @@ export default function Tasks() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${preferences.tabs.tasks.layout === "columns" ? "lg:grid-cols-2" : ""} gap-6`}>
         {lists?.map((list, index) => (
           <TodoListCard key={list.id} list={list} isFirst={index === 0} />
         ))}

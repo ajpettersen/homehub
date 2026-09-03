@@ -3,6 +3,7 @@ import { Home, CheckSquare, Settings, Utensils, Brush, ChevronDown, Dumbbell, Mo
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useGetFamilyMembers, getGetFamilyMembersQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
+import { usePreferences } from "@/context/PreferencesContext";
 
 const navItems = [
   { href: "/",           label: "Home",       icon: Home },
@@ -18,16 +19,17 @@ const navItems = [
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { activeMember, setActiveMember } = useActiveMember();
+  const { preferences } = usePreferences();
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
 
   const humanMembers = familyMembers?.filter(m => m.role !== "pet") ?? [];
 
   return (
-    <div className="h-[100dvh] min-h-0 flex flex-col md:flex-row bg-background overflow-hidden">
+    <div className={`h-[100dvh] min-h-0 flex flex-col md:flex-row bg-background overflow-hidden ${preferences.appearance.density === "compact" ? "density-compact" : ""}`}>
 
       {/* ── Desktop sidebar ── */}
-      <aside className="hidden md:flex w-64 h-[100dvh] sticky top-0 bg-card border-r border-border flex-col p-4 shadow-sm shrink-0">
+      <aside className={`hidden md:flex w-64 h-[100dvh] sticky top-0 bg-card border-r border-border flex-col shadow-sm shrink-0 ${preferences.appearance.density === "compact" ? "p-3" : "p-4"}`}>
         <div className="flex items-center gap-3 px-2 mb-8 mt-2">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-serif font-bold text-xl shadow-md rotate-[-3deg]">
             H
@@ -42,7 +44,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
+                className={`flex items-center gap-3 px-4 ${preferences.appearance.density === "compact" ? "py-2.5" : "py-3"} rounded-xl transition-all duration-200 font-medium ${
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
@@ -91,7 +93,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col h-[100dvh] min-h-0 overflow-hidden">
 
         {/* Mobile top bar */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-card border-b border-border shrink-0">
+        <header className={`md:hidden flex items-center justify-between px-4 ${preferences.appearance.density === "compact" ? "py-2" : "py-3"} bg-card border-b border-border shrink-0`}>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-serif font-bold text-base shadow-sm rotate-[-3deg]">
               H
@@ -155,7 +157,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
+        <div className={`flex-1 min-h-0 overflow-y-auto p-4 ${preferences.appearance.density === "compact" ? "md:p-5 pb-20 md:pb-5" : "md:p-8 pb-24 md:pb-8"}`}>
           <div className="max-w-6xl mx-auto">
             {location !== "/" && (
               <Link
@@ -184,7 +186,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               key={item.href}
               href={item.href}
               data-testid={`nav-${item.label.toLowerCase()}`}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 min-h-[64px] transition-colors ${
+                className={`flex-1 flex flex-col items-center justify-center gap-1 ${preferences.appearance.density === "compact" ? "py-2 min-h-[56px]" : "py-3 min-h-[64px]"} transition-colors ${
                 isActive ? "text-primary" : "text-muted-foreground"
               }`}
             >

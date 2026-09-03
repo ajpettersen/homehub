@@ -8,6 +8,7 @@ import {
   Sparkles, Send, Paperclip, X, Loader2, Brain, ChevronDown,
 } from "lucide-react";
 import { format } from "date-fns";
+import { usePreferences } from "@/context/PreferencesContext";
 
 interface StoredMemory { id: number; content: string; source?: string | null; createdAt: string; }
 
@@ -360,6 +361,7 @@ function HouseholdChat() {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const { preferences } = usePreferences();
   const { data: dashboard, isLoading } = useGetDashboard({ query: { queryKey: getGetDashboardQueryKey() } });
 
   if (isLoading) {
@@ -374,7 +376,7 @@ export default function Dashboard() {
   if (!dashboard) return null;
 
   return (
-    <div className="space-y-8">
+    <div className="flex flex-col space-y-8">
       <div>
         <h1 className="text-4xl font-serif font-bold text-foreground mb-2">
           Good {new Date().getHours() < 12 ? "morning" : "afternoon"}, Family!
@@ -383,7 +385,7 @@ export default function Dashboard() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 ${preferences.tabs.home.focus === "assistant" ? "order-2" : "order-1"}`}>
         <Link href="/chores" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
           <Card className="bg-primary/10 border-primary/20 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
             <div className="absolute -right-4 -top-4 opacity-10"><CheckCircle2 className="w-32 h-32" /></div>
@@ -448,10 +450,12 @@ export default function Dashboard() {
       </div>
 
       {/* HomeHub Assistant */}
-      <HouseholdChat />
+      <div className={preferences.tabs.home.focus === "assistant" ? "order-1" : "order-2"}>
+        <HouseholdChat />
+      </div>
 
       {/* Main content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="order-3 grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="space-y-6">
           <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2 inline-block">On the Menu</h2>
           {dashboard.todaysMeals.length === 0 ? (

@@ -70,6 +70,14 @@
   --radius: 1rem;
 }
 
+html[data-density="compact"] {
+  --radius: 0.75rem;
+}
+
+html[data-density="compact"] body {
+  letter-spacing: -0.005em;
+}
+
 .dark {
   --background: 20 20% 15%; 
   --foreground: 40 33% 96%;

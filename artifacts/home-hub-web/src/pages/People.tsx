@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { Link } from "wouter";
+import { usePreferences } from "@/context/PreferencesContext";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Check,
@@ -482,6 +483,7 @@ function ContractorCard({ contractor, onEdit, onDelete }: { contractor: Contract
 
 export default function People() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { preferences } = usePreferences();
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -795,7 +797,7 @@ export default function People() {
       </div>
 
       {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={`grid gap-3 sm:grid-cols-2 ${preferences.tabs.people.layout === "cards" ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
           {[1, 2, 3].map(item => <div key={item} className="h-32 animate-pulse rounded-2xl bg-muted" />)}
         </div>
       ) : filteredPeople.length === 0 ? (
@@ -814,7 +816,7 @@ export default function People() {
           )}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={`grid gap-3 sm:grid-cols-2 ${preferences.tabs.people.layout === "cards" ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
           {filteredPeople.map(person => (
             <PersonCard key={person.id} person={person} onEdit={() => startEdit(person)} onDelete={() => deletePerson(person)} />
           ))}

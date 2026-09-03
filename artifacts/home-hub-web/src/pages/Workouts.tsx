@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
+import { usePreferences } from "@/context/PreferencesContext";
 import {
   useGetWorkouts,
   useCreateWorkout,
@@ -673,6 +674,8 @@ function AIRecommendationModal({ onClose, activeMember, members, onMemberChange 
 
 export default function Workouts() {
   const { data: allMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
+  const { activeMember } = useActiveMember();
+  const { preferences } = usePreferences();
 
   // Only AJ and Emily (parents) can use workouts
   const parents = allMembers?.filter(m => m.role === "parent") ?? [];
@@ -683,9 +686,12 @@ export default function Workouts() {
   // Once parents load, default-select both
   React.useEffect(() => {
     if (parents.length > 0 && selectedIds.length === 0) {
-      setSelectedIds(parents.map(p => p.id));
+      const activeParent = preferences.tabs.workouts.defaultScope === "active"
+        ? parents.find(parent => parent.id === activeMember?.id)
+        : undefined;
+      setSelectedIds(activeParent ? [activeParent.id] : parents.map(p => p.id));
     }
-  }, [parents.length]);
+  }, [parents.length, preferences.tabs.workouts.defaultScope, activeMember?.id]);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [aiMember, setAiMember] = useState<any>(null); // which member to get AI rec for

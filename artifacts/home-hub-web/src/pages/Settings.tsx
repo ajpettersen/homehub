@@ -14,7 +14,9 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
   ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
+  SlidersHorizontal,
 } from "lucide-react";
+import { usePreferences } from "@/context/PreferencesContext";
 import {
   disableWebPush,
   enableWebPush,
@@ -80,23 +82,26 @@ function AccordionSection({
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="border border-border rounded-2xl overflow-hidden bg-card shadow-sm">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center gap-3.5 px-5 py-4 hover:bg-muted/30 transition-colors text-left"
-      >
-        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <span className="font-bold text-base text-foreground">{title}</span>
-          {summary && !open && (
-            <div className="mt-0.5">{summary}</div>
-          )}
-        </div>
-        {action && open && <div onClick={e => e.stopPropagation()}>{action}</div>}
-        <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
-      </button>
+      <div className="flex items-center hover:bg-muted/30 transition-colors">
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-3.5 px-5 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+        >
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+            {icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="font-bold text-base text-foreground">{title}</span>
+            {summary && !open && (
+              <div className="mt-0.5">{summary}</div>
+            )}
+          </div>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </button>
+        {action && open && <div className="pr-5">{action}</div>}
+      </div>
 
       {open && (
         <div className="border-t border-border px-5 py-5">
@@ -117,6 +122,169 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
           style={{ backgroundColor: c }} />
       ))}
     </div>
+  );
+}
+
+function PreferenceChoice({
+  label,
+  description,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border/80 bg-background/60 p-3.5">
+      <div className="mb-2.5">
+        <p className="text-sm font-bold text-foreground">{label}</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
+      </div>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
+        {options.map(option => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+              value === option.value
+                ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AppearanceAndTabsSection() {
+  const { preferences, setAppearance, setTabPreference, resetPreferences } = usePreferences();
+  const tab = preferences.tabs;
+
+  return (
+    <section className="overflow-hidden rounded-2xl border-2 border-primary/20 bg-card shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-border bg-primary/5 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <SlidersHorizontal className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="font-bold text-base text-foreground">Appearance &amp; tab preferences</h2>
+            <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
+              Make HomeHub easier to scan. These choices apply immediately and stay on this device.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={resetPreferences}
+          className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          data-testid="button-reset-preferences"
+        >
+          Reset all preferences
+        </button>
+      </div>
+
+      <div className="space-y-5 px-5 py-5">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Overall look</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <PreferenceChoice
+              label="Color mode"
+              description="Choose the light or dark colors used across the app."
+              value={preferences.appearance.colorMode}
+              options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]}
+              onChange={value => setAppearance("colorMode", value as "light" | "dark")}
+            />
+            <PreferenceChoice
+              label="UI density"
+              description="Use comfortable spacing or fit more information on screen."
+              value={preferences.appearance.density}
+              options={[{ value: "comfortable", label: "Comfortable" }, { value: "compact", label: "Compact" }]}
+              onChange={value => setAppearance("density", value as "comfortable" | "compact")}
+            />
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Customize each tab</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <PreferenceChoice
+              label="Home"
+              description="Choose whether your assistant or today’s household overview leads the page."
+              value={tab.home.focus}
+              options={[{ value: "overview", label: "Overview first" }, { value: "assistant", label: "Assistant first" }]}
+              onChange={value => setTabPreference("home", "focus", value as "overview" | "assistant")}
+            />
+            <PreferenceChoice
+              label="Chores"
+              description="Pick the filter shown automatically whenever you open Chores."
+              value={tab.chores.defaultFilter}
+              options={[
+                { value: "all", label: "All pending" }, { value: "today", label: "Due today" },
+                { value: "mine", label: "Mine" }, { value: "done", label: "Completed" },
+              ]}
+              onChange={value => setTabPreference("chores", "defaultFilter", value as "all" | "today" | "mine" | "done")}
+            />
+            <PreferenceChoice
+              label="Meals"
+              description="Open the meal planner, shopping list, or cookbook by default."
+              value={tab.meals.defaultView}
+              options={[
+                { value: "meals", label: "Meal plan" }, { value: "shopping", label: "Shopping list" }, { value: "recipes", label: "Cookbook" },
+              ]}
+              onChange={value => setTabPreference("meals", "defaultView", value as "meals" | "shopping" | "recipes")}
+            />
+            <PreferenceChoice
+              label="Tasks"
+              description="Show task lists in two columns or one focused list per row."
+              value={tab.tasks.layout}
+              options={[{ value: "columns", label: "Two columns" }, { value: "list", label: "Single list" }]}
+              onChange={value => setTabPreference("tasks", "layout", value as "columns" | "list")}
+            />
+            <PreferenceChoice
+              label="Workouts"
+              description="Start with everyone’s workouts or the person currently active in the household."
+              value={tab.workouts.defaultScope}
+              options={[{ value: "everyone", label: "Everyone" }, { value: "active", label: "Active member" }]}
+              onChange={value => setTabPreference("workouts", "defaultScope", value as "everyone" | "active")}
+            />
+            <PreferenceChoice
+              label="Properties"
+              description="Choose which property opens first when reviewing maintenance."
+              value={tab.properties.defaultProperty}
+              options={[{ value: "cabin", label: "Cabin" }, { value: "house", label: "Main house" }]}
+              onChange={value => setTabPreference("properties", "defaultProperty", value as "cabin" | "house")}
+            />
+            <PreferenceChoice
+              label="People"
+              description="Use roomy profile cards or a compact directory when browsing people."
+              value={tab.people.layout}
+              options={[{ value: "cards", label: "Profile cards" }, { value: "compact", label: "Compact directory" }]}
+              onChange={value => setTabPreference("people", "layout", value as "cards" | "compact")}
+            />
+            <PreferenceChoice
+              label="Settings"
+              description="Choose the section opened first when you return to Settings."
+              value={tab.settings.startSection}
+              options={[
+                { value: "members", label: "Members" }, { value: "properties", label: "Properties" },
+                { value: "notifications", label: "Notifications" }, { value: "memory", label: "AI memory" },
+              ]}
+              onChange={value => setTabPreference("settings", "startSection", value as "members" | "properties" | "notifications" | "memory")}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -749,6 +917,7 @@ function WebNotificationsSection() {
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function Settings() {
   const queryClient = useQueryClient();
+  const { preferences } = usePreferences();
 
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
@@ -788,12 +957,14 @@ export default function Settings() {
         <p className="text-muted-foreground mt-1 font-medium">Manage your household, properties, and AI preferences.</p>
       </div>
 
+      <AppearanceAndTabsSection />
+
       {/* ── Family Members (person-first: leads the page) ───────────────────── */}
       <AccordionSection
         icon={<Users className="w-4 h-4" />}
         title="Family Members"
         summary={memberSummary}
-        defaultOpen={true}
+        defaultOpen={preferences.tabs.settings.startSection === "members"}
         action={
           !addingMember ? (
             <button onClick={() => { setAddingMember(true); setEditingMemberId(null); }}
@@ -843,7 +1014,7 @@ export default function Settings() {
         icon={<Home className="w-4 h-4" />}
         title="Properties"
         summary={<span className="text-xs text-muted-foreground">{properties?.length ?? 0} propert{properties?.length === 1 ? "y" : "ies"}</span>}
-        defaultOpen={false}
+        defaultOpen={preferences.tabs.settings.startSection === "properties"}
       >
         <div className="space-y-3">
           {properties?.map(property => (
@@ -861,7 +1032,7 @@ export default function Settings() {
         icon={<Bell className="w-4 h-4" />}
         title="Phone Notifications"
         summary={<span className="text-xs text-muted-foreground">Chore and maintenance reminders on this phone</span>}
-        defaultOpen={false}
+        defaultOpen={preferences.tabs.settings.startSection === "notifications"}
       >
         <WebNotificationsSection />
       </AccordionSection>
@@ -871,7 +1042,7 @@ export default function Settings() {
         icon={<Brain className="w-4 h-4" />}
         title="AI Memory"
         summary={<span className="text-xs text-muted-foreground">What the assistant has learned about your family</span>}
-        defaultOpen={false}
+        defaultOpen={preferences.tabs.settings.startSection === "memory"}
       >
         <AiMemorySection />
       </AccordionSection>

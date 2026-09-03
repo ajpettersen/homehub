@@ -8,6 +8,7 @@ import {
   useGetFamilyMembers, getGetFamilyMembersQueryKey,
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
+import { usePreferences } from "@/context/PreferencesContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Plus, Trash2, X, Check, Home, RotateCcw } from "lucide-react";
 import { format, isToday, isPast, parseISO } from "date-fns";
@@ -220,6 +221,7 @@ function AddChoreForm({
 export default function Chores() {
   const queryClient = useQueryClient();
   const { activeMember } = useActiveMember();
+  const { preferences } = usePreferences();
 
   const { data: chores, isLoading } = useGetChores({}, { query: { queryKey: getGetChoresQueryKey() } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
@@ -230,7 +232,7 @@ export default function Chores() {
   const deleteChore = useDeleteChore();
 
   const [adding, setAdding] = useState(false);
-  const [filter, setFilter] = useState<"all" | "mine" | "today" | "done">("all");
+  const [filter, setFilter] = useState<"all" | "mine" | "today" | "done">(() => preferences.tabs.chores.defaultFilter);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
 

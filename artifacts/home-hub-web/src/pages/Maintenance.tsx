@@ -9,6 +9,7 @@ import {
   useGetFamilyMembers, getGetFamilyMembersQueryKey,
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
+import { usePreferences } from "@/context/PreferencesContext";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2, Clock, AlertTriangle, Plus, Trash2, X, Check,
@@ -362,6 +363,7 @@ function AddTaskForm({
 export default function Properties() {
   const queryClient = useQueryClient();
   const { activeMember } = useActiveMember();
+  const { preferences } = usePreferences();
 
   const { data: tasks, isLoading } = useGetMaintenanceTasks({}, { query: { queryKey: getGetMaintenanceTasksQueryKey() } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
@@ -375,7 +377,7 @@ export default function Properties() {
   const house = properties?.find(p => p.type === "house");
   const cabin = properties?.find(p => p.type === "cabin");
 
-  const [activeProperty, setActiveProperty] = useState<"house" | "cabin">("cabin");
+  const [activeProperty, setActiveProperty] = useState<"house" | "cabin">(() => preferences.tabs.properties.defaultProperty);
   const [adding, setAdding] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
