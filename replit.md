@@ -1,4 +1,4 @@
-# [Project name]
+# HomeHub
 
 _Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
 
@@ -26,7 +26,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- HomeHub Web is the primary client. Keep the existing Expo app intact, but do not add features to it unless the user explicitly changes direction.
 
 ## Product
 
@@ -34,7 +34,7 @@ _Describe the high-level user-facing capabilities of this app once they exist._
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Prioritize the installable HomeHub Web app and its Home Screen experience; do not continue Expo app work.
 
 ## Gotchas
 

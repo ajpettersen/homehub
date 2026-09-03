@@ -13,8 +13,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
-  ClipboardList, Brain, Sparkles,
+  ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
 } from "lucide-react";
+import {
+  disableWebPush,
+  enableWebPush,
+  getCurrentWebPushSubscription,
+  isStandaloneWebApp,
+  supportsWebPush,
+} from "@/lib/webPush";
 
 // ── colour palette ───────────────────────────────────────────────────────────
 const COLORS = [
@@ -639,6 +646,94 @@ function AiMemorySection() {
   );
 }
 
+function WebNotificationsSection() {
+  const supported = supportsWebPush();
+  const standalone = isStandaloneWebApp();
+  const [enabled, setEnabled] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!supported) {
+      setChecking(false);
+      return;
+    }
+    getCurrentWebPushSubscription()
+      .then(subscription => setEnabled(Notification.permission === "granted" && subscription !== null))
+      .catch(() => setEnabled(false))
+      .finally(() => setChecking(false));
+  }, [supported]);
+
+  const handleToggle = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      if (enabled) {
+        await disableWebPush();
+        setEnabled(false);
+        setMessage("Notifications are off on this phone.");
+      } else {
+        await enableWebPush();
+        setEnabled(true);
+        setMessage("Notifications are on for this phone.");
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not update notifications.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!supported) {
+    return (
+      <div className="rounded-xl bg-muted/50 px-4 py-3 text-sm text-muted-foreground" data-testid="status-web-push-unsupported">
+        This browser does not support Home Screen push notifications. On iPhone, use iOS 16.4 or newer and open HomeHub from its Home Screen icon.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 rounded-xl bg-primary/10 p-2 text-primary">
+          <Smartphone className="h-4 w-4" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            {standalone ? "Home Screen app detected" : "Save HomeHub to your Home Screen"}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {standalone
+              ? "HomeHub can alert this phone about chores and maintenance even when the app is closed."
+              : "For the best phone experience—especially on iPhone—use Share → Add to Home Screen, open that HomeHub icon, then turn notifications on here."}
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={handleToggle}
+        disabled={checking || saving}
+        data-testid="button-toggle-web-notifications"
+        className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition-colors disabled:opacity-50 ${
+          enabled
+            ? "border border-border bg-muted text-foreground hover:bg-muted/80"
+            : "bg-primary text-primary-foreground hover:bg-primary/90"
+        }`}
+      >
+        {enabled ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+        {saving ? "Saving…" : enabled ? "Turn off notifications" : "Turn on notifications"}
+      </button>
+      <p
+        className={`text-xs ${enabled ? "text-green-700" : "text-muted-foreground"}`}
+        data-testid="status-web-notifications"
+      >
+        {message ?? (checking ? "Checking this phone…" : enabled ? "Notifications are on for this phone." : "Notifications are off for this phone.")}
+      </p>
+    </div>
+  );
+}
+
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -748,6 +843,15 @@ export default function Settings() {
             />
           ))}
         </div>
+      </AccordionSection>
+
+      <AccordionSection
+        icon={<Bell className="w-4 h-4" />}
+        title="Phone Notifications"
+        summary={<span className="text-xs text-muted-foreground">Chore and maintenance reminders on this phone</span>}
+        defaultOpen={false}
+      >
+        <WebNotificationsSection />
       </AccordionSection>
 
       {/* ── AI Memory ───────────────────────────────────────────────────────── */}

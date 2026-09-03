@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { fixStaleMaintenanceDates, fixStaleChoreDates } from "./seed";
 import { runOneTimeProdCleanup } from "./prodDataRepair";
 import { startNotificationScheduler } from "./notifications";
+import { ensureWebPushSchema } from "./lib/webPush";
 
 const rawPort = process.env["PORT"];
 
@@ -17,6 +18,8 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+await ensureWebPushSchema();
 
 app.listen(port, async (err) => {
   if (err) {

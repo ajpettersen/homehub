@@ -11,6 +11,7 @@ import maintenanceRouter from "./maintenance";
 import aiRouter from "./ai";
 import workoutsRouter from "./workouts";
 import pushTokensRouter from "./pushTokens";
+import webPushRouter from "./webPush";
 import meRouter from "./me";
 import householdRouter from "./household";
 import onboardingRouter from "./onboarding";
@@ -36,6 +37,7 @@ router.use(maintenanceRouter);
 router.use(aiRouter);
 router.use(workoutsRouter);
 router.use(pushTokensRouter);
+router.use(webPushRouter);
 router.use(recipesRouter);
 router.use(peopleRouter);
 

@@ -1,6 +1,13 @@
 import { Expo, type ExpoPushMessage } from "expo-server-sdk";
 import { logger } from "./lib/logger";
-import { buildDueNotificationMessages } from "./notificationPlanner";
+import { db, webPushSubscriptionsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import {
+  buildDueNotificationMessages,
+  buildDueWebPushMessages,
+  type PlannedWebPush,
+} from "./notificationPlanner";
+import { webPush } from "./lib/webPush";
 
 const expo = new Expo();
 
@@ -25,12 +32,48 @@ async function sendMessages(messages: ExpoPushMessage[]) {
   }
 }
 
+async function sendWebMessages(messages: PlannedWebPush[]) {
+  await Promise.allSettled(
+    messages.map(async (message) => {
+      try {
+        await webPush.sendNotification(
+          { endpoint: message.endpoint, keys: message.keys },
+          JSON.stringify(message.payload),
+          { TTL: 60 * 60 * 6, urgency: "normal" },
+        );
+      } catch (err) {
+        const statusCode =
+          typeof err === "object" && err !== null && "statusCode" in err
+            ? Number(err.statusCode)
+            : undefined;
+        if (statusCode === 404 || statusCode === 410) {
+          await db
+            .delete(webPushSubscriptionsTable)
+            .where(eq(webPushSubscriptionsTable.id, message.subscriptionId));
+          return;
+        }
+        logger.error(
+          { err, subscriptionId: message.subscriptionId },
+          "Failed to send Web Push notification",
+        );
+      }
+    }),
+  );
+}
+
 export async function sendDueNotifications() {
   try {
-    const messages = await buildDueNotificationMessages(new Date(), sent);
-    if (messages.length === 0) return;
-    logger.info({ count: messages.length }, "Sending due notifications");
-    await sendMessages(messages);
+    const now = new Date();
+    const [expoMessages, webMessages] = await Promise.all([
+      buildDueNotificationMessages(now, sent),
+      buildDueWebPushMessages(now, sent),
+    ]);
+    if (expoMessages.length === 0 && webMessages.length === 0) return;
+    logger.info(
+      { expoCount: expoMessages.length, webCount: webMessages.length },
+      "Sending due notifications",
+    );
+    await Promise.all([sendMessages(expoMessages), sendWebMessages(webMessages)]);
   } catch (err) {
     logger.error({ err }, "Error building due notifications");
   }

@@ -5,6 +5,8 @@ import {
   maintenanceTasksTable,
   propertiesTable,
   pushTokensTable,
+  webPushSubscriptionsTable,
+  userProfilesTable,
 } from "@workspace/db/schema";
 import { and, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
 
@@ -128,5 +130,127 @@ export async function buildDueNotificationMessages(
     }
   }
 
+  return messages;
+}
+
+export type PlannedWebPush = {
+  subscriptionId: number;
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  payload: { title: string; body: string; url: string; tag: string };
+};
+
+export async function buildDueWebPushMessages(
+  now = new Date(),
+  sentKeys: Set<string> = new Set(),
+): Promise<PlannedWebPush[]> {
+  const subscriptions = await db
+    .select({
+      id: webPushSubscriptionsTable.id,
+      endpoint: webPushSubscriptionsTable.endpoint,
+      keys: webPushSubscriptionsTable.keys,
+      householdId: webPushSubscriptionsTable.householdId,
+    })
+    .from(webPushSubscriptionsTable)
+    .innerJoin(
+      userProfilesTable,
+      and(
+        eq(webPushSubscriptionsTable.clerkId, userProfilesTable.clerkId),
+        eq(webPushSubscriptionsTable.householdId, userProfilesTable.householdId),
+        eq(userProfilesTable.role, "family"),
+      ),
+    );
+  const subscriptionsByHousehold = new Map<number, typeof subscriptions>();
+  for (const subscription of subscriptions) {
+    const rows = subscriptionsByHousehold.get(subscription.householdId) ?? [];
+    rows.push(subscription);
+    subscriptionsByHousehold.set(subscription.householdId, rows);
+  }
+  const householdIds = [...subscriptionsByHousehold.keys()];
+  if (householdIds.length === 0) return [];
+
+  const today = dateString(now);
+  const tomorrow = daysFrom(now, 1);
+  const twoDaysOut = daysFrom(now, 2);
+  const messages: PlannedWebPush[] = [];
+
+  const dueChores = await db
+    .select({
+      id: choresTable.id,
+      dueDate: choresTable.dueDate,
+      householdId: propertiesTable.householdId,
+    })
+    .from(choresTable)
+    .innerJoin(propertiesTable, eq(choresTable.propertyId, propertiesTable.id))
+    .where(
+      and(
+        inArray(propertiesTable.householdId, householdIds),
+        lte(choresTable.dueDate, today),
+        isNull(choresTable.completedAt),
+      ),
+    );
+  for (const chore of dueChores) {
+    if (chore.householdId === null) continue;
+    const body =
+      chore.dueDate !== null && chore.dueDate < today
+        ? "A household chore is overdue"
+        : "A household chore is due today";
+    for (const subscription of subscriptionsByHousehold.get(chore.householdId) ?? []) {
+      const key = `web:${subscription.id}:chore:${chore.id}:${today}`;
+      if (sentKeys.has(key)) continue;
+      sentKeys.add(key);
+      messages.push({
+        subscriptionId: subscription.id,
+        endpoint: subscription.endpoint,
+        keys: subscription.keys,
+        payload: {
+          title: "Chore reminder",
+          body,
+          url: "/home-hub-web/chores",
+          tag: `chore-${chore.id}-${today}`,
+        },
+      });
+    }
+  }
+
+  const dueMaintenance = await db
+    .select({
+      id: maintenanceTasksTable.id,
+      nextDueDate: maintenanceTasksTable.nextDueDate,
+      householdId: propertiesTable.householdId,
+    })
+    .from(maintenanceTasksTable)
+    .innerJoin(propertiesTable, eq(maintenanceTasksTable.propertyId, propertiesTable.id))
+    .where(
+      and(
+        inArray(propertiesTable.householdId, householdIds),
+        lte(maintenanceTasksTable.nextDueDate, twoDaysOut),
+        or(
+          ne(maintenanceTasksTable.scheduleType, "one-time"),
+          eq(maintenanceTasksTable.isCompleted, false),
+        ),
+      ),
+    );
+  for (const task of dueMaintenance) {
+    if (task.householdId === null) continue;
+    const when =
+      task.nextDueDate === today ? "today" : task.nextDueDate === tomorrow ? "tomorrow" : "soon";
+    for (const subscription of subscriptionsByHousehold.get(task.householdId) ?? []) {
+      const key = `web:${subscription.id}:maintenance:${task.id}:${today}`;
+      if (sentKeys.has(key)) continue;
+      sentKeys.add(key);
+      messages.push({
+        subscriptionId: subscription.id,
+        endpoint: subscription.endpoint,
+        keys: subscription.keys,
+        payload: {
+          title: "Maintenance reminder",
+          body: `Home maintenance due ${when}`,
+          url: "/home-hub-web/maintenance",
+          tag: `maintenance-${task.id}-${today}`,
+        },
+      });
+    }
+  }
   return messages;
 }
