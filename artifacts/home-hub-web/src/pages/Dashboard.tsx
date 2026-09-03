@@ -9,7 +9,14 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
-interface StoredMemory { id: number; content: string; createdAt: string; }
+interface StoredMemory { id: number; content: string; source?: string | null; createdAt: string; }
+
+function memorySourceLabel(source?: string | null): string | null {
+  if (source === "meals") return "from meal ratings";
+  if (source === "chat") return "from chat";
+  if (source === "auto") return "automatically learned";
+  return null;
+}
 
 // ── AI Chat ──────────────────────────────────────────────────────────────────
 
@@ -253,7 +260,12 @@ function HouseholdChat() {
               {memories.map(m => (
                 <div key={m.id} className="group flex items-start gap-2">
                   <Brain className="w-3 h-3 text-primary/50 mt-0.5 shrink-0" />
-                  <span className="text-xs text-foreground flex-1 leading-snug">{m.content}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-foreground leading-snug">{m.content}</p>
+                    {memorySourceLabel(m.source) && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{memorySourceLabel(m.source)}</p>
+                    )}
+                  </div>
                   <button
                     onClick={() => handleDeleteMemory(m.id)}
                     disabled={deletingId === m.id}

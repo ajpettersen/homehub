@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { mealPlansTable, mealRatingsTable, familyMembersTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
+import { extractAndSaveMealMemories } from "../lib/mealMemory";
 
 const router = Router();
 
@@ -75,6 +76,9 @@ router.post("/meal-plans", async (req, res) => {
       .insert(mealPlansTable)
       .values({ weekStart, dayOfWeek: Number(dayOfWeek), mealType, meal, notes: notes ?? null, rating: rating ?? null, propertyId: propertyIdNum })
       .returning();
+    if (rating === "love" || rating === "skip") {
+      await extractAndSaveMealMemories(scope.householdId, Number(entry.id));
+    }
     res.status(201).json(entryToJson(entry));
   } catch (err) {
     req.log.error({ err }, "Failed to create meal plan entry");
@@ -117,6 +121,9 @@ router.patch("/meal-plans/:id", async (req, res) => {
     if (!entry) {
       res.status(404).json({ error: "Not found" });
       return;
+    }
+    if (rating !== undefined) {
+      await extractAndSaveMealMemories(scope.householdId, id);
     }
     res.json(entryToJson(entry));
   } catch (err) {
@@ -255,6 +262,7 @@ router.post("/meal-ratings", async (req, res) => {
       row = inserted;
     }
 
+    await extractAndSaveMealMemories(scope.householdId, mealPlanIdNum);
     res.json(ratingToJson(row));
   } catch (err) {
     req.log.error({ err }, "Failed to upsert meal rating");

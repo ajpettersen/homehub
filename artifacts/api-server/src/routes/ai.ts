@@ -136,10 +136,24 @@ function extractAndSaveMemories(
         .map(l => l.replace(/^[-•*]\s*/, "").trim())
         .filter(l => l.length > 4 && l.length < 200);
 
+      const savedFacts: string[] = [];
       for (const content of newFacts) {
-        await db.insert(aiMemoriesTable).values({ householdId, content, category: "general" });
+        const normalized = content.trim().replace(/\s+/g, " ").toLowerCase();
+        const alreadyStored = existingMemories.some(
+          memory => memory.trim().replace(/\s+/g, " ").toLowerCase() === normalized,
+        );
+        if (alreadyStored) continue;
+
+        await db.insert(aiMemoriesTable).values({
+          householdId,
+          content,
+          category: "general",
+          source: "chat",
+        });
+        existingMemories.push(content);
+        savedFacts.push(content);
       }
-      return newFacts;
+      return savedFacts;
     } catch {
       return [];
     }
@@ -1068,6 +1082,7 @@ router.get("/ai/memories", async (req, res) => {
         id: aiMemoriesTable.id,
         content: aiMemoriesTable.content,
         category: aiMemoriesTable.category,
+        source: aiMemoriesTable.source,
         createdAt: aiMemoriesTable.createdAt,
       })
       .from(aiMemoriesTable)

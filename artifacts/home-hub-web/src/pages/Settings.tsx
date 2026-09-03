@@ -581,7 +581,14 @@ function MemberCard({ member, onEdit, onDelete }: { member: any; onEdit: () => v
 }
 
 // ── AiMemorySection ───────────────────────────────────────────────────────────
-interface Memory { id: number; content: string; category: string; createdAt: string; }
+interface Memory { id: number; content: string; category: string; source?: string | null; createdAt: string; }
+
+function memorySourceLabel(source?: string | null): string | null {
+  if (source === "meals") return "from meal ratings";
+  if (source === "chat") return "from chat";
+  if (source === "auto") return "automatically learned";
+  return null;
+}
 
 function AiMemorySection() {
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -632,7 +639,12 @@ function AiMemorySection() {
       {memories.map(m => (
         <div key={m.id} className="group flex items-start gap-3 px-3.5 py-3 rounded-xl bg-primary/5 border border-primary/10 hover:border-primary/20 transition-colors">
           <Brain className="w-3.5 h-3.5 text-primary/60 mt-0.5 shrink-0" />
-          <span className="flex-1 text-sm text-foreground leading-snug">{m.content}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-foreground leading-snug">{m.content}</p>
+            {memorySourceLabel(m.source) && (
+              <p className="text-[10px] text-muted-foreground mt-1">{memorySourceLabel(m.source)}</p>
+            )}
+          </div>
           <button
             onClick={() => handleDelete(m.id)}
             disabled={deletingId === m.id}

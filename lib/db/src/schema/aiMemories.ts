@@ -6,6 +6,7 @@ export const aiMemoriesTable = pgTable("ai_memories", {
   householdId: integer("household_id").notNull().references(() => householdsTable.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   category: text("category").notNull().default("general"), // workout | meals | family | general
+  source: text("source"), // chat | meals | auto
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

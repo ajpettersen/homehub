@@ -9,6 +9,7 @@ const allowedTests = new Set([
   "ai-context.integration.ts",
   "household-migration.integration.ts",
   "ipAddress.test.ts",
+  "meal-memory.integration.ts",
 ]);
 if (!allowedTests.has(testFile)) {
   throw new Error(`Unknown test file: ${testFile}`);
