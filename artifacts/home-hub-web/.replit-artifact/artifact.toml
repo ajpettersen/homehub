@@ -1,5 +1,5 @@
 kind = "web"
-previewPath = "/home-hub-web/"
+previewPath = "/"
 title = "HomeHub Web"
 version = "1.0.0"
 id = "artifacts/home-hub-web"
@@ -7,7 +7,7 @@ router = "path"
 
 [[services]]
 name = "web"
-paths = [ "/home-hub-web/" ]
+paths = [ "/" ]
 localPort = 21201
 
 [services.development]
@@ -24,4 +24,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "21201"
-BASE_PATH = "/home-hub-web/"
+BASE_PATH = "/"

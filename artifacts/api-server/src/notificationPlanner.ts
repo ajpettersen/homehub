@@ -206,7 +206,7 @@ export async function buildDueWebPushMessages(
         payload: {
           title: "Chore reminder",
           body,
-          url: "/home-hub-web/chores",
+          url: "/chores",
           tag: `chore-${chore.id}-${today}`,
         },
       });
@@ -246,7 +246,7 @@ export async function buildDueWebPushMessages(
         payload: {
           title: "Maintenance reminder",
           body: `Home maintenance due ${when}`,
-          url: "/home-hub-web/maintenance",
+          url: "/maintenance",
           tag: `maintenance-${task.id}-${today}`,
         },
       });

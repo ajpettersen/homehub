@@ -1,4 +1,4 @@
-const APP_ROOT = "/home-hub-web/";
+const APP_ROOT = "/";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));

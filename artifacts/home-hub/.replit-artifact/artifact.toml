@@ -1,14 +1,14 @@
 kind = "mobile"
-previewPath = "/"
+previewPath = "/mobile/"
 title = "HomeHub"
 version = "1.0.0"
 id = "artifacts/home-hub"
-router = "expo-domain"
+router = "path"
 
 [[services]]
 name = "expo"
 ensurePreviewReachable = "/status"
-paths = [ "/" ]
+paths = [ "/mobile/" ]
 localPort = 21664
 
 [services.development]
@@ -20,4 +20,4 @@ run = [ "pnpm", "--filter", "@workspace/home-hub", "run", "serve" ]
 
 [services.env]
 PORT = "21664"
-BASE_PATH = "/"
+BASE_PATH = "/mobile/"
