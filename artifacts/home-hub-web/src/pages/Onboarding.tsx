@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 // --- Types ---
-type FamilyRole = "parent" | "child" | "pet";
+type FamilyRole = "child" | "pet";
 type PropertyType = "house" | "cabin";
 
 interface OnboardingState {
@@ -200,7 +200,7 @@ function StepProperty({ state, update, onNext, onBack }: any) {
 
 function StepFamily({ state, update, onNext, onBack }: any) {
   const [newMemberName, setNewMemberName] = useState("");
-  const [newMemberRole, setNewMemberRole] = useState<FamilyRole>("parent");
+  const [newMemberRole, setNewMemberRole] = useState<FamilyRole>("child");
   const [newMemberColor, setNewMemberColor] = useState(COLORS[0]);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -279,7 +279,7 @@ function StepFamily({ state, update, onNext, onBack }: any) {
         <div>
           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Role</label>
           <div className="flex gap-2">
-            {(["parent", "child", "pet"] as const).map(role => (
+            {(["child", "pet"] as const).map(role => (
               <button
                 key={role}
                 onClick={() => setNewMemberRole(role)}

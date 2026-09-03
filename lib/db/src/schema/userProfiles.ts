@@ -1,4 +1,5 @@
-import { boolean, pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { boolean, pgTable, serial, text, integer, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { propertiesTable } from "./properties";
 import { familyMembersTable } from "./familyMembers";
 import { householdsTable } from "./households";
@@ -12,6 +13,10 @@ export const userProfilesTable = pgTable("user_profiles", {
   allowedPropertyId: integer("allowed_property_id").references(() => propertiesTable.id, { onDelete: "set null" }),
   linkedFamilyMemberId: integer("linked_family_member_id").references(() => familyMembersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("user_profiles_linked_family_member_unique")
+    .on(table.linkedFamilyMemberId)
+    .where(sql`${table.linkedFamilyMemberId} IS NOT NULL`),
+]);
 
 export type UserProfile = typeof userProfilesTable.$inferSelect;

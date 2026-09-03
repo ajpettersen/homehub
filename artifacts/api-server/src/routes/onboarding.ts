@@ -7,14 +7,13 @@ import {
   groceryListsTable,
   choresTable,
   maintenanceTasksTable,
-  todoListsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
-const VALID_MEMBER_ROLES = ["parent", "child", "pet"];
+const VALID_MEMBER_ROLES = ["child", "pet"];
 const VALID_CHORE_FREQUENCIES = ["daily", "weekly", "biweekly", "monthly", "custom"];
 const VALID_MAINTENANCE_CATEGORIES = ["filter", "water", "seasonal", "appliance", "yard", "other", "cleaning"];
 const VALID_PROPERTY_TYPES = ["house", "cabin"];
@@ -132,16 +131,9 @@ router.post("/onboarding", async (req, res) => {
         return { status: 200 as const, alreadyCompleted: true };
       }
 
-      // The household has never been onboarded (nor skipped setup — skipping
-      // also sets the completion flag), so anything already in it can only be
-      // auto-seeded defaults. Clear them so the wizard's data is the single
-      // source of truth instead of piling on top of demo rows. Deleting
-      // properties cascades to their chores, maintenance tasks, and grocery
-      // lists.
-      await tx.delete(todoListsTable).where(eq(todoListsTable.householdId, scope.householdId));
-      await tx.delete(familyMembersTable).where(eq(familyMembersTable.householdId, scope.householdId));
-      await tx.delete(propertiesTable).where(eq(propertiesTable.householdId, scope.householdId));
-
+      // Preserve every existing family member. In particular, the bootstrap
+      // administrator's account-backed adult and any legacy/link state must
+      // survive setup. The wizard only adds child/pet extras.
       await tx
         .update(householdsTable)
         .set({ name: householdName.trim(), onboardingCompletedAt: new Date() })

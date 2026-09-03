@@ -1,5 +1,7 @@
 import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, Mountain, ArrowLeft } from "lucide-react";
+import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, Mountain, ArrowLeft, LogOut } from "lucide-react";
+import { useClerk } from "@clerk/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import {
   useGetFamilyMembers,
@@ -27,6 +29,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const { signOut } = useClerk();
+  const queryClient = useQueryClient();
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const handleSignOut = async () => {
+    setMemberPickerOpen(false);
+    setActiveMember(null);
+    queryClient.clear();
+    await signOut({ redirectUrl: basePath || "/" });
+  };
 
   const humanMembers = familyMembers?.filter(m => m.role !== "pet") ?? [];
   const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? navItems.map(item => item.tab));
@@ -94,6 +106,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
             ))}
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => void handleSignOut()}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          data-testid="button-sign-out-desktop"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign out
+        </button>
       </aside>
 
       {/* ── Main content ── */}
@@ -109,6 +131,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Member picker pill */}
+          <div className="flex items-center gap-2">
           <div className="relative">
             <button
               onClick={() => setMemberPickerOpen(v => !v)}
@@ -160,6 +183,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 </div>
               </>
             )}
+          </div>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              aria-label="Sign out"
+              title="Sign out"
+              data-testid="button-sign-out-mobile"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/60 text-muted-foreground transition-colors active:bg-muted"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </header>
 

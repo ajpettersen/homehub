@@ -13,4 +13,6 @@ export interface FamilyMember {
   role: FamilyMemberRole;
   color: string;
   photoUrl?: string | null;
+  hasLinkedAccount: boolean;
+  linkedAccountDisplayName?: string | null;
 }

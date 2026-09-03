@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
 import { useGetMe, getGetMeQueryKey } from '@workspace/api-client-react';
-import { ActiveMemberProvider } from '@/context/ActiveMemberContext';
+import { ActiveMemberProvider, useActiveMember } from '@/context/ActiveMemberContext';
 import { PreferencesProvider } from '@/context/PreferencesContext';
 import { Shell } from '@/components/layout/Shell';
 
@@ -103,6 +103,23 @@ function ProfileInitializer() {
     void fetch('/api/me', { credentials: 'include' });
   }, [isLoaded, isSignedIn]);
 
+  return null;
+}
+
+function AuthScopedStateReset() {
+  const { isLoaded, userId } = useAuth();
+  const queryClient = useQueryClient();
+  const { setActiveMember } = useActiveMember();
+  const previousUserId = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (previousUserId.current !== undefined && previousUserId.current !== userId) {
+      setActiveMember(null);
+      queryClient.clear();
+    }
+    previousUserId.current = userId;
+  }, [isLoaded, queryClient, setActiveMember, userId]);
   return null;
 }
 
@@ -227,6 +244,7 @@ function ClerkApp() {
       <ProfileInitializer />
       <QueryClientProvider client={queryClient}>
         <ActiveMemberProvider>
+          <AuthScopedStateReset />
           <PreferencesProvider>
             <Router />
           </PreferencesProvider>

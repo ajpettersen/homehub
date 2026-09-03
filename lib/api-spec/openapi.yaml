@@ -1769,11 +1769,17 @@ components:
         photoUrl:
           type: string
           nullable: true
+        hasLinkedAccount:
+          type: boolean
+        linkedAccountDisplayName:
+          type: string
+          nullable: true
       required:
         - id
         - name
         - role
         - color
+        - hasLinkedAccount
 
     CreateFamilyMemberInput:
       type: object
@@ -1782,7 +1788,7 @@ components:
           type: string
         role:
           type: string
-          enum: [parent, child, pet]
+          enum: [child, pet]
         color:
           type: string
         photoUrl:
@@ -1806,6 +1812,9 @@ components:
         photoUrl:
           type: string
           nullable: true
+        linkedAccountClerkId:
+          type: string
+          description: Required when promoting a child or pet to parent; must identify an eligible approved unlinked family account in the same household.
 
     Property:
       type: object
@@ -1908,7 +1917,7 @@ components:
           type: string
         role:
           type: string
-          enum: [parent, child, pet]
+          enum: [child, pet]
         color:
           type: string
       required:

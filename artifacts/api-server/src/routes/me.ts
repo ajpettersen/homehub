@@ -78,6 +78,45 @@ async function ensureBootstrapHousehold(tx: any): Promise<number> {
   return createdHousehold.id;
 }
 
+function clerkIdentityDisplayName(user: Awaited<ReturnType<typeof clerkClient.users.getUser>>): string {
+  const verifiedEmail = user.emailAddresses.find(email => email.verification?.status === "verified")?.emailAddress;
+  return [user.firstName, user.lastName].filter(Boolean).join(" ").trim()
+    || user.username
+    || verifiedEmail?.split("@")[0]
+    || "Household administrator";
+}
+
+async function ensureBootstrapAdult(
+  tx: any,
+  profile: typeof userProfilesTable.$inferSelect,
+  displayName: string,
+) {
+  if (!profile.householdId || profile.role !== "family") return profile;
+  if (profile.linkedFamilyMemberId) {
+    const [validMember] = await tx.select({ id: familyMembersTable.id })
+      .from(familyMembersTable)
+      .where(and(
+        eq(familyMembersTable.id, profile.linkedFamilyMemberId),
+        eq(familyMembersTable.householdId, profile.householdId),
+        eq(familyMembersTable.role, "parent"),
+      )).limit(1);
+    if (validMember) return profile;
+  }
+  const [member] = await tx.insert(familyMembersTable).values({
+    householdId: profile.householdId,
+    name: displayName,
+    role: "parent",
+    color: "#C1440E",
+    avatarInitials: displayName.charAt(0).toUpperCase(),
+    photoUrl: null,
+  }).returning();
+  const [updated] = await tx.update(userProfilesTable)
+    .set({ linkedFamilyMemberId: member.id })
+    .where(eq(userProfilesTable.clerkId, profile.clerkId))
+    .returning();
+  return updated ?? profile;
+}
+
 async function requireFamilyAdmin(req: any, res: any): Promise<FamilyAdminScope | null> {
   const clerkId = getAuth(req).userId;
   if (!clerkId) {
@@ -128,6 +167,7 @@ router.get("/me", async (req, res): Promise<void> => {
           return;
         }
 
+        const bootstrapUser = await clerkClient.users.getUser(clerkId);
         const [resolvedProfile] = await db.transaction(async (tx) => {
           await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('homehub-user-profile-bootstrap'))`);
           const [currentProfile] = await tx
@@ -138,7 +178,7 @@ router.get("/me", async (req, res): Promise<void> => {
 
           if (currentProfile?.role === "pending" && isBootstrapOwner) {
             const householdId = currentProfile.householdId ?? await ensureBootstrapHousehold(tx);
-            return tx
+            const [promoted] = await tx
               .update(userProfilesTable)
               .set({
                 role: "family",
@@ -147,6 +187,7 @@ router.get("/me", async (req, res): Promise<void> => {
               })
               .where(eq(userProfilesTable.clerkId, clerkId))
               .returning();
+            return [await ensureBootstrapAdult(tx, promoted, clerkIdentityDisplayName(bootstrapUser))];
           }
 
           return [currentProfile ?? profile];
@@ -154,6 +195,25 @@ router.get("/me", async (req, res): Promise<void> => {
         res.json(formatProfile(
           resolvedProfile,
           member ?? null,
+          property ?? null,
+          await getHouseholdSummary(resolvedProfile.householdId),
+        ));
+        return;
+      }
+
+      if (await isConfiguredBootstrapIdentity(clerkId)) {
+        const bootstrapUser = await clerkClient.users.getUser(clerkId);
+        const resolvedProfile = await db.transaction(async (tx) => {
+          const [locked] = await tx.select().from(userProfilesTable)
+            .where(eq(userProfilesTable.clerkId, clerkId)).for("update").limit(1);
+          return ensureBootstrapAdult(tx, locked, clerkIdentityDisplayName(bootstrapUser));
+        });
+        const [resolvedMember] = resolvedProfile.linkedFamilyMemberId
+          ? await db.select().from(familyMembersTable).where(eq(familyMembersTable.id, resolvedProfile.linkedFamilyMemberId)).limit(1)
+          : [null];
+        res.json(formatProfile(
+          resolvedProfile,
+          resolvedMember ?? null,
           property ?? null,
           await getHouseholdSummary(resolvedProfile.householdId),
         ));
@@ -172,6 +232,7 @@ router.get("/me", async (req, res): Promise<void> => {
     // Bootstrap only the explicitly configured household owner. All other
     // accounts remain pending until a family administrator grants access.
     const isBootstrapOwner = await isConfiguredBootstrapIdentity(clerkId);
+    const bootstrapUser = isBootstrapOwner ? await clerkClient.users.getUser(clerkId) : null;
     const [newProfile] = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('homehub-user-profile-bootstrap'))`);
       const [existingProfile] = await tx
@@ -183,7 +244,7 @@ router.get("/me", async (req, res): Promise<void> => {
       if (existingProfile) {
         if (existingProfile.role === "pending" && isBootstrapOwner) {
           const householdId = existingProfile.householdId ?? await ensureBootstrapHousehold(tx);
-          return tx
+          const [promoted] = await tx
             .update(userProfilesTable)
             .set({
               role: "family",
@@ -192,12 +253,13 @@ router.get("/me", async (req, res): Promise<void> => {
             })
             .where(eq(userProfilesTable.clerkId, clerkId))
             .returning();
+          return [await ensureBootstrapAdult(tx, promoted, clerkIdentityDisplayName(bootstrapUser!))];
         }
         return [existingProfile];
       }
 
       const householdId = isBootstrapOwner ? await ensureBootstrapHousehold(tx) : null;
-      return tx
+      const [created] = await tx
         .insert(userProfilesTable)
         .values({
           clerkId,
@@ -206,6 +268,9 @@ router.get("/me", async (req, res): Promise<void> => {
           householdId,
         })
         .returning();
+      return [isBootstrapOwner
+        ? await ensureBootstrapAdult(tx, created, clerkIdentityDisplayName(bootstrapUser!))
+        : created];
     });
 
     res.status(201).json(formatProfile(
@@ -310,6 +375,7 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
       .filter(Boolean)
       .join(" ")
       || requester?.username
+      || verifiedEmail?.split("@")[0]
       || "HomeHub member";
     const eligible = rateAllowed
       && administrator?.id !== clerkId
@@ -441,12 +507,6 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
         res.status(400).json({ error: "Invalid family member" });
         return;
       }
-      const [member] = await db.select({ id: familyMembersTable.id }).from(familyMembersTable)
-        .where(and(eq(familyMembersTable.id, memberId), eq(familyMembersTable.householdId, admin.householdId))).limit(1);
-      if (!member) {
-        res.status(403).json({ error: "Unauthorized family member" });
-        return;
-      }
     }
 
     const [candidate] = await db.select({ requesterClerkId: householdJoinRequestsTable.requesterClerkId })
@@ -471,13 +531,44 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
         eq(householdJoinRequestsTable.targetHouseholdId, admin.householdId),
         eq(householdJoinRequestsTable.status, "pending"),
       )).for("update").limit(1);
-      if (!request) return false;
+      if (!request) return "missing" as const;
 
       if (decision === "denied") {
         await tx.update(householdJoinRequestsTable)
           .set({ status: "denied", updatedAt: new Date(), decidedAt: new Date() })
           .where(eq(householdJoinRequestsTable.id, request.id));
-        return true;
+        return "ok" as const;
+      }
+
+      let approvedMemberId = memberId;
+      if (approvedMemberId !== null) {
+        const [selectedMember] = await tx.select({ id: familyMembersTable.id, role: familyMembersTable.role })
+          .from(familyMembersTable)
+          .where(and(
+            eq(familyMembersTable.id, approvedMemberId),
+            eq(familyMembersTable.householdId, admin.householdId),
+          ))
+          .for("update")
+          .limit(1);
+        if (!selectedMember || selectedMember.role !== "parent") return "ineligible-member" as const;
+        const [existingLink] = await tx.select({ id: userProfilesTable.id })
+          .from(userProfilesTable)
+          .where(eq(userProfilesTable.linkedFamilyMemberId, approvedMemberId))
+          .limit(1);
+        if (existingLink) return "ineligible-member" as const;
+      } else {
+        const name = request.requesterDisplayName.trim()
+          || request.requesterEmail.split("@")[0]
+          || "HomeHub member";
+        const [createdMember] = await tx.insert(familyMembersTable).values({
+          householdId: admin.householdId,
+          name,
+          role: "parent",
+          color: "#2D6A4F",
+          avatarInitials: name.charAt(0).toUpperCase(),
+          photoUrl: null,
+        }).returning({ id: familyMembersTable.id });
+        approvedMemberId = createdMember.id;
       }
 
       const attached = await tx.update(userProfilesTable)
@@ -485,7 +576,7 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
           householdId: admin.householdId,
           role: "family",
           isAdmin: false,
-          linkedFamilyMemberId: memberId,
+          linkedFamilyMemberId: approvedMemberId,
         })
         .where(and(
           eq(userProfilesTable.clerkId, request.requesterClerkId),
@@ -493,15 +584,19 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
           sql`${userProfilesTable.householdId} IS NULL`,
         ))
         .returning({ clerkId: userProfilesTable.clerkId });
-      if (!attached.length) return false;
+      if (!attached.length) return "missing" as const;
 
       await tx.update(householdJoinRequestsTable)
         .set({ status: "approved", updatedAt: new Date(), decidedAt: new Date() })
         .where(eq(householdJoinRequestsTable.id, request.id));
-      return true;
+      return "ok" as const;
     });
-    if (!result) {
+    if (result === "missing") {
       res.status(404).json({ error: "Join request not found" });
+      return;
+    }
+    if (result === "ineligible-member") {
+      res.status(409).json({ error: "The selected adult is not an unlinked member of this household" });
       return;
     }
     res.json({ ok: true });
@@ -532,7 +627,11 @@ router.put("/admin/users/:targetClerkId", async (req, res) => {
       return;
     }
     const [targetProfile] = await db
-      .select({ householdId: userProfilesTable.householdId })
+      .select({
+        householdId: userProfilesTable.householdId,
+        role: userProfilesTable.role,
+        linkedFamilyMemberId: userProfilesTable.linkedFamilyMemberId,
+      })
       .from(userProfilesTable)
       .where(eq(userProfilesTable.clerkId, targetClerkId))
       .limit(1);
@@ -577,25 +676,43 @@ router.put("/admin/users/:targetClerkId", async (req, res) => {
           res.status(400).json({ error: "Invalid family member" });
           return;
         }
-        const [familyMember] = await db
-          .select({ id: familyMembersTable.id })
-          .from(familyMembersTable)
-          .where(and(
-            eq(familyMembersTable.id, familyMemberId),
-            eq(familyMembersTable.householdId, admin.householdId),
-          ))
-          .limit(1);
-        if (!familyMember) {
-          res.status(403).json({ error: "Unauthorized family member" });
-          return;
-        }
         normalizedLinkedFamilyMemberId = familyMemberId;
       }
     }
 
-    await db
-      .update(userProfilesTable)
-      .set({
+    const updated = await db.transaction(async (tx) => {
+      const [lockedProfile] = await tx.select().from(userProfilesTable).where(and(
+        eq(userProfilesTable.clerkId, targetClerkId),
+        eq(userProfilesTable.householdId, admin.householdId),
+      )).for("update").limit(1);
+      if (!lockedProfile) return "missing" as const;
+      const resultingRole = role ?? lockedProfile.role;
+      const resultingMemberId = linkedFamilyMemberId !== undefined
+        ? normalizedLinkedFamilyMemberId ?? null
+        : lockedProfile.linkedFamilyMemberId;
+
+      if (resultingRole !== "family" && lockedProfile.linkedFamilyMemberId) return "orphan" as const;
+      if (resultingRole !== "family" && normalizedLinkedFamilyMemberId !== undefined) {
+        return "invalid-role-link" as const;
+      }
+
+      if (resultingRole === "family") {
+        if (!resultingMemberId) return "family-link-required" as const;
+        const [member] = await tx.select({ id: familyMembersTable.id, role: familyMembersTable.role })
+          .from(familyMembersTable)
+          .where(and(
+            eq(familyMembersTable.id, resultingMemberId),
+            eq(familyMembersTable.householdId, admin.householdId),
+            eq(familyMembersTable.role, "parent"),
+          )).for("update").limit(1);
+        if (!member) return "ineligible" as const;
+        const [otherLink] = await tx.select({ clerkId: userProfilesTable.clerkId })
+          .from(userProfilesTable)
+          .where(eq(userProfilesTable.linkedFamilyMemberId, resultingMemberId))
+          .limit(1);
+        if (otherLink && otherLink.clerkId !== targetClerkId) return "ineligible" as const;
+      }
+      await tx.update(userProfilesTable).set({
         ...(role !== undefined ? { role } : {}),
         ...(role !== undefined && role !== "family"
           ? { isAdmin: false }
@@ -606,14 +723,39 @@ router.put("/admin/users/:targetClerkId", async (req, res) => {
         ...(linkedFamilyMemberId !== undefined
           ? { linkedFamilyMemberId: normalizedLinkedFamilyMemberId ?? null }
           : {}),
-      })
-      .where(and(
+      }).where(and(
         eq(userProfilesTable.clerkId, targetClerkId),
         eq(userProfilesTable.householdId, admin.householdId),
       ));
+      return "ok" as const;
+    });
+    if (updated === "missing") {
+      res.status(404).json({ error: "User profile not found" });
+      return;
+    }
+    if (updated === "orphan") {
+      res.status(409).json({ error: "A linked adult account cannot be unlinked or demoted" });
+      return;
+    }
+    if (updated === "family-link-required") {
+      res.status(400).json({ error: "Promoting to a family account requires choosing an unlinked adult family member" });
+      return;
+    }
+    if (updated === "invalid-role-link") {
+      res.status(400).json({ error: "Only family accounts can link to an adult family member" });
+      return;
+    }
+    if (updated === "ineligible") {
+      res.status(409).json({ error: "That adult is already linked or is not eligible" });
+      return;
+    }
 
     res.json({ ok: true });
   } catch (err) {
+    if ((err as { code?: string } | null)?.code === "23505") {
+      res.status(409).json({ error: "That adult was linked to another account. Refresh and choose a different adult." });
+      return;
+    }
     req.log.error({ err }, "Failed to update user profile");
     res.status(500).json({ error: "Internal server error" });
   }

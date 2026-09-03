@@ -10,7 +10,6 @@ export type OnboardingMemberInputRole = typeof OnboardingMemberInputRole[keyof t
 
 
 export const OnboardingMemberInputRole = {
-  parent: 'parent',
   child: 'child',
   pet: 'pet',
 } as const;

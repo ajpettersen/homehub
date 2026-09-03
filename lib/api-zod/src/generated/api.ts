@@ -184,7 +184,9 @@ export const GetFamilyMembersResponseItem = zod.object({
   "name": zod.string(),
   "role": zod.enum(['parent', 'child', 'pet']),
   "color": zod.string(),
-  "photoUrl": zod.string().nullish()
+  "photoUrl": zod.string().nullish(),
+  "hasLinkedAccount": zod.boolean(),
+  "linkedAccountDisplayName": zod.string().nullish()
 })
 export const GetFamilyMembersResponse = zod.array(GetFamilyMembersResponseItem)
 
@@ -194,7 +196,7 @@ export const GetFamilyMembersResponse = zod.array(GetFamilyMembersResponseItem)
  */
 export const CreateFamilyMemberBody = zod.object({
   "name": zod.string(),
-  "role": zod.enum(['parent', 'child', 'pet']),
+  "role": zod.enum(['child', 'pet']),
   "color": zod.string(),
   "photoUrl": zod.string().nullish()
 })
@@ -204,7 +206,9 @@ export const CreateFamilyMemberResponse = zod.object({
   "name": zod.string(),
   "role": zod.enum(['parent', 'child', 'pet']),
   "color": zod.string(),
-  "photoUrl": zod.string().nullish()
+  "photoUrl": zod.string().nullish(),
+  "hasLinkedAccount": zod.boolean(),
+  "linkedAccountDisplayName": zod.string().nullish()
 })
 
 
@@ -219,7 +223,8 @@ export const UpdateFamilyMemberBody = zod.object({
   "name": zod.string().optional(),
   "role": zod.enum(['parent', 'child', 'pet']).optional(),
   "color": zod.string().optional(),
-  "photoUrl": zod.string().nullish()
+  "photoUrl": zod.string().nullish(),
+  "linkedAccountClerkId": zod.string().optional().describe('Required when promoting a child or pet to parent; must identify an eligible approved unlinked family account in the same household.')
 })
 
 export const UpdateFamilyMemberResponse = zod.object({
@@ -227,7 +232,9 @@ export const UpdateFamilyMemberResponse = zod.object({
   "name": zod.string(),
   "role": zod.enum(['parent', 'child', 'pet']),
   "color": zod.string(),
-  "photoUrl": zod.string().nullish()
+  "photoUrl": zod.string().nullish(),
+  "hasLinkedAccount": zod.boolean(),
+  "linkedAccountDisplayName": zod.string().nullish()
 })
 
 
@@ -315,7 +322,7 @@ export const CompleteOnboardingBody = zod.object({
 }),
   "familyMembers": zod.array(zod.object({
   "name": zod.string(),
-  "role": zod.enum(['parent', 'child', 'pet']),
+  "role": zod.enum(['child', 'pet']),
   "color": zod.string()
 })),
   "groceryListName": zod.string().nullish(),

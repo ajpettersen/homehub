@@ -10,7 +10,6 @@ export type CreateFamilyMemberInputRole = typeof CreateFamilyMemberInputRole[key
 
 
 export const CreateFamilyMemberInputRole = {
-  parent: 'parent',
   child: 'child',
   pet: 'pet',
 } as const;

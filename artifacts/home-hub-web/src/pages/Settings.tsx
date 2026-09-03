@@ -35,6 +35,7 @@ const COLORS = [
   "#E74C3C","#2ECC71","#F39C12","#1ABC9C","#E91E8C","#607D8B","#795548",
 ];
 const ROLES = ["parent", "child", "pet"] as const;
+const MANUAL_MEMBER_ROLES = ["child", "pet"] as const;
 type Role = typeof ROLES[number];
 
 const CATEGORIES = [
@@ -767,11 +768,12 @@ function PropertyRow({ property, onSaveInfo, saving, canAdminister, isDefault }:
 }
 
 // ── MemberForm ────────────────────────────────────────────────────────────────
-function MemberForm({ initial, onSave, onCancel, saving }: {
-  initial: MemberFormState; onSave: (d: MemberFormState) => void; onCancel: () => void; saving: boolean;
+function MemberForm({ initial, onSave, onCancel, saving, lockAdultRole = false }: {
+  initial: MemberFormState; onSave: (d: MemberFormState) => void; onCancel: () => void; saving: boolean; lockAdultRole?: boolean;
 }) {
   const [form, setForm] = useState<MemberFormState>(initial);
   const set = (k: keyof MemberFormState, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const roleOptions = lockAdultRole ? (["parent"] as const) : initial.role === "parent" ? ROLES : MANUAL_MEMBER_ROLES;
 
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form); }}
@@ -791,12 +793,13 @@ function MemberForm({ initial, onSave, onCancel, saving }: {
             onChange={e => set("role", e.target.value as Role)}
             className="w-full appearance-none rounded-xl border-2 border-border bg-background px-4 py-2.5 text-sm font-bold capitalize text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           >
-            {ROLES.map(r => (
+            {roleOptions.map(r => (
               <option key={r} value={r}>{r}</option>
             ))}
           </select>
           <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-70" />
         </div>
+        {lockAdultRole && <p className="mt-1.5 text-xs text-muted-foreground">This adult’s role is protected while their approved account is active.</p>}
       </div>
       <div>
         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Color</label>
@@ -849,6 +852,11 @@ function MemberCard({ member, onEdit, onDelete, canAdminister }: { member: any; 
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-base leading-tight truncate">{member.name}</h3>
           <p className="text-xs text-muted-foreground capitalize mt-0.5">{member.role}</p>
+          {member.role === "parent" && (
+            <p className={`mt-1 text-xs font-semibold ${member.hasLinkedAccount ? "text-green-700" : "text-amber-700"}`}>
+              {member.hasLinkedAccount ? "Account linked" : "Legacy adult · account not linked"}
+            </p>
+          )}
         </div>
         {canAdminister && <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
           <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Edit">
@@ -1101,8 +1109,10 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
                         onChange={event => setMemberLinks(current => ({ ...current, [request.id]: event.target.value }))}
                         className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
                       >
-                        <option value="">No linked member</option>
-                        {familyMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+                        <option value="">Create a new adult member automatically</option>
+                        {familyMembers
+                          .filter(member => member.role === "parent" && !member.hasLinkedAccount)
+                          .map(member => <option key={member.id} value={member.id}>Link legacy adult: {member.name}</option>)}
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-70" />
                     </div>
@@ -1117,6 +1127,7 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
                         await Promise.all([
                           queryClient.invalidateQueries({ queryKey: getListHouseholdJoinRequestsQueryKey() }),
                           queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() }),
+                          queryClient.invalidateQueries({ queryKey: getGetFamilyMembersQueryKey() }),
                         ]);
                       } catch { setError("Could not decide this join request. Please try again."); }
                     })()}
@@ -1158,22 +1169,74 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
                       {account.linkedFamilyMemberName ? ` · Linked to ${account.linkedFamilyMemberName}` : " · Not linked to a family member"}
                     </p>
                   </div>
-                  <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                    Role
-                    <div className="relative">
+                  <div className="flex flex-col gap-2 sm:items-end">
+                  {account.role === "family" && account.linkedFamilyMemberId ? (
+                    <p className="text-xs font-bold text-green-700">Family account · adult linked</p>
+                  ) : account.role === "family" ? (
+                    <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                      Role
                       <select
-                        value={account.role}
+                        value="family"
                         disabled={isSelf || updateAccount.isPending}
                         title={isSelf ? "You cannot demote your own active administrator account" : undefined}
-                        onChange={event => void save(account.clerkId, { role: event.target.value as "family" | "cleaner" })}
-                        className="w-full appearance-none rounded-lg border border-border bg-background py-1.5 pl-3 pr-8 text-sm font-bold capitalize text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        onChange={event => { if (event.target.value === "cleaner") void save(account.clerkId, { role: "cleaner" }); }}
+                        className="rounded-lg border border-border bg-background py-1.5 pl-3 pr-8 text-sm font-bold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="family">Family</option>
                         <option value="cleaner">Cleaner</option>
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground opacity-70" />
-                    </div>
-                  </label>
+                    </label>
+                  ) : (
+                    <p className="text-xs font-semibold text-muted-foreground">Cleaner account — promotion requires an adult link below.</p>
+                  )}
+                  {account.role === "family" && !account.linkedFamilyMemberId && (
+                    <label className="text-xs font-bold text-amber-700">
+                      Link required
+                      <select
+                        defaultValue=""
+                        disabled={updateAccount.isPending}
+                        onChange={event => {
+                          if (!event.target.value) return;
+                          void save(account.clerkId, { linkedFamilyMemberId: event.target.value }).then(() =>
+                            queryClient.invalidateQueries({ queryKey: getGetFamilyMembersQueryKey() }),
+                          );
+                        }}
+                        className="mt-1 block w-full rounded-lg border border-amber-300 bg-background px-3 py-1.5 text-sm text-foreground"
+                      >
+                        <option value="">Choose an unlinked legacy adult…</option>
+                        {familyMembers
+                          .filter(member => member.role === "parent" && !member.hasLinkedAccount)
+                          .map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {account.role !== "family" && (
+                    <label className="text-xs font-bold text-muted-foreground">
+                      Promote to family with legacy adult
+                      <select
+                        value={memberLinks[account.clerkId] ?? ""}
+                        disabled={updateAccount.isPending}
+                        onChange={event => setMemberLinks(current => ({ ...current, [account.clerkId]: event.target.value }))}
+                        className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                      >
+                        <option value="">Choose an unlinked legacy adult…</option>
+                        {familyMembers.filter(member => member.role === "parent" && !member.hasLinkedAccount)
+                          .map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!memberLinks[account.clerkId] || updateAccount.isPending}
+                        onClick={() => void save(account.clerkId, {
+                          role: "family",
+                          linkedFamilyMemberId: memberLinks[account.clerkId],
+                        }).then(() => queryClient.invalidateQueries({ queryKey: getGetFamilyMembersQueryKey() }))}
+                        className="mt-2 w-full rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50"
+                      >
+                        Promote and link adult
+                      </button>
+                    </label>
+                  )}
+                  </div>
                 </div>
               );
             })}
@@ -1257,7 +1320,7 @@ export default function Settings() {
         {canAdministerHousehold && addingMember && (
           <div className="mb-5">
             <MemberForm initial={{ name: "", role: "child", color: COLORS[0], photoUrl: "" }}
-              onSave={data => createMember.mutate({ data: { name: data.name, role: data.role, color: data.color, photoUrl: data.photoUrl || null } },
+              onSave={data => createMember.mutate({ data: { name: data.name, role: data.role as "child" | "pet", color: data.color, photoUrl: data.photoUrl || null } },
                 { onSuccess: () => { invalidateMembers(); setAddingMember(false); } })}
               onCancel={() => setAddingMember(false)} saving={createMember.isPending} />
           </div>
@@ -1269,6 +1332,7 @@ export default function Settings() {
               <div key={member.id} className="sm:col-span-2 md:col-span-3">
                 <MemberForm
                   initial={{ name: member.name, role: member.role as Role, color: member.color, photoUrl: member.photoUrl ?? "" }}
+                  lockAdultRole={member.role === "parent" && member.hasLinkedAccount}
                   onSave={data => updateMember.mutate({ id: member.id, data: { name: data.name, role: data.role, color: data.color, photoUrl: data.photoUrl || null } },
                     { onSuccess: () => { invalidateMembers(); setEditingMemberId(null); } })}
                   onCancel={() => setEditingMemberId(null)} saving={updateMember.isPending} />

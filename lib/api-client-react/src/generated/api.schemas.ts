@@ -237,13 +237,14 @@ export interface FamilyMember {
   role: FamilyMemberRole;
   color: string;
   photoUrl?: string | null;
+  hasLinkedAccount: boolean;
+  linkedAccountDisplayName?: string | null;
 }
 
 export type CreateFamilyMemberInputRole = typeof CreateFamilyMemberInputRole[keyof typeof CreateFamilyMemberInputRole];
 
 
 export const CreateFamilyMemberInputRole = {
-  parent: 'parent',
   child: 'child',
   pet: 'pet',
 } as const;
@@ -269,6 +270,8 @@ export interface UpdateFamilyMemberInput {
   role?: UpdateFamilyMemberInputRole;
   color?: string;
   photoUrl?: string | null;
+  /** Required when promoting a child or pet to parent; must identify an eligible approved unlinked family account in the same household. */
+  linkedAccountClerkId?: string;
 }
 
 export type PropertyType = typeof PropertyType[keyof typeof PropertyType];
@@ -355,7 +358,6 @@ export type OnboardingMemberInputRole = typeof OnboardingMemberInputRole[keyof t
 
 
 export const OnboardingMemberInputRole = {
-  parent: 'parent',
   child: 'child',
   pet: 'pet',
 } as const;

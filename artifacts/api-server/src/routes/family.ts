@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
-import { familyMembersTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { familyMembersTable, userProfilesTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
 import { getPropertyAuthorizationScope, type PropertyAuthorizationScope } from "../lib/propertyAuthorization";
 
 const router = Router();
@@ -27,13 +27,14 @@ async function requireHouseholdScope(
   return scope;
 }
 
-function memberToJson(m: any) {
+function memberToJson(m: any, linkedAccount: { clerkId: string } | null = null) {
   return {
     id: String(m.id),
     name: m.name,
     role: m.role,
     color: m.color,
     photoUrl: m.photoUrl ?? null,
+    hasLinkedAccount: linkedAccount !== null,
   };
 }
 
@@ -42,11 +43,16 @@ router.get("/family-members", async (req, res) => {
     const scope = await requireHouseholdScope(req, res);
     if (!scope) return;
     const members = await db
-      .select()
+      .select({ member: familyMembersTable, linkedAccount: { clerkId: userProfilesTable.clerkId } })
       .from(familyMembersTable)
+      .leftJoin(userProfilesTable, and(
+        eq(userProfilesTable.linkedFamilyMemberId, familyMembersTable.id),
+        eq(userProfilesTable.householdId, scope.householdId),
+        eq(userProfilesTable.role, "family"),
+      ))
       .where(eq(familyMembersTable.householdId, scope.householdId))
       .orderBy(familyMembersTable.id);
-    res.json(members.map(memberToJson));
+    res.json(members.map(({ member, linkedAccount }) => memberToJson(member, linkedAccount)));
   } catch (err) {
     req.log.error({ err }, "Failed to get family members");
     res.status(500).json({ error: "Internal server error" });
@@ -62,8 +68,8 @@ router.post("/family-members", async (req, res) => {
       res.status(400).json({ error: "name is required" });
       return;
     }
-    if (!VALID_ROLES.includes(role)) {
-      res.status(400).json({ error: "role must be parent | child | pet" });
+    if (!["child", "pet"].includes(role)) {
+      res.status(400).json({ error: "Standalone adults cannot be created; role must be child or pet" });
       return;
     }
     if (!color || typeof color !== "string") {
@@ -100,7 +106,7 @@ router.put("/family-members/:id", async (req, res) => {
       return;
     }
 
-    const { name, role, color, photoUrl } = req.body ?? {};
+    const { name, role, color, photoUrl, linkedAccountClerkId } = req.body ?? {};
     if (role !== undefined && !VALID_ROLES.includes(role)) {
       res.status(400).json({ error: "role must be parent | child | pet" });
       return;
@@ -115,21 +121,65 @@ router.put("/family-members/:id", async (req, res) => {
     if (color !== undefined) updates.color = color;
     if (photoUrl !== undefined) updates.photoUrl = photoUrl ?? null;
 
-    const [member] = await db
-      .update(familyMembersTable)
-      .set(updates)
-      .where(and(
+    const result = await db.transaction(async (tx) => {
+      const [current] = await tx.select().from(familyMembersTable).where(and(
         eq(familyMembersTable.id, id),
         eq(familyMembersTable.householdId, scope.householdId),
-      ))
-      .returning();
+      )).for("update").limit(1);
+      if (!current) return null;
 
-    if (!member) {
+      const [linked] = await tx.select({ clerkId: userProfilesTable.clerkId })
+        .from(userProfilesTable)
+        .where(and(
+          eq(userProfilesTable.householdId, scope.householdId),
+          eq(userProfilesTable.linkedFamilyMemberId, id),
+          eq(userProfilesTable.role, "family"),
+        ))
+        .for("update")
+        .limit(1);
+
+      if (current.role === "parent" && role !== undefined && role !== "parent" && linked) {
+        throw Object.assign(new Error("A linked adult cannot be changed to a child or pet"), { status: 409 });
+      }
+      if (current.role !== "parent" && role === "parent") {
+        if (typeof linkedAccountClerkId !== "string" || !linkedAccountClerkId) {
+          throw Object.assign(new Error("Promoting an adult requires an approved unlinked family account"), { status: 400 });
+        }
+        const [eligible] = await tx.select({ clerkId: userProfilesTable.clerkId })
+          .from(userProfilesTable)
+          .where(and(
+            eq(userProfilesTable.clerkId, linkedAccountClerkId),
+            eq(userProfilesTable.householdId, scope.householdId),
+            eq(userProfilesTable.role, "family"),
+            sql`${userProfilesTable.linkedFamilyMemberId} IS NULL`,
+          ))
+          .for("update")
+          .limit(1);
+        if (!eligible) {
+          throw Object.assign(new Error("That account is not eligible to link"), { status: 409 });
+        }
+        await tx.update(userProfilesTable)
+          .set({ linkedFamilyMemberId: id })
+          .where(eq(userProfilesTable.clerkId, eligible.clerkId));
+      }
+
+      const [updated] = await tx.update(familyMembersTable).set(updates).where(and(
+        eq(familyMembersTable.id, id),
+        eq(familyMembersTable.householdId, scope.householdId),
+      )).returning();
+      return { member: updated, linkedAccount: linked ?? (role === "parent" ? { clerkId: linkedAccountClerkId } : null) };
+    });
+
+    if (!result) {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    res.json(memberToJson(member));
+    res.json(memberToJson(result.member, result.linkedAccount));
   } catch (err) {
+    if (typeof (err as any)?.status === "number") {
+      res.status((err as any).status).json({ error: (err as Error).message });
+      return;
+    }
     req.log.error({ err }, "Failed to update family member");
     res.status(500).json({ error: "Internal server error" });
   }
@@ -144,10 +194,29 @@ router.delete("/family-members/:id", async (req, res) => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    await db.delete(familyMembersTable).where(and(
-      eq(familyMembersTable.id, id),
-      eq(familyMembersTable.householdId, scope.householdId),
-    ));
+    const deleted = await db.transaction(async (tx) => {
+      const [member] = await tx.select({ id: familyMembersTable.id }).from(familyMembersTable)
+        .where(and(eq(familyMembersTable.id, id), eq(familyMembersTable.householdId, scope.householdId)))
+        .for("update").limit(1);
+      if (!member) return "missing";
+      const [linked] = await tx.select({ id: userProfilesTable.id }).from(userProfilesTable)
+        .where(and(
+          eq(userProfilesTable.householdId, scope.householdId),
+          eq(userProfilesTable.linkedFamilyMemberId, id),
+          eq(userProfilesTable.role, "family"),
+        )).limit(1);
+      if (linked) return "linked";
+      await tx.delete(familyMembersTable).where(eq(familyMembersTable.id, id));
+      return "deleted";
+    });
+    if (deleted === "linked") {
+      res.status(409).json({ error: "A linked adult cannot be deleted while its approved account is active" });
+      return;
+    }
+    if (deleted === "missing") {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete family member");
