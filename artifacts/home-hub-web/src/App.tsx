@@ -78,6 +78,20 @@ function SignUpPage() {
   );
 }
 
+function SignInRedirect() {
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    setLocation('/sign-in', { replace: true });
+  }, [setLocation]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <p className="text-sm text-muted-foreground">Opening sign in…</p>
+    </div>
+  );
+}
+
 function ProfileInitializer() {
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -108,28 +122,46 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AuthenticatedApp() {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Loading HomeHub…</p>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <SignInRedirect />;
+  }
+
+  return (
+    <OnboardingGate>
+      <Shell>
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/chores" component={Chores} />
+          <Route path="/meals" component={Kitchen} />
+          <Route path="/tasks" component={Tasks} />
+          <Route path="/workouts" component={Workouts} />
+          <Route path="/properties" component={Maintenance} />
+          <Route path="/settings" component={Settings} />
+          <Route path="/people" component={People} />
+          <Route component={NotFound} />
+        </Switch>
+      </Shell>
+    </OnboardingGate>
+  );
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
-      <Route>
-        <OnboardingGate>
-        <Shell>
-          <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/chores" component={Chores} />
-        <Route path="/meals" component={Kitchen} />
-        <Route path="/tasks" component={Tasks} />
-        <Route path="/workouts" component={Workouts} />
-        <Route path="/properties" component={Maintenance} />
-        <Route path="/settings" component={Settings} />
-        <Route path="/people" component={People} />
-        <Route component={NotFound} />
-          </Switch>
-        </Shell>
-        </OnboardingGate>
-      </Route>
+      <Route component={AuthenticatedApp} />
     </Switch>
   );
 }
