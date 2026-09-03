@@ -200,7 +200,9 @@ router.post("/onboarding", async (req, res) => {
           isCompleted: false,
           isCleanerTask: false,
           startDate: null,
-          nextDueDate: isoDateFromToday(frequencyDays),
+          // Starter maintenance should be visible immediately; completing it
+          // schedules the next occurrence from its repeat interval.
+          nextDueDate: isoDateFromToday(0),
         });
       }
 

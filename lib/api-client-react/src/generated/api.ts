@@ -55,6 +55,7 @@ import type {
   GroceryList,
   HealthStatus,
   Household,
+  HouseholdTabVisibility,
   MaintenanceTask,
   MealPlanEntry,
   MealRating,
@@ -76,6 +77,7 @@ import type {
   UpdateFamilyMemberInput,
   UpdateGroceryItemInput,
   UpdateHouseholdInput,
+  UpdateHouseholdTabVisibilityInput,
   UpdateMaintenanceTaskInput,
   UpdateMealPlanEntryInput,
   UpdatePersonInput,
@@ -1064,6 +1066,77 @@ export const useUpdateHousehold = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateHouseholdMutationOptions(options));
+    }
+
+export const getUpdateHouseholdTabVisibilityUrl = () => {
+
+
+
+
+  return `/api/household/tab-visibility`
+}
+
+/**
+ * @summary Update household-wide HomeHub Web tab visibility
+ */
+export const updateHouseholdTabVisibility = async (updateHouseholdTabVisibilityInput: UpdateHouseholdTabVisibilityInput, options?: RequestInit): Promise<HouseholdTabVisibility> => {
+
+  return customFetch<HouseholdTabVisibility>(getUpdateHouseholdTabVisibilityUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateHouseholdTabVisibilityInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateHouseholdTabVisibilityMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateHouseholdTabVisibility>>, TError,{data: BodyType<UpdateHouseholdTabVisibilityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateHouseholdTabVisibility>>, TError,{data: BodyType<UpdateHouseholdTabVisibilityInput>}, TContext> => {
+
+const mutationKey = ['updateHouseholdTabVisibility'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateHouseholdTabVisibility>>, {data: BodyType<UpdateHouseholdTabVisibilityInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateHouseholdTabVisibility(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateHouseholdTabVisibilityMutationResult = NonNullable<Awaited<ReturnType<typeof updateHouseholdTabVisibility>>>
+    export type UpdateHouseholdTabVisibilityMutationBody = BodyType<UpdateHouseholdTabVisibilityInput>
+    export type UpdateHouseholdTabVisibilityMutationError = ErrorType<void>
+
+    /**
+ * @summary Update household-wide HomeHub Web tab visibility
+ */
+export const useUpdateHouseholdTabVisibility = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateHouseholdTabVisibility>>, TError,{data: BodyType<UpdateHouseholdTabVisibilityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateHouseholdTabVisibility>>,
+        TError,
+        {data: BodyType<UpdateHouseholdTabVisibilityInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateHouseholdTabVisibilityMutationOptions(options));
     }
 
 export const getCompleteOnboardingUrl = () => {

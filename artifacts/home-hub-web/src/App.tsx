@@ -19,6 +19,7 @@ import Maintenance from '@/pages/Maintenance';
 import Settings from '@/pages/Settings';
 import People from '@/pages/People';
 import NotFound from '@/pages/not-found';
+import Landing from '@/pages/Landing';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -157,11 +158,26 @@ function AuthenticatedApp() {
   );
 }
 
+function RootPage() {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Loading HomeHub…</p>
+      </div>
+    );
+  }
+
+  return isSignedIn ? <AuthenticatedApp /> : <Landing />;
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
+      <Route path="/" component={RootPage} />
       <Route component={AuthenticatedApp} />
     </Switch>
   );

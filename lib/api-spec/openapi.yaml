@@ -270,6 +270,29 @@ paths:
         "403":
           description: Forbidden
 
+  /household/tab-visibility:
+    put:
+      operationId: updateHouseholdTabVisibility
+      tags: [users]
+      summary: Update household-wide HomeHub Web tab visibility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateHouseholdTabVisibilityInput"
+      responses:
+        "200":
+          description: Updated tab visibility
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdTabVisibility"
+        "400":
+          description: Invalid tab visibility
+        "403":
+          description: Forbidden
+
   /onboarding:
     post:
       operationId: completeOnboarding
@@ -1704,6 +1727,25 @@ components:
         - name
         - onboardingCompleted
 
+    HomeHubWebTab:
+      type: string
+      enum: [home, properties, chores, meals, tasks, workouts, people, settings]
+
+    HouseholdTabVisibility:
+      type: object
+      required: [visibleTabs]
+      properties:
+        visibleTabs:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/HomeHubWebTab"
+
+    UpdateHouseholdTabVisibilityInput:
+      allOf:
+        - $ref: "#/components/schemas/HouseholdTabVisibility"
+      description: Home and settings are required and cannot be hidden.
+
     UpdateHouseholdInput:
       type: object
       properties:
@@ -2522,7 +2564,7 @@ components:
 
     UserProfile:
       type: object
-      required: [clerkId, role, onboardingCompleted]
+      required: [clerkId, role, onboardingCompleted, visibleTabs]
       properties:
         clerkId:
           type: string
@@ -2534,6 +2576,11 @@ components:
           nullable: true
         onboardingCompleted:
           type: boolean
+        visibleTabs:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/HomeHubWebTab"
         allowedPropertyId:
           type: string
           nullable: true

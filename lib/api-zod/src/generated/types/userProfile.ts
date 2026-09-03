@@ -5,6 +5,7 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
+import type { HomeHubWebTab } from './homeHubWebTab';
 import type { UserProfileRole } from './userProfileRole';
 
 export interface UserProfile {
@@ -12,6 +13,7 @@ export interface UserProfile {
   role: UserProfileRole;
   householdName?: string | null;
   onboardingCompleted: boolean;
+  visibleTabs: HomeHubWebTab[];
   allowedPropertyId?: string | null;
   allowedPropertyName?: string | null;
   linkedFamilyMemberId?: string | null;

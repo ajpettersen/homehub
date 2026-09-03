@@ -13,6 +13,7 @@ import * as zod from 'zod';
  */
 
 
+
 export const ScanPantryBody = zod.object({
   "imagesBase64": zod.array(zod.string()).min(1)
 })
@@ -98,6 +99,7 @@ export const HealthCheckResponse = zod.object({
  */
 export const getDashboardResponseTodaysMealsItemDayOfWeekMin = 0;
 export const getDashboardResponseTodaysMealsItemDayOfWeekMax = 6;
+
 
 
 export const GetDashboardResponse = zod.object({
@@ -253,8 +255,21 @@ export const UpdateHouseholdResponse = zod.object({
 
 
 /**
+ * @summary Update household-wide HomeHub Web tab visibility
+ */
+export const UpdateHouseholdTabVisibilityBody = zod.object({
+  "visibleTabs": zod.array(zod.enum(['home', 'properties', 'chores', 'meals', 'tasks', 'workouts', 'people', 'settings']))
+}).describe('Home and settings are required and cannot be hidden.')
+
+export const UpdateHouseholdTabVisibilityResponse = zod.object({
+  "visibleTabs": zod.array(zod.enum(['home', 'properties', 'chores', 'meals', 'tasks', 'workouts', 'people', 'settings']))
+})
+
+
+/**
  * @summary Seed the household from first-login setup (transactional and idempotent)
  */
+
 
 
 export const CompleteOnboardingBody = zod.object({
@@ -584,6 +599,7 @@ export const getMealPlansResponseDayOfWeekMin = 0;
 export const getMealPlansResponseDayOfWeekMax = 6;
 
 
+
 export const GetMealPlansResponseItem = zod.object({
   "id": zod.string(),
   "weekStart": zod.coerce.date(),
@@ -604,6 +620,7 @@ export const createMealPlanEntryBodyDayOfWeekMin = 0;
 export const createMealPlanEntryBodyDayOfWeekMax = 6;
 
 
+
 export const CreateMealPlanEntryBody = zod.object({
   "weekStart": zod.coerce.date(),
   "dayOfWeek": zod.number().min(createMealPlanEntryBodyDayOfWeekMin).max(createMealPlanEntryBodyDayOfWeekMax),
@@ -616,6 +633,7 @@ export const CreateMealPlanEntryBody = zod.object({
 
 export const createMealPlanEntryResponseDayOfWeekMin = 0;
 export const createMealPlanEntryResponseDayOfWeekMax = 6;
+
 
 
 export const CreateMealPlanEntryResponse = zod.object({
@@ -644,6 +662,7 @@ export const UpdateMealPlanEntryBody = zod.object({
 
 export const updateMealPlanEntryResponseDayOfWeekMin = 0;
 export const updateMealPlanEntryResponseDayOfWeekMax = 6;
+
 
 
 export const UpdateMealPlanEntryResponse = zod.object({
@@ -800,6 +819,7 @@ export const GetMeResponse = zod.object({
   "role": zod.enum(['family', 'cleaner', 'pending']),
   "householdName": zod.string().nullish(),
   "onboardingCompleted": zod.boolean(),
+  "visibleTabs": zod.array(zod.enum(['home', 'properties', 'chores', 'meals', 'tasks', 'workouts', 'people', 'settings'])),
   "allowedPropertyId": zod.string().nullish(),
   "allowedPropertyName": zod.string().nullish(),
   "linkedFamilyMemberId": zod.string().nullish(),
@@ -816,6 +836,7 @@ export const ListUsersResponseItem = zod.object({
   "role": zod.enum(['family', 'cleaner', 'pending']),
   "householdName": zod.string().nullish(),
   "onboardingCompleted": zod.boolean(),
+  "visibleTabs": zod.array(zod.enum(['home', 'properties', 'chores', 'meals', 'tasks', 'workouts', 'people', 'settings'])),
   "allowedPropertyId": zod.string().nullish(),
   "allowedPropertyName": zod.string().nullish(),
   "linkedFamilyMemberId": zod.string().nullish(),

@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
-import { db, userProfilesTable, familyMembersTable, householdsTable, propertiesTable } from "@workspace/db";
+import {
+  db,
+  familyMembersTable,
+  HOMEHUB_WEB_TABS,
+  householdsTable,
+  propertiesTable,
+  userProfilesTable,
+} from "@workspace/db";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { isConfiguredBootstrapIdentity } from "../lib/bootstrapIdentity";
 
@@ -9,6 +16,7 @@ const router = Router();
 interface HouseholdSummary {
   name: string;
   onboardingCompletedAt: Date | null;
+  visibleTabs: typeof householdsTable.$inferSelect.visibleTabs;
 }
 
 async function getHouseholdSummary(householdId: number | null): Promise<HouseholdSummary | null> {
@@ -17,6 +25,7 @@ async function getHouseholdSummary(householdId: number | null): Promise<Househol
     .select({
       name: householdsTable.name,
       onboardingCompletedAt: householdsTable.onboardingCompletedAt,
+      visibleTabs: householdsTable.visibleTabs,
     })
     .from(householdsTable)
     .where(eq(householdsTable.id, householdId))
@@ -36,6 +45,7 @@ function formatProfile(
     householdId: profile.householdId ? String(profile.householdId) : null,
     householdName: household?.name ?? null,
     onboardingCompleted: household ? household.onboardingCompletedAt !== null : false,
+    visibleTabs: household?.visibleTabs ?? [...HOMEHUB_WEB_TABS],
     allowedPropertyId: profile.allowedPropertyId ? String(profile.allowedPropertyId) : null,
     allowedPropertyName: property?.name ?? null,
     linkedFamilyMemberId: profile.linkedFamilyMemberId ? String(profile.linkedFamilyMemberId) : null,

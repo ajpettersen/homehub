@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   useGetFamilyMembers, useCreateFamilyMember, useUpdateFamilyMember, useDeleteFamilyMember,
-  useGetProperties, useUpdateProperty,
+  useGetProperties, useCreateProperty, useUpdateProperty,
   useGetMaintenanceTasks, getGetMaintenanceTasksQueryKey,
   useCreateMaintenanceTask, useUpdateMaintenanceTask, useDeleteMaintenanceTask,
   getGetFamilyMembersQueryKey, getGetPropertiesQueryKey,
+  useGetMe, getGetMeQueryKey, useUpdateHouseholdTabVisibility,
+  type HomeHubWebTab,
   type CreateMaintenanceTaskInputCategory,
   type UpdateMaintenanceTaskInputCategory,
 } from "@workspace/api-client-react";
@@ -49,6 +51,7 @@ function getCat(key: string) {
 
 interface MemberFormState { name: string; role: Role; color: string; photoUrl: string; }
 interface PropertyFormState { name: string; address: string; }
+interface NewPropertyFormState extends PropertyFormState { type: "house" | "cabin"; }
 interface TaskFormState {
   title: string;
   category: string;
@@ -167,7 +170,33 @@ function PreferenceChoice({
 
 function AppearanceAndTabsSection() {
   const { preferences, setAppearance, setTabPreference, resetPreferences } = usePreferences();
+  const queryClient = useQueryClient();
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const updateVisibility = useUpdateHouseholdTabVisibility();
+  const [visibilityError, setVisibilityError] = useState<string | null>(null);
   const tab = preferences.tabs;
+  const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? ["home", "properties", "chores", "meals", "tasks", "workouts", "people", "settings"]);
+  const optionalTabs: Array<{ key: HomeHubWebTab; label: string; description: string }> = [
+    { key: "properties", label: "Properties", description: "Maintenance schedules and home upkeep." },
+    { key: "chores", label: "Chores", description: "Recurring household responsibilities." },
+    { key: "meals", label: "Meals", description: "Meal plans, groceries, and recipes." },
+    { key: "tasks", label: "Tasks", description: "Shared household lists and projects." },
+    { key: "workouts", label: "Workouts", description: "Family exercise plans and progress." },
+    { key: "people", label: "People", description: "Family and trusted service contacts." },
+  ];
+
+  const toggleTab = async (tabKey: HomeHubWebTab) => {
+    const next = new Set(visibleTabs);
+    if (next.has(tabKey)) next.delete(tabKey);
+    else next.add(tabKey);
+    setVisibilityError(null);
+    try {
+      await updateVisibility.mutateAsync({ data: { visibleTabs: Array.from(next) } });
+      await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+    } catch (error) {
+      setVisibilityError(error instanceof Error ? error.message : "Could not update visible tabs.");
+    }
+  };
 
   return (
     <section className="overflow-hidden rounded-2xl border-2 border-primary/20 bg-card shadow-sm">
@@ -179,7 +208,7 @@ function AppearanceAndTabsSection() {
           <div>
             <h2 className="font-bold text-base text-foreground">Appearance &amp; tab preferences</h2>
             <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
-              Make HomeHub easier to scan. These choices apply immediately and stay on this device.
+              Choose what your household sees everywhere, plus how this device looks and behaves.
             </p>
           </div>
         </div>
@@ -212,6 +241,42 @@ function AppearanceAndTabsSection() {
               onChange={value => setAppearance("density", value as "comfortable" | "compact")}
             />
           </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tabs your household uses</p>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Hidden tabs disappear from navigation on every device. Home and Settings always remain available.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {optionalTabs.map(item => {
+              const enabled = visibleTabs.has(item.key);
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  aria-pressed={enabled}
+                  disabled={updateVisibility.isPending || me?.role !== "family"}
+                  onClick={() => void toggleTab(item.key)}
+                  className={`flex items-center justify-between gap-4 rounded-xl border p-3.5 text-left transition-colors ${
+                    enabled ? "border-primary/40 bg-primary/5" : "border-border bg-background/60"
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <span>
+                    <span className="block text-sm font-bold text-foreground">{item.label}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{item.description}</span>
+                  </span>
+                  <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${enabled ? "bg-primary" : "bg-muted-foreground/30"}`}>
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${enabled ? "translate-x-6" : "translate-x-1"}`} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {me?.role !== "family" && (
+            <p className="mt-3 text-xs text-muted-foreground">Only a family account can change household-wide tabs.</p>
+          )}
+          {visibilityError && <p className="mt-3 text-sm font-medium text-destructive">{visibilityError}</p>}
         </div>
 
         <div>
@@ -562,6 +627,75 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
 }
 
 // ── PropertyRow — compact accordion row for one property ─────────────────────
+function NewPropertyForm({ onSave, onCancel, saving }: {
+  onSave: (data: NewPropertyFormState) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [form, setForm] = useState<NewPropertyFormState>({ name: "", address: "", type: "cabin" });
+
+  return (
+    <form
+      onSubmit={event => {
+        event.preventDefault();
+        if (form.name.trim()) onSave({ ...form, name: form.name.trim() });
+      }}
+      className="space-y-3 rounded-xl border-2 border-primary/20 bg-muted/30 p-4"
+    >
+      <div className="grid grid-cols-2 gap-2">
+        {([
+          { type: "house", label: "House", Icon: Home },
+          { type: "cabin", label: "Cabin", Icon: Mountain },
+        ] as const).map(({ type, label, Icon }) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => setForm(current => ({ ...current, type }))}
+            className={`flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition-colors ${
+              form.type === type
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-background text-muted-foreground hover:border-primary/40"
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+      <input
+        autoFocus
+        required
+        value={form.name}
+        onChange={event => setForm(current => ({ ...current, name: event.target.value }))}
+        placeholder={form.type === "cabin" ? "Cabin name" : "Property name"}
+        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium focus:border-primary focus:outline-none"
+      />
+      <input
+        value={form.address}
+        onChange={event => setForm(current => ({ ...current, address: event.target.value }))}
+        placeholder="Address (optional)"
+        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 rounded-lg border border-border py-2 text-sm font-bold hover:bg-muted"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving}
+          className="flex-1 rounded-lg bg-primary py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saving ? "Adding…" : `Add ${form.type === "cabin" ? "Cabin" : "House"}`}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function PropertyRow({ property, onSaveInfo, saving }: {
   property: any; onSaveInfo: (data: PropertyFormState) => void; saving: boolean;
 }) {
@@ -925,10 +1059,12 @@ export default function Settings() {
   const createMember = useCreateFamilyMember();
   const updateMember = useUpdateFamilyMember();
   const deleteMember = useDeleteFamilyMember();
+  const createProperty = useCreateProperty();
   const updateProperty = useUpdateProperty();
 
   const [addingMember, setAddingMember] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [addingProperty, setAddingProperty] = useState(false);
 
   const invalidateMembers = () => queryClient.invalidateQueries({ queryKey: getGetFamilyMembersQueryKey() });
   const invalidateProps = () => queryClient.invalidateQueries({ queryKey: getGetPropertiesQueryKey() });
@@ -1015,8 +1151,40 @@ export default function Settings() {
         title="Properties"
         summary={<span className="text-xs text-muted-foreground">{properties?.length ?? 0} propert{properties?.length === 1 ? "y" : "ies"}</span>}
         defaultOpen={preferences.tabs.settings.startSection === "properties"}
+        action={
+          !addingProperty ? (
+            <button
+              onClick={() => setAddingProperty(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add
+            </button>
+          ) : undefined
+        }
       >
         <div className="space-y-3">
+          {addingProperty && (
+            <NewPropertyForm
+              onSave={data => createProperty.mutate(
+                {
+                  data: {
+                    name: data.name,
+                    type: data.type,
+                    icon: data.type === "cabin" ? "mountain" : "home",
+                    address: data.address || null,
+                  },
+                },
+                {
+                  onSuccess: () => {
+                    invalidateProps();
+                    setAddingProperty(false);
+                  },
+                },
+              )}
+              onCancel={() => setAddingProperty(false)}
+              saving={createProperty.isPending}
+            />
+          )}
           {properties?.map(property => (
             <PropertyRow
               key={property.id}
@@ -1025,6 +1193,14 @@ export default function Settings() {
               saving={updateProperty.isPending}
             />
           ))}
+          {!addingProperty && (
+            <button
+              onClick={() => setAddingProperty(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/40 hover:bg-muted/30"
+            >
+              <Plus className="h-4 w-4 text-primary/60" /> Add property
+            </button>
+          )}
         </div>
       </AccordionSection>
 

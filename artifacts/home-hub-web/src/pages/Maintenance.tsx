@@ -204,7 +204,7 @@ function AddTaskForm({
       scheduleType,
       frequencyDays: scheduleType === "recurring" ? parseInt(freqDays) || 30 : undefined,
       startDate: scheduleType === "recurring" ? startDate || null : null,
-      nextDueDate: scheduleType === "one-time" ? dueDate : startDate || today,
+      nextDueDate: scheduleType === "one-time" ? dueDate : today,
     });
   };
 

@@ -81,9 +81,13 @@ function formatTask(
   const sevenDaysOut = new Date();
   sevenDaysOut.setDate(sevenDaysOut.getDate() + 7);
   const sevenDaysStr = sevenDaysOut.toISOString().split("T")[0];
+  const effectiveNextDueDate =
+    task.scheduleType === "recurring" && task.lastCompletedAt === null
+      ? today
+      : task.nextDueDate;
 
-  const isOverdue = task.nextDueDate < today;
-  const isDueSoon = !isOverdue && task.nextDueDate <= sevenDaysStr;
+  const isOverdue = effectiveNextDueDate < today;
+  const isDueSoon = !isOverdue && effectiveNextDueDate <= sevenDaysStr;
 
   return {
     id: String(task.id),
@@ -102,7 +106,7 @@ function formatTask(
     startDate: task.startDate ?? null,
     lastCompletedAt: task.lastCompletedAt?.toISOString() ?? null,
     lastCompletedBy: task.lastCompletedBy ?? null,
-    nextDueDate: task.nextDueDate,
+    nextDueDate: effectiveNextDueDate,
     isOverdue,
     isDueSoon,
   };
@@ -199,12 +203,11 @@ router.post("/maintenance-tasks", async (req, res) => {
       return;
     }
 
-    let resolvedNextDueDate: string;
-    if (effectiveScheduleType === "recurring" && startDate) {
-      resolvedNextDueDate = getNextAnchoredDate(startDate, freq!, new Date());
-    } else {
-      resolvedNextDueDate = nextDueDate ?? new Date().toISOString().split("T")[0];
-    }
+    // A newly-created recurring task is actionable immediately. The optional
+    // start date remains the recurrence anchor used after the first completion.
+    const resolvedNextDueDate = effectiveScheduleType === "recurring"
+      ? new Date().toISOString().split("T")[0]
+      : nextDueDate;
 
     const [task] = await db
       .insert(maintenanceTasksTable)
@@ -416,18 +419,9 @@ router.post("/maintenance-tasks/:id/complete", async (req, res) => {
           inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
         ));
     } else {
-      // If the task has a startDate anchor, keep the recurrence aligned to that
-      // schedule rather than drifting from the completion date.
-      let nextDueDate: string;
-      if (existing.startDate) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        nextDueDate = getNextAnchoredDate(existing.startDate, existing.frequencyDays!, tomorrow);
-      } else {
-        const nextDue = new Date();
-        nextDue.setDate(nextDue.getDate() + existing.frequencyDays!);
-        nextDueDate = nextDue.toISOString().split("T")[0];
-      }
+      const nextDue = new Date();
+      nextDue.setDate(nextDue.getDate() + existing.frequencyDays!);
+      const nextDueDate = nextDue.toISOString().split("T")[0];
 
       await db
         .update(maintenanceTasksTable)

@@ -1,19 +1,25 @@
 import { Link, useLocation } from "wouter";
 import { Home, CheckSquare, Settings, Utensils, Brush, ChevronDown, Dumbbell, Mountain, UsersRound, ArrowLeft } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
-import { useGetFamilyMembers, getGetFamilyMembersQueryKey } from "@workspace/api-client-react";
+import {
+  useGetFamilyMembers,
+  getGetFamilyMembersQueryKey,
+  useGetMe,
+  getGetMeQueryKey,
+  type HomeHubWebTab,
+} from "@workspace/api-client-react";
 import { useState } from "react";
 import { usePreferences } from "@/context/PreferencesContext";
 
 const navItems = [
-  { href: "/",           label: "Home",       icon: Home },
-  { href: "/properties", label: "Properties", icon: Mountain },
-  { href: "/chores",     label: "Chores",     icon: Brush },
-  { href: "/meals",      label: "Meals",      icon: Utensils },
-  { href: "/tasks",      label: "Tasks",      icon: CheckSquare },
-  { href: "/workouts",   label: "Workouts",   icon: Dumbbell },
-  { href: "/people",     label: "People",     icon: UsersRound },
-  { href: "/settings",   label: "Settings",   icon: Settings },
+  { tab: "home" as const, href: "/",           label: "Home",       icon: Home },
+  { tab: "properties" as const, href: "/properties", label: "Properties", icon: Mountain },
+  { tab: "chores" as const, href: "/chores",     label: "Chores",     icon: Brush },
+  { tab: "meals" as const, href: "/meals",      label: "Meals",      icon: Utensils },
+  { tab: "tasks" as const, href: "/tasks",      label: "Tasks",      icon: CheckSquare },
+  { tab: "workouts" as const, href: "/workouts",   label: "Workouts",   icon: Dumbbell },
+  { tab: "people" as const, href: "/people",     label: "People",     icon: UsersRound },
+  { tab: "settings" as const, href: "/settings",   label: "Settings",   icon: Settings },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -21,9 +27,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { activeMember, setActiveMember } = useActiveMember();
   const { preferences } = usePreferences();
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
 
   const humanMembers = familyMembers?.filter(m => m.role !== "pet") ?? [];
+  const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? navItems.map(item => item.tab));
+  const visibleNavItems = navItems.filter(item => visibleTabs.has(item.tab));
 
   return (
     <div className={`h-[100dvh] min-h-0 flex flex-col md:flex-row bg-background overflow-hidden ${preferences.appearance.density === "compact" ? "density-compact" : ""}`}>
@@ -38,7 +47,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-1">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = location === item.href;
             return (
               <Link
@@ -176,17 +185,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile bottom tab bar ── */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch overflow-x-auto overscroll-x-contain"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = location === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
               data-testid={`nav-${item.label.toLowerCase()}`}
-                className={`flex-1 flex flex-col items-center justify-center gap-1 ${preferences.appearance.density === "compact" ? "py-2 min-h-[56px]" : "py-3 min-h-[64px]"} transition-colors ${
+                className={`flex-none min-w-[72px] flex flex-col items-center justify-center gap-1 ${preferences.appearance.density === "compact" ? "py-2 min-h-[56px]" : "py-3 min-h-[64px]"} transition-colors ${
                 isActive ? "text-primary" : "text-muted-foreground"
               }`}
             >

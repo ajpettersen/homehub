@@ -3,13 +3,14 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   useGetMe, getGetMeQueryKey,
-  useUpdateHousehold, useCompleteOnboarding,
+  useUpdateHousehold, useCompleteOnboarding, useUpdateHouseholdTabVisibility,
+  type HomeHubWebTab,
   getGetPropertiesQueryKey, getGetFamilyMembersQueryKey, getGetGroceryListsQueryKey,
   getGetChoresQueryKey, getGetMaintenanceTasksQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
-  Home, Brush, Utensils, Mountain, CheckSquare, 
+  Home, Brush, Utensils, Mountain, CheckSquare, Dumbbell, UsersRound,
   Plus, Trash2, ArrowRight, ArrowLeft, Loader2, Check
 } from "lucide-react";
 
@@ -21,7 +22,14 @@ interface OnboardingState {
   householdName: string;
   property: { name: string; type: PropertyType; address: string };
   familyMembers: Array<{ id: string; name: string; role: FamilyRole; color: string }>;
-  modules: { chores: boolean; groceries: boolean; maintenance: boolean };
+  modules: {
+    chores: boolean;
+    groceries: boolean;
+    maintenance: boolean;
+    tasks: boolean;
+    workouts: boolean;
+    people: boolean;
+  };
   starter: { groceryListName: string; seedChores: boolean; seedMaintenance: boolean };
 }
 
@@ -385,6 +393,27 @@ function StepModules({ state, update, onNext, onBack }: any) {
           onClick={() => toggle("maintenance")}
           desc="Long-term upkeep schedules"
         />
+        <ModuleCard
+          title="Shared Tasks"
+          icon={<CheckSquare className="w-6 h-6" />}
+          selected={state.modules.tasks}
+          onClick={() => toggle("tasks")}
+          desc="Lists, projects, and household to-dos"
+        />
+        <ModuleCard
+          title="Workouts"
+          icon={<Dumbbell className="w-6 h-6" />}
+          selected={state.modules.workouts}
+          onClick={() => toggle("workouts")}
+          desc="Exercise plans for family members"
+        />
+        <ModuleCard
+          title="People"
+          icon={<UsersRound className="w-6 h-6" />}
+          selected={state.modules.people}
+          onClick={() => toggle("people")}
+          desc="Family profiles and trusted contacts"
+        />
       </div>
 
       <StepFooter onBack={onBack} onNext={onNext} isValid={true} />
@@ -495,7 +524,10 @@ function StepReview({ state, onBack, onFinish, isSubmitting, submitError, progre
             {state.modules.chores && <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg">Chores</span>}
             {state.modules.groceries && <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg">Groceries</span>}
             {state.modules.maintenance && <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg">Maintenance</span>}
-            {!state.modules.chores && !state.modules.groceries && !state.modules.maintenance && (
+            {state.modules.tasks && <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg">Tasks</span>}
+            {state.modules.workouts && <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg">Workouts</span>}
+            {state.modules.people && <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg">People</span>}
+            {!Object.values(state.modules).some(Boolean) && (
               <span className="text-muted-foreground">None selected.</span>
             )}
           </div>
@@ -538,7 +570,14 @@ export default function Onboarding() {
     householdName: "",
     property: { name: "", type: "house", address: "" },
     familyMembers: [],
-    modules: { chores: true, groceries: true, maintenance: true },
+    modules: {
+      chores: true,
+      groceries: true,
+      maintenance: true,
+      tasks: true,
+      workouts: true,
+      people: true,
+    },
     starter: { groceryListName: "Groceries", seedChores: true, seedMaintenance: true }
   });
 
@@ -576,6 +615,7 @@ export default function Onboarding() {
   // Mutations
   const updateHouseholdMutation = useUpdateHousehold();
   const completeOnboardingMutation = useCompleteOnboarding();
+  const updateTabVisibilityMutation = useUpdateHouseholdTabVisibility();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -586,6 +626,18 @@ export default function Onboarding() {
     setSubmitError(null);
 
     try {
+      const visibleTabs: HomeHubWebTab[] = [
+        "home",
+        ...(state.modules.maintenance ? ["properties" as const] : []),
+        ...(state.modules.chores ? ["chores" as const] : []),
+        ...(state.modules.groceries ? ["meals" as const] : []),
+        ...(state.modules.tasks ? ["tasks" as const] : []),
+        ...(state.modules.workouts ? ["workouts" as const] : []),
+        ...(state.modules.people ? ["people" as const] : []),
+        "settings",
+      ];
+      await updateTabVisibilityMutation.mutateAsync({ data: { visibleTabs } });
+
       // One transactional, idempotent request seeds everything server-side:
       // either it all commits (including the completion flag) or nothing does,
       // so retrying after a failure can never create duplicates.

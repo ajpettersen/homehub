@@ -258,6 +258,29 @@ export interface Household {
   onboardingCompleted: boolean;
 }
 
+export type HomeHubWebTab = typeof HomeHubWebTab[keyof typeof HomeHubWebTab];
+
+
+export const HomeHubWebTab = {
+  home: 'home',
+  properties: 'properties',
+  chores: 'chores',
+  meals: 'meals',
+  tasks: 'tasks',
+  workouts: 'workouts',
+  people: 'people',
+  settings: 'settings',
+} as const;
+
+export interface HouseholdTabVisibility {
+  visibleTabs: HomeHubWebTab[];
+}
+
+/**
+ * Home and settings are required and cannot be hidden.
+ */
+export type UpdateHouseholdTabVisibilityInput = HouseholdTabVisibility;
+
 export interface UpdateHouseholdInput {
   name?: string;
   /** Completion is one-way; only true is accepted. */
@@ -748,6 +771,7 @@ export interface UserProfile {
   role: UserProfileRole;
   householdName?: string | null;
   onboardingCompleted: boolean;
+  visibleTabs: HomeHubWebTab[];
   allowedPropertyId?: string | null;
   allowedPropertyName?: string | null;
   linkedFamilyMemberId?: string | null;
