@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Settings, Utensils, Brush, ChevronDown, Dumbbell, Mountain, UsersRound, ArrowLeft } from "lucide-react";
+import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, Mountain, ArrowLeft } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import {
   useGetFamilyMembers,
@@ -13,12 +13,10 @@ import { usePreferences } from "@/context/PreferencesContext";
 
 const navItems = [
   { tab: "home" as const, href: "/",           label: "Home",       icon: Home },
-  { tab: "properties" as const, href: "/properties", label: "Properties", icon: Mountain },
-  { tab: "chores" as const, href: "/chores",     label: "Chores",     icon: Brush },
-  { tab: "meals" as const, href: "/meals",      label: "Meals",      icon: Utensils },
   { tab: "tasks" as const, href: "/tasks",      label: "Tasks",      icon: CheckSquare },
+  { tab: "meals" as const, href: "/meals",      label: "Meals",      icon: Utensils },
   { tab: "workouts" as const, href: "/workouts",   label: "Workouts",   icon: Dumbbell },
-  { tab: "people" as const, href: "/people",     label: "People",     icon: UsersRound },
+  { tab: "properties" as const, href: "/properties", label: "Properties", icon: Mountain },
   { tab: "settings" as const, href: "/settings",   label: "Settings",   icon: Settings },
 ];
 
@@ -185,7 +183,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile bottom tab bar ── */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch overflow-x-auto overscroll-x-contain"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {visibleNavItems.map((item) => {
@@ -195,12 +193,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
               key={item.href}
               href={item.href}
               data-testid={`nav-${item.label.toLowerCase()}`}
-                className={`flex-none min-w-[72px] flex flex-col items-center justify-center gap-1 ${preferences.appearance.density === "compact" ? "py-2 min-h-[56px]" : "py-3 min-h-[64px]"} transition-colors ${
+                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 ${preferences.appearance.density === "compact" ? "py-2 min-h-[56px]" : "py-3 min-h-[64px]"} transition-colors ${
                 isActive ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <item.icon className={`w-[26px] h-[26px] ${isActive ? "text-primary" : ""}`} />
-              <span className="text-[11px] font-semibold leading-tight">{item.label}</span>
+              <item.icon className={`w-6 h-6 ${isActive ? "text-primary" : ""}`} />
+              <span className="text-[9px] sm:text-[11px] font-semibold leading-tight">{item.label}</span>
             </Link>
           );
         })}
