@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   useGetMaintenanceTasks, getGetMaintenanceTasksQueryKey,
   useCompleteMaintenanceTask,
@@ -7,6 +7,9 @@ import {
   useDeleteMaintenanceTask,
   useGetProperties, getGetPropertiesQueryKey,
   useGetFamilyMembers, getGetFamilyMembersQueryKey,
+  useRecommendMaintenance,
+  type CreateMaintenanceTaskInputCategory,
+  type MaintenanceRecommendation,
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { usePreferences } from "@/context/PreferencesContext";
@@ -14,7 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2, Clock, AlertTriangle, Plus, Trash2, X, Check,
   TreePine, Home, CalendarDays, Repeat, Wrench, Droplets,
-  Leaf, Filter, ChevronDown, ChevronUp
+  Leaf, Filter, ChevronDown, ChevronUp, Sparkles, Loader2
 } from "lucide-react";
 import { format, parseISO, differenceInDays } from "date-fns";
 
@@ -358,6 +361,142 @@ function AddTaskForm({
   );
 }
 
+type EditableRecommendation = MaintenanceRecommendation & {
+  selected: boolean;
+  frequencyDays: number;
+};
+
+function MaintenanceSuggestions({
+  property,
+  onClose,
+  onCreated,
+}: {
+  property: any;
+  onClose: () => void;
+  onCreated: () => Promise<unknown>;
+}) {
+  const recommend = useRecommendMaintenance();
+  const createTask = useCreateMaintenanceTask();
+  const [items, setItems] = useState<EditableRecommendation[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    recommend.mutate(
+      { data: { propertyId: property.id } },
+      {
+        onSuccess: data => setItems(data.recommendations.map(item => ({
+          ...item,
+          selected: true,
+          frequencyDays: item.defaultFrequencyDays,
+        }))),
+      },
+    );
+  }, [property.id]);
+
+  const selected = items.filter(item => item.selected && Number.isInteger(item.frequencyDays) && item.frequencyDays > 0 && item.frequencyDays <= 3650);
+  const addSelected = async () => {
+    if (submitting || selected.length === 0) return;
+    const submission = selected.map(item => ({ ...item }));
+    setSubmitting(true);
+    setResult(null);
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const results = await Promise.allSettled(submission.map(item => createTask.mutateAsync({
+        data: {
+          title: item.title,
+          description: item.description ?? null,
+          propertyId: property.id,
+          category: item.category as CreateMaintenanceTaskInputCategory,
+          scheduleType: "recurring",
+          frequencyDays: item.frequencyDays,
+          nextDueDate: today,
+        },
+      })));
+      const added = results.filter(item => item.status === "fulfilled").length;
+      const failed = results.length - added;
+      if (added > 0) await onCreated();
+      const successfulTitles = new Set(submission.filter((_, index) => results[index]?.status === "fulfilled").map(item => item.title));
+      // Remove only the snapshot items that succeeded. Failed snapshot items
+      // stay intact for an explicit retry; unrelated live selections remain.
+      setItems(current => current.filter(item => !successfulTitles.has(item.title)));
+      setResult(failed === 0
+        ? `${added} maintenance task${added === 1 ? "" : "s"} added successfully.`
+        : `${added} added; ${failed} could not be added. The remaining items are ready to retry.`);
+    } catch {
+      setResult("The selected tasks could not be added. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4" role="presentation" onMouseDown={event => {
+      if (event.target === event.currentTarget && !submitting) onClose();
+    }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="maintenance-suggestions-title" className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+          <div>
+            <h2 id="maintenance-suggestions-title" className="font-serif text-2xl font-bold">Suggested maintenance</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Choose recurring tasks for {property.name} and adjust how often they repeat.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={submitting} aria-label="Close suggestions" className="rounded-lg p-2 text-muted-foreground hover:bg-muted disabled:opacity-50">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          {recommend.isPending ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm font-medium text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Creating practical ideas…</div>
+          ) : recommend.isError ? (
+            <div className="py-12 text-center">
+              <p className="font-bold text-destructive">Suggestions could not be loaded.</p>
+              <button type="button" disabled={submitting} onClick={() => recommend.mutate({ data: { propertyId: property.id } }, { onSuccess: data => setItems(data.recommendations.map(item => ({ ...item, selected: true, frequencyDays: item.defaultFrequencyDays }))) })} className="mt-3 rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted disabled:opacity-50">Try again</button>
+            </div>
+          ) : items.length === 0 ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">{result ?? "No new maintenance ideas were found. Your current tasks may already cover the essentials."}</p>
+          ) : (
+            <div className="space-y-3">
+              {items.map((item, index) => {
+                const category = getCategoryConfig(item.category);
+                return (
+                  <div key={`${item.title}-${index}`} className={`rounded-xl border p-4 transition-colors ${item.selected ? "border-primary/40 bg-primary/5" : "border-border opacity-70"}`}>
+                    <div className="flex items-start gap-3">
+                      <input type="checkbox" disabled={submitting} checked={item.selected} aria-label={`Select ${item.title}`} onChange={event => setItems(current => current.map((value, i) => i === index ? { ...value, selected: event.target.checked } : value))} className="mt-1 h-4 w-4 accent-primary disabled:cursor-not-allowed" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{item.title}</h3><span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">{category.label}</span></div>
+                        {item.description && <p className="mt-1 text-sm text-foreground/80">{item.description}</p>}
+                        <p className="mt-1.5 text-xs text-muted-foreground">{item.reason}</p>
+                        {item.selected && (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <label htmlFor={`frequency-${index}`} className="text-xs font-bold">Repeat every</label>
+                            <input id={`frequency-${index}`} disabled={submitting} type="number" min={1} max={3650} value={item.frequencyDays} onChange={event => setItems(current => current.map((value, i) => i === index ? { ...value, frequencyDays: Number(event.target.value) } : value))} className="w-20 rounded-lg border border-border bg-background px-2 py-1.5 text-sm font-bold disabled:cursor-not-allowed" />
+                            <span className="text-xs text-muted-foreground">days</span>
+                            {[30, 90, 180, 365].map(days => <button key={days} disabled={submitting} type="button" onClick={() => setItems(current => current.map((value, i) => i === index ? { ...value, frequencyDays: days } : value))} className="rounded-lg border border-border px-2 py-1 text-[11px] font-bold hover:border-primary disabled:cursor-not-allowed">{days === 365 ? "Yearly" : days === 180 ? "6 months" : days === 90 ? "3 months" : "Monthly"}</button>)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {result && items.length > 0 && <p className="mt-4 rounded-xl bg-muted p-3 text-sm font-medium" role="status">{result}</p>}
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-border p-5">
+          <span className="text-sm text-muted-foreground">{selected.length} selected</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} disabled={submitting} className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted disabled:opacity-50">Close</button>
+            <button type="button" onClick={addSelected} disabled={submitting || selected.length === 0} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}{submitting ? "Adding…" : "Add selected tasks"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 // ── main page ─────────────────────────────────────────────────────────────────
 
 export default function Properties() {
@@ -374,11 +513,9 @@ export default function Properties() {
   const updateTask = useUpdateMaintenanceTask();
   const deleteTask = useDeleteMaintenanceTask();
 
-  const house = properties?.find(p => p.type === "house");
-  const cabin = properties?.find(p => p.type === "cabin");
-
-  const [activeProperty, setActiveProperty] = useState<"house" | "cabin">(() => preferences.tabs.properties.defaultProperty);
+  const [activePropertyId, setActivePropertyId] = useState(() => preferences.tabs.properties.defaultProperty);
   const [adding, setAdding] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
@@ -405,7 +542,9 @@ export default function Properties() {
     updateTask.mutate({ id, data: { assigneeId } }, { onSuccess: invalidate });
   };
 
-  const currentProperty = activeProperty === "cabin" ? cabin : house;
+  const currentProperty = properties?.find(property => property.id === activePropertyId)
+    ?? properties?.find(property => property.type === activePropertyId)
+    ?? properties?.[0];
 
   const propertyTasks = (tasks ?? []).filter(t => t.propertyId === currentProperty?.id);
 
@@ -428,30 +567,25 @@ export default function Properties() {
           <p className="text-muted-foreground mt-1 font-medium">Maintenance schedules for your properties</p>
         </div>
 
-        {!adding && (
-          <button
-            onClick={() => setAdding(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background font-bold hover:bg-foreground/90 transition-colors shadow-md"
-          >
-            <Plus className="w-5 h-5" /> Add Task
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {currentProperty && <button onClick={() => setSuggesting(true)} className="flex items-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-5 py-2.5 font-bold text-primary hover:bg-primary/10"><Sparkles className="h-5 w-5" /> Suggest maintenance</button>}
+          {!adding && <button onClick={() => setAdding(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background font-bold hover:bg-foreground/90 transition-colors shadow-md"><Plus className="w-5 h-5" /> Add Task</button>}
+        </div>
       </div>
 
       {/* Property tabs */}
       <div className="flex gap-2">
-        {[
-          { key: "cabin",  label: "🏕 Cabin",      prop: cabin },
-          { key: "house",  label: "🏠 Main House",  prop: house },
-        ].map(({ key, label, prop }) => {
+        {(properties ?? []).map(prop => {
+          const key = prop.id;
+          const label = prop.name;
           const propTasks = (tasks ?? []).filter(t => t.propertyId === prop?.id);
           const urgent = propTasks.filter(t => t.isOverdue || t.isDueSoon).length;
           return (
             <button
               key={key}
-              onClick={() => { setActiveProperty(key as any); setCategoryFilter("all"); setAdding(false); }}
+              onClick={() => { setActivePropertyId(key); setCategoryFilter("all"); setAdding(false); }}
               className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
-                activeProperty === key
+                currentProperty?.id === key
                   ? "bg-card border-primary/40 text-foreground shadow-md"
                   : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground"
               }`}
@@ -466,6 +600,8 @@ export default function Properties() {
           );
         })}
       </div>
+
+      {suggesting && currentProperty && <MaintenanceSuggestions property={currentProperty} onClose={() => setSuggesting(false)} onCreated={invalidate} />}
 
       {/* Add form */}
       {adding && (

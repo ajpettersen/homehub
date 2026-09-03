@@ -21,7 +21,7 @@ export interface HomeHubPreferences {
     meals: { defaultView: MealView };
     tasks: { layout: "columns" | "list" };
     workouts: { defaultScope: "everyone" | "active" };
-    properties: { defaultProperty: "cabin" | "house" };
+    properties: { defaultProperty: string };
     people: { layout: "cards" | "compact" };
     settings: { startSection: SettingsSection };
   };
@@ -80,7 +80,9 @@ function parsePreferences(raw: string | null): HomeHubPreferences {
           defaultScope: isOneOf(tabs.workouts?.defaultScope, ["everyone", "active"], DEFAULT_PREFERENCES.tabs.workouts.defaultScope),
         },
         properties: {
-          defaultProperty: isOneOf(tabs.properties?.defaultProperty, ["cabin", "house"], DEFAULT_PREFERENCES.tabs.properties.defaultProperty),
+          defaultProperty: typeof tabs.properties?.defaultProperty === "string"
+            ? tabs.properties.defaultProperty
+            : DEFAULT_PREFERENCES.tabs.properties.defaultProperty,
         },
         people: {
           layout: isOneOf(tabs.people?.layout, ["cards", "compact"], DEFAULT_PREFERENCES.tabs.people.layout),

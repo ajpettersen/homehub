@@ -1,10 +1,22 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { maintenanceTasksTable, propertiesTable, familyMembersTable } from "@workspace/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
+
+function normalizeTaskTitle(title: string): string {
+  return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function isValidFrequencyDays(value: unknown): value is number {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 3650;
+}
 
 /**
  * Validates an optional assignee id: it must be a family member of the scope's
@@ -165,7 +177,7 @@ router.post("/maintenance-tasks", async (req, res) => {
     const scope = getApprovedHouseholdScope(res);
     const { title, description, propertyId, category, assigneeId, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
     const effectiveScheduleType = scheduleType ?? "recurring";
-    if (!title || !propertyId || !category) {
+    if (!title || typeof title !== "string" || !propertyId || !category) {
       res.status(400).json({ error: "title, propertyId, and category are required" });
       return;
     }
@@ -185,9 +197,9 @@ router.post("/maintenance-tasks", async (req, res) => {
       return;
     }
 
-    const freq = effectiveScheduleType === "recurring" ? Number(frequencyDays) : null;
-    if (effectiveScheduleType === "recurring" && (!Number.isInteger(freq) || (freq ?? 0) < 1)) {
-      res.status(400).json({ error: "A recurring task needs a positive repeat interval" });
+    const freq = effectiveScheduleType === "recurring" ? frequencyDays : null;
+    if (effectiveScheduleType === "recurring" && !isValidFrequencyDays(freq)) {
+      res.status(400).json({ error: "A recurring task needs a repeat interval from 1 to 3650 days" });
       return;
     }
     if (effectiveScheduleType === "one-time" && !nextDueDate) {
@@ -209,22 +221,44 @@ router.post("/maintenance-tasks", async (req, res) => {
       ? new Date().toISOString().split("T")[0]
       : nextDueDate;
 
-    const [task] = await db
-      .insert(maintenanceTasksTable)
-      .values({
-        title,
-        description: description ?? null,
-        propertyId: propertyIdNum,
-        category,
-        assigneeId: assignee.value,
-        frequencyDays: freq,
-        scheduleType: effectiveScheduleType,
-        isCompleted: false,
-        isCleanerTask: isCleanerTask === true,
-        startDate: effectiveScheduleType === "recurring" ? startDate ?? null : null,
-        nextDueDate: resolvedNextDueDate,
-      })
-      .returning();
+    const normalizedTitle = normalizeTaskTitle(title);
+    if (!normalizedTitle) {
+      res.status(400).json({ error: "title is required" });
+      return;
+    }
+    const task = await db.transaction(async (tx) => {
+      // Serialize title checks for this property so concurrent retries cannot
+      // create equivalent maintenance tasks.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${propertyIdNum})`);
+      const existing = await tx
+        .select({ title: maintenanceTasksTable.title })
+        .from(maintenanceTasksTable)
+        .where(eq(maintenanceTasksTable.propertyId, propertyIdNum));
+      if (existing.some(candidate => normalizeTaskTitle(candidate.title) === normalizedTitle)) {
+        return null;
+      }
+      const [created] = await tx
+        .insert(maintenanceTasksTable)
+        .values({
+          title,
+          description: description ?? null,
+          propertyId: propertyIdNum,
+          category,
+          assigneeId: assignee.value,
+          frequencyDays: freq,
+          scheduleType: effectiveScheduleType,
+          isCompleted: false,
+          isCleanerTask: isCleanerTask === true,
+          startDate: effectiveScheduleType === "recurring" ? startDate ?? null : null,
+          nextDueDate: resolvedNextDueDate,
+        })
+        .returning();
+      return created;
+    });
+    if (!task) {
+      res.status(409).json({ error: "A maintenance task with that title already exists for this property" });
+      return;
+    }
 
     res.status(201).json(await fetchFormattedTask(task.id));
   } catch (err) {
@@ -293,12 +327,16 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
       resolvedAssigneeId = assignee.value;
     }
 
-    const effectiveFrequencyDays = effectiveScheduleType === "recurring"
-      ? (frequencyDays !== undefined ? Number(frequencyDays) : existing.frequencyDays)
-      : null;
-    if (effectiveScheduleType === "recurring" && (!Number.isInteger(effectiveFrequencyDays) || (effectiveFrequencyDays ?? 0) < 1)) {
-      res.status(400).json({ error: "A recurring task needs a positive repeat interval" });
-      return;
+    let effectiveFrequencyDays: number | null = null;
+    if (effectiveScheduleType === "recurring") {
+      // Omitted frequency keeps the established recurrence interval. Supplied
+      // values are intentionally not coerced from strings or other values.
+      const candidateFrequency = frequencyDays !== undefined ? frequencyDays : existing.frequencyDays;
+      if (!isValidFrequencyDays(candidateFrequency)) {
+        res.status(400).json({ error: "A recurring task needs a repeat interval from 1 to 3650 days" });
+        return;
+      }
+      effectiveFrequencyDays = candidateFrequency;
     }
 
     const effectiveStartDate = effectiveScheduleType === "recurring"

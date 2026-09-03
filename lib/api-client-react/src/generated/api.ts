@@ -61,6 +61,8 @@ import type {
   HouseholdJoinRequestDecision,
   HouseholdJoinRequestInput,
   HouseholdTabVisibility,
+  MaintenanceRecommendationInput,
+  MaintenanceRecommendationResult,
   MaintenanceTask,
   MealPlanEntry,
   MealRating,
@@ -407,6 +409,77 @@ export const useRecommendWorkout = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRecommendWorkoutMutationOptions(options));
+    }
+
+export const getRecommendMaintenanceUrl = () => {
+
+
+
+
+  return `/api/ai/recommend-maintenance`
+}
+
+/**
+ * @summary Suggest practical recurring maintenance for an authorized property
+ */
+export const recommendMaintenance = async (maintenanceRecommendationInput: MaintenanceRecommendationInput, options?: RequestInit): Promise<MaintenanceRecommendationResult> => {
+
+  return customFetch<MaintenanceRecommendationResult>(getRecommendMaintenanceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(maintenanceRecommendationInput)
+  }
+);}
+
+
+
+
+
+export const getRecommendMaintenanceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recommendMaintenance>>, TError,{data: BodyType<MaintenanceRecommendationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recommendMaintenance>>, TError,{data: BodyType<MaintenanceRecommendationInput>}, TContext> => {
+
+const mutationKey = ['recommendMaintenance'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recommendMaintenance>>, {data: BodyType<MaintenanceRecommendationInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  recommendMaintenance(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecommendMaintenanceMutationResult = NonNullable<Awaited<ReturnType<typeof recommendMaintenance>>>
+    export type RecommendMaintenanceMutationBody = BodyType<MaintenanceRecommendationInput>
+    export type RecommendMaintenanceMutationError = ErrorType<void>
+
+    /**
+ * @summary Suggest practical recurring maintenance for an authorized property
+ */
+export const useRecommendMaintenance = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recommendMaintenance>>, TError,{data: BodyType<MaintenanceRecommendationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recommendMaintenance>>,
+        TError,
+        {data: BodyType<MaintenanceRecommendationInput>},
+        TContext
+      > => {
+      return useMutation(getRecommendMaintenanceMutationOptions(options));
     }
 
 export const getHealthCheckUrl = () => {

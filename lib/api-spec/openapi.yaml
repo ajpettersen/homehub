@@ -117,6 +117,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkoutRecommendation"
 
+  /ai/recommend-maintenance:
+    post:
+      operationId: recommendMaintenance
+      tags: [ai]
+      summary: Suggest practical recurring maintenance for an authorized property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaintenanceRecommendationInput"
+      responses:
+        "200":
+          description: Maintenance recommendations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceRecommendationResult"
+        "400":
+          description: Invalid property id
+        "403":
+          description: Property is not accessible
+        "404":
+          description: Property not found
+
   /healthz:
     get:
       operationId: healthCheck
@@ -1454,6 +1479,48 @@ paths:
 
 components:
   schemas:
+    MaintenanceRecommendationInput:
+      type: object
+      required: [propertyId]
+      properties:
+        propertyId:
+          type: string
+          minLength: 1
+
+    MaintenanceRecommendation:
+      type: object
+      required: [title, description, category, reason, defaultFrequencyDays]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: [string, "null"]
+          maxLength: 500
+        category:
+          type: string
+          enum: [filter, water, seasonal, appliance, yard, other, cleaning]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        defaultFrequencyDays:
+          type: integer
+          minimum: 1
+          maximum: 3650
+
+    MaintenanceRecommendationResult:
+      type: object
+      required: [recommendations]
+      properties:
+        recommendations:
+          type: array
+          minItems: 0
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/MaintenanceRecommendation"
+
     Workout:
       type: object
       properties:

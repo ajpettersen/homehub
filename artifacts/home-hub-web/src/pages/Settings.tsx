@@ -105,7 +105,7 @@ function AccordionSection({
           </div>
           <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </button>
-        {action && open && <div className="pr-5">{action}</div>}
+        {action && <div className="pr-5" onClick={() => setOpen(true)}>{action}</div>}
       </div>
 
       {open && (
@@ -144,27 +144,25 @@ function PreferenceChoice({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="rounded-xl border border-border/80 bg-background/60 p-3.5">
+    <div className="rounded-xl border border-border/80 bg-background/60 p-3.5 flex flex-col justify-between">
       <div className="mb-2.5">
-        <p className="text-sm font-bold text-foreground">{label}</p>
+        <label className="text-sm font-bold text-foreground block" htmlFor={`pref-${label.replace(/\s+/g, '-')}`}>{label}</label>
         <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
       </div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
-        {options.map(option => (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={value === option.value}
-            onClick={() => onChange(option.value)}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
-              value === option.value
-                ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
+      <div className="relative mt-auto">
+        <select
+          id={`pref-${label.replace(/\s+/g, '-')}`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm font-bold text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+        >
+          {options.map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-70" />
       </div>
     </div>
   );
@@ -202,30 +200,23 @@ function AppearanceAndTabsSection() {
   };
 
   return (
-    <section className="overflow-hidden rounded-2xl border-2 border-primary/20 bg-card shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-border bg-primary/5 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <SlidersHorizontal className="h-4 w-4" />
-          </div>
-          <div>
-            <h2 className="font-bold text-base text-foreground">Appearance &amp; tab preferences</h2>
-            <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
-              Choose what your household sees everywhere, plus how this device looks and behaves.
-            </p>
-          </div>
-        </div>
+    <AccordionSection
+      icon={<SlidersHorizontal className="h-4 w-4" />}
+      title="Appearance & tabs"
+      summary={<span className="text-xs text-muted-foreground">Customize UI and tab visibility</span>}
+      defaultOpen={false}
+      action={
         <button
           type="button"
           onClick={resetPreferences}
-          className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-bold text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           data-testid="button-reset-preferences"
         >
-          Reset all preferences
+          Reset
         </button>
-      </div>
-
-      <div className="space-y-5 px-5 py-5">
+      }
+    >
+      <div className="space-y-6">
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Overall look</p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -326,13 +317,6 @@ function AppearanceAndTabsSection() {
               onChange={value => setTabPreference("workouts", "defaultScope", value as "everyone" | "active")}
             />
             <PreferenceChoice
-              label="Properties"
-              description="Choose which property opens first when reviewing maintenance."
-              value={tab.properties.defaultProperty}
-              options={[{ value: "cabin", label: "Cabin" }, { value: "house", label: "Main house" }]}
-              onChange={value => setTabPreference("properties", "defaultProperty", value as "cabin" | "house")}
-            />
-            <PreferenceChoice
               label="People"
               description="Use roomy profile cards or a compact directory when browsing people."
               value={tab.people.layout}
@@ -352,7 +336,7 @@ function AppearanceAndTabsSection() {
           </div>
         </div>
       </div>
-    </section>
+    </AccordionSection>
   );
 }
 
@@ -432,36 +416,21 @@ function TaskForm({ initial, members, onSave, onCancel, saving }: {
         )}
       </div>
       <div>
-        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Assign to</label>
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => set("assigneeId", "")}
-            className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
-              !form.assigneeId
-                ? "bg-foreground text-background border-foreground"
-                : "border-border text-muted-foreground hover:border-foreground/40"
-            }`}
+        <label htmlFor="task-assignee" className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Assign to</label>
+        <div className="relative">
+          <select
+            id="task-assignee"
+            value={form.assigneeId}
+            onChange={e => set("assigneeId", e.target.value)}
+            data-testid="select-settings-assign"
+            className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2 text-sm font-bold text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
           >
-            Anyone
-          </button>
-          {members.map(m => {
-            const active = form.assigneeId === m.id;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => set("assigneeId", m.id)}
-                data-testid={`button-settings-assign-${m.id}`}
-                className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
-                  active ? "text-white border-transparent shadow-sm" : "border-border text-muted-foreground hover:border-foreground/40"
-                }`}
-                style={active ? { backgroundColor: m.color } : undefined}
-              >
-                {m.name}
-              </button>
-            );
-          })}
+            <option value="">Anyone</option>
+            {members.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-70" />
         </div>
       </div>
       <textarea value={form.description} onChange={e => set("description", e.target.value)}
@@ -699,8 +668,8 @@ function NewPropertyForm({ onSave, onCancel, saving }: {
   );
 }
 
-function PropertyRow({ property, onSaveInfo, saving, canAdminister }: {
-  property: any; onSaveInfo: (data: PropertyFormState) => void; saving: boolean; canAdminister: boolean;
+function PropertyRow({ property, onSaveInfo, saving, canAdminister, isDefault }: {
+  property: any; onSaveInfo: (data: PropertyFormState) => void; saving: boolean; canAdminister: boolean; isDefault: boolean;
 }) {
   const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
   const streetViewSrc = `${baseUrl}/api/properties/${property.id}/streetview`;
@@ -753,6 +722,7 @@ function PropertyRow({ property, onSaveInfo, saving, canAdminister }: {
             <div className="flex items-center gap-2">
               <span className="font-bold text-sm">{property.name}</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 bg-muted rounded-md text-muted-foreground capitalize">{property.type}</span>
+              {isDefault && <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">Default</span>}
             </div>
             {property.address ? (
               <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
@@ -770,8 +740,9 @@ function PropertyRow({ property, onSaveInfo, saving, canAdminister }: {
 
         {!editingInfo && canAdminister && (
           <button onClick={() => setEditingInfo(true)}
-            className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors shrink-0">
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-bold text-foreground hover:border-primary/50 hover:text-primary transition-colors shrink-0">
             <Pencil className="w-3.5 h-3.5" />
+            Edit settings
           </button>
         )}
       </div>
@@ -812,14 +783,19 @@ function MemberForm({ initial, onSave, onCancel, saving }: {
           placeholder="e.g. Alex" />
       </div>
       <div>
-        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Role</label>
-        <div className="flex gap-2">
-          {ROLES.map(r => (
-            <button key={r} type="button" onClick={() => set("role", r)}
-              className={`flex-1 py-2 rounded-xl font-bold text-sm capitalize transition-all border-2 ${form.role === r ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary/40"}`}>
-              {r}
-            </button>
-          ))}
+        <label htmlFor="member-role" className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Role</label>
+        <div className="relative">
+          <select
+            id="member-role"
+            value={form.role}
+            onChange={e => set("role", e.target.value as Role)}
+            className="w-full appearance-none rounded-xl border-2 border-border bg-background px-4 py-2.5 text-sm font-bold capitalize text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            {ROLES.map(r => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-70" />
         </div>
       </div>
       <div>
@@ -1119,14 +1095,17 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
                   <p className="mt-0.5 text-xs text-muted-foreground">{request.requesterEmail} · Requested {new Date(request.createdAt).toLocaleDateString()}</p>
                   <label className="mt-3 block text-xs font-bold text-muted-foreground">
                     Link to a family member (optional)
-                    <select
-                      value={selectedMember}
-                      onChange={event => setMemberLinks(current => ({ ...current, [request.id]: event.target.value }))}
-                      className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    >
-                      <option value="">No linked member</option>
-                      {familyMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
-                    </select>
+                    <div className="relative mt-1.5">
+                      <select
+                        value={selectedMember}
+                        onChange={event => setMemberLinks(current => ({ ...current, [request.id]: event.target.value }))}
+                        className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                      >
+                        <option value="">No linked member</option>
+                        {familyMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-70" />
+                    </div>
                   </label>
                   <button
                     type="button"
@@ -1181,16 +1160,19 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
                   </div>
                   <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                     Role
-                    <select
-                      value={account.role}
-                      disabled={isSelf || updateAccount.isPending}
-                      title={isSelf ? "You cannot demote your own active administrator account" : undefined}
-                      onChange={event => void save(account.clerkId, { role: event.target.value as "family" | "cleaner" })}
-                      className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-bold capitalize text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <option value="family">Family</option>
-                      <option value="cleaner">Cleaner</option>
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={account.role}
+                        disabled={isSelf || updateAccount.isPending}
+                        title={isSelf ? "You cannot demote your own active administrator account" : undefined}
+                        onChange={event => void save(account.clerkId, { role: event.target.value as "family" | "cleaner" })}
+                        className="w-full appearance-none rounded-lg border border-border bg-background py-1.5 pl-3 pr-8 text-sm font-bold capitalize text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <option value="family">Family</option>
+                        <option value="cleaner">Cleaner</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground opacity-70" />
+                    </div>
                   </label>
                 </div>
               );
@@ -1206,7 +1188,7 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function Settings() {
   const queryClient = useQueryClient();
-  const { preferences } = usePreferences();
+  const { preferences, setTabPreference } = usePreferences();
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const canAdministerHousehold = me?.role === "family" && me.isAdmin;
 
@@ -1241,6 +1223,9 @@ export default function Settings() {
       <span className="text-xs text-muted-foreground ml-1">{familyMembers.length} member{familyMembers.length !== 1 ? "s" : ""}</span>
     </div>
   ) : null;
+  const defaultPropertyId = properties?.some(property => property.id === preferences.tabs.properties.defaultProperty)
+    ? preferences.tabs.properties.defaultProperty
+    : (properties?.find(property => property.type === preferences.tabs.properties.defaultProperty)?.id ?? properties?.[0]?.id);
 
   return (
     <div className="space-y-4 max-w-3xl mx-auto animate-in fade-in duration-300">
@@ -1317,12 +1302,26 @@ export default function Settings() {
               onClick={() => setAddingProperty(true)}
               className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90"
             >
-              <Plus className="h-3.5 w-3.5" /> Add
+              <Plus className="h-3.5 w-3.5" /> Add Property
             </button>
           ) : undefined
         }
       >
         <div className="space-y-3">
+          {properties && properties.length > 0 && (
+            <div className="rounded-xl border border-border bg-muted/20 p-3">
+              <label htmlFor="default-property" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Default maintenance property</label>
+              <p className="mb-2 mt-0.5 text-xs text-muted-foreground">This property opens first on the maintenance page.</p>
+              <select
+                id="default-property"
+                value={defaultPropertyId ?? ""}
+                onChange={event => setTabPreference("properties", "defaultProperty", event.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-bold focus:border-primary focus:outline-none"
+              >
+                {properties.map(property => <option key={property.id} value={property.id}>{property.name}</option>)}
+              </select>
+            </div>
+          )}
           {canAdministerHousehold && addingProperty && (
             <NewPropertyForm
               onSave={data => createProperty.mutate(
@@ -1349,6 +1348,7 @@ export default function Settings() {
             <PropertyRow
               key={property.id}
               property={property}
+              isDefault={property.id === defaultPropertyId}
               canAdminister={canAdministerHousehold}
               onSaveInfo={data => updateProperty.mutate({ id: property.id, data: { name: data.name, address: data.address || null } }, { onSuccess: invalidateProps })}
               saving={updateProperty.isPending}

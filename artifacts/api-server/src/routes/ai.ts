@@ -441,6 +441,171 @@ async function fetchPageText(url: string): Promise<string> {
   }
 }
 
+type MaintenanceRecommendation = {
+  title: string;
+  description: string | null;
+  category: typeof VALID_MAINTENANCE_CATEGORIES[number];
+  reason: string;
+  defaultFrequencyDays: number;
+};
+
+function parseMaintenanceRecommendations(content: string): MaintenanceRecommendation[] {
+  let parsed: { recommendations?: unknown };
+  try {
+    parsed = JSON.parse(content) as { recommendations?: unknown };
+  } catch {
+    throw new Error("AI response was not valid structured JSON");
+  }
+  if (!Array.isArray(parsed.recommendations)) {
+    throw new Error("AI response did not contain recommendations");
+  }
+  if (parsed.recommendations.length > 10) {
+    throw new Error("AI response exceeded the recommendation limit");
+  }
+
+  const seen = new Set<string>();
+  const recommendations: MaintenanceRecommendation[] = [];
+  for (const raw of parsed.recommendations) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error("AI response contained an invalid recommendation");
+    }
+    const item = raw as Record<string, unknown>;
+    const validKeys = new Set(["title", "description", "category", "reason", "defaultFrequencyDays"]);
+    if (Object.keys(item).some(key => !validKeys.has(key))) {
+      throw new Error("AI response contained unexpected recommendation fields");
+    }
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const reason = typeof item.reason === "string" ? item.reason.trim() : "";
+    const category = item.category;
+    const frequency = item.defaultFrequencyDays;
+    const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (
+      !title || title.length > 120 || !reason || reason.length > 500 ||
+      !VALID_MAINTENANCE_CATEGORIES.includes(category as typeof VALID_MAINTENANCE_CATEGORIES[number]) ||
+      typeof frequency !== "number" || !Number.isFinite(frequency) || !Number.isInteger(frequency) ||
+      frequency < 1 || frequency > 3650 ||
+      !normalizedTitle
+    ) throw new Error("AI response contained an invalid recommendation");
+    if (seen.has(normalizedTitle)) continue;
+    seen.add(normalizedTitle);
+    if (item.description !== null && (typeof item.description !== "string" || item.description.length > 500)) {
+      throw new Error("AI response contained an invalid description");
+    }
+    const description = typeof item.description === "string" ? item.description.trim() : null;
+    recommendations.push({
+      title,
+      description,
+      category: category as MaintenanceRecommendation["category"],
+      reason,
+      defaultFrequencyDays: frequency,
+    });
+  }
+  return recommendations;
+}
+
+// ── POST /ai/recommend-maintenance ────────────────────────────────────────────
+// This endpoint only recommends tasks. The caller explicitly chooses which
+// recommendations to create through the maintenance task endpoint.
+router.post("/ai/recommend-maintenance", async (req, res) => {
+  try {
+    const scope = await requireAiScope(req, res);
+    if (!scope) return;
+
+    const propertyId = Number(req.body?.propertyId);
+    if (!Number.isInteger(propertyId) || propertyId <= 0) {
+      res.status(400).json({ error: "Invalid propertyId" });
+      return;
+    }
+    if (!scope.propertyIds.includes(propertyId)) {
+      res.status(403).json({ error: "Unauthorized property" });
+      return;
+    }
+
+    const [[property], existingTasks] = await Promise.all([
+      db.select().from(propertiesTable).where(and(
+        eq(propertiesTable.id, propertyId),
+        eq(propertiesTable.householdId, scope.householdId),
+      )).limit(1),
+      db.select({
+        title: maintenanceTasksTable.title,
+        description: maintenanceTasksTable.description,
+        category: maintenanceTasksTable.category,
+      }).from(maintenanceTasksTable).where(eq(maintenanceTasksTable.propertyId, propertyId)),
+    ]);
+    if (!property) {
+      res.status(404).json({ error: "Property not found" });
+      return;
+    }
+
+    const existing = existingTasks.length
+      ? existingTasks.map(task => `- ${task.title}${task.description ? `: ${task.description}` : ""}`).join("\n")
+      : "None";
+    const existingTitles = new Set(existingTasks.map(task => task.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()));
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 1024,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "maintenance_recommendations",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["recommendations"],
+            properties: {
+              recommendations: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["title", "description", "category", "reason", "defaultFrequencyDays"],
+                  properties: {
+                    title: { type: "string" },
+                    description: { type: ["string", "null"] },
+                    category: { type: "string", enum: [...VALID_MAINTENANCE_CATEGORIES] },
+                    reason: { type: "string" },
+                    defaultFrequencyDays: { type: "integer" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      messages: [
+        {
+          role: "system",
+          content: `You are a practical property maintenance planner. Return 4–10 useful recurring maintenance ideas tailored to the property's type and details. Exclude anything already covered by an existing task, including synonymous or meaning-equivalent tasks. Avoid cosmetic projects and vague advice. Frequencies must be positive whole days between 1 and 3650 and realistic for the work.
+
+Use only these category values: ${VALID_MAINTENANCE_CATEGORIES.join(", ")}.
+Respond ONLY as valid JSON:
+{"recommendations":[{"title":"Concise task title","description":"Optional actionable detail","category":"filter","reason":"Why this matters for this property","defaultFrequencyDays":90}]}`,
+        },
+        {
+          role: "user",
+          content: `Property name: ${property.name}
+Property type: ${property.type}
+${property.address ? `Property address: ${property.address}` : "Property address: not provided"}
+
+Existing maintenance tasks to exclude:
+${existing}`,
+        },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error("AI response was empty");
+    const recommendations = parseMaintenanceRecommendations(content).filter(
+      recommendation => !existingTitles.has(recommendation.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()),
+    );
+    res.json({ recommendations });
+  } catch (err) {
+    console.error("Maintenance recommendation error:", err);
+    res.status(500).json({ error: "Failed to recommend maintenance" });
+  }
+});
+
 // ── POST /ai/scan-pantry ─────────────────────────────────────────────────────
 // Accepts one or more base64 photos of fridge/pantry, returns ingredient list + meal suggestions
 router.post("/ai/scan-pantry", async (req, res) => {

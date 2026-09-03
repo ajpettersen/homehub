@@ -87,6 +87,40 @@ export const RecommendWorkoutResponse = zod.object({
 
 
 /**
+ * @summary Suggest practical recurring maintenance for an authorized property
+ */
+
+
+
+export const RecommendMaintenanceBody = zod.object({
+  "propertyId": zod.string().min(1)
+})
+
+export const recommendMaintenanceResponseRecommendationsItemTitleMax = 120;
+
+export const recommendMaintenanceResponseRecommendationsItemDescriptionMax = 500;
+
+export const recommendMaintenanceResponseRecommendationsItemReasonMax = 500;
+
+export const recommendMaintenanceResponseRecommendationsItemDefaultFrequencyDaysMax = 3650;
+
+export const recommendMaintenanceResponseRecommendationsMin = 0;
+export const recommendMaintenanceResponseRecommendationsMax = 10;
+
+
+
+export const RecommendMaintenanceResponse = zod.object({
+  "recommendations": zod.array(zod.object({
+  "title": zod.string().min(1).max(recommendMaintenanceResponseRecommendationsItemTitleMax),
+  "description": zod.string().max(recommendMaintenanceResponseRecommendationsItemDescriptionMax).nullable(),
+  "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
+  "reason": zod.string().min(1).max(recommendMaintenanceResponseRecommendationsItemReasonMax),
+  "defaultFrequencyDays": zod.number().min(1).max(recommendMaintenanceResponseRecommendationsItemDefaultFrequencyDaysMax)
+})).min(recommendMaintenanceResponseRecommendationsMin).max(recommendMaintenanceResponseRecommendationsMax)
+})
+
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({

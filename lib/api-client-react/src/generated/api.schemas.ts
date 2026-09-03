@@ -5,6 +5,56 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
+export interface MaintenanceRecommendationInput {
+  /** @minLength 1 */
+  propertyId: string;
+}
+
+export type MaintenanceRecommendationCategory = typeof MaintenanceRecommendationCategory[keyof typeof MaintenanceRecommendationCategory];
+
+
+export const MaintenanceRecommendationCategory = {
+  filter: 'filter',
+  water: 'water',
+  seasonal: 'seasonal',
+  appliance: 'appliance',
+  yard: 'yard',
+  other: 'other',
+  cleaning: 'cleaning',
+} as const;
+
+export interface MaintenanceRecommendation {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  title: string;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  description: string | null;
+  category: MaintenanceRecommendationCategory;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  reason: string;
+  /**
+     * @minimum 1
+     * @maximum 3650
+     */
+  defaultFrequencyDays: number;
+}
+
+export interface MaintenanceRecommendationResult {
+  /**
+     * @minItems 0
+     * @maxItems 10
+     */
+  recommendations: MaintenanceRecommendation[];
+}
+
 export interface Workout {
   id: string;
   memberId: string;
