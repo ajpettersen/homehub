@@ -15,3 +15,4 @@ export * from "./aiMemories";
 export * from "./recipes";
 export * from "./people";
 export * from "./mealRatings";
+export * from "./chatMessages";

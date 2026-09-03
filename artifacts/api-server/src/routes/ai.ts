@@ -14,6 +14,7 @@ import {
   groceryItemsTable,
   maintenanceTasksTable,
   choresTable,
+  chatMessagesTable,
 } from "@workspace/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
@@ -152,6 +153,7 @@ const VALID_CATEGORIES = [
 ];
 
 const VALID_MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
+const VALID_MAINTENANCE_CATEGORIES = ["filter", "water", "seasonal", "appliance", "yard", "other", "cleaning"] as const;
 const router = Router();
 
 /** Detect MIME type from a base64 string (with or without data-URI prefix). */
@@ -459,51 +461,35 @@ router.post("/ai/scan-pantry", async (req, res) => {
 
     const photoWord = imagesBase64.length === 1 ? "photo" : `${imagesBase64.length} photos`;
 
-    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
-
-Family members:
-${memberLines}
-
-Properties:
-${propertyLines}
-
-${formatLiveSnapshot(liveSnapshot, snapshotNow)}
-
-What you help with:
-- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
-- Meal planning & recipes: family-friendly, practical, low food waste.
-- Grocery & shopping: organized lists, pantry scanning.
-- Household maintenance: seasonal checklists for both properties.
-- Kids chores, schedules, organization, family planning.
-- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
+    const SYSTEM = `You are a family meal planner AI. Scan fridge/pantry photos and return a JSON object with: ingredients found and meal suggestions.
 ${memoriesCtx}
-${peopleCtx}
-Shopping lists:
-${groceryListLines}
+Recent meals to avoid repeating: ${mealHistory.slice(0, 20).join(", ") || "none"}
 
-You can take household actions with the available tools:
-- Use a tool only when the user explicitly asks you to add, create, or schedule something.
-- Never claim an action was completed unless its tool result says it succeeded. After every successful action, clearly confirm what you did.
-- Use the supplied property, family member, and shopping-list IDs exactly. Do not invent IDs.
-- When the household has a House/Home property and the user does not name a property, use that for meals and chores; otherwise ask a clarification instead of guessing.
-- A single reminder is a one-time maintenance task. Use recurring only when the user asks for a repeated task.
-- For dates such as "Thursday" or "in 3 months", calculate an exact YYYY-MM-DD date using today: ${snapshotNow.toISOString().slice(0, 10)}.
-
-Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
+Respond ONLY with valid JSON:
+{
+  "ingredients": ["chicken breast", "pasta"],
+  "mealSuggestions": [
+    { "name": "Pasta Primavera", "description": "...", "usesIngredients": ["pasta"], "missingIngredients": ["cream"] }
+  ]
+}`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 256,
+      max_completion_tokens: 1024,
       messages: [
+        { role: "system", content: SYSTEM },
         {
           role: "user",
-          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
+          content: [
+            { type: "text", text: `Please analyze ${photoWord} of my fridge/pantry and suggest meals.` },
+            ...imageContent,
+          ] as any,
         },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -511,14 +497,14 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
 
     res.json(JSON.parse(jsonMatch[0]));
   } catch (err) {
-    console.error("Suggest week error:", err);
-    res.status(500).json({ error: "Failed to suggest week" });
+    console.error("Pantry scan error:", err);
+    res.status(500).json({ error: "Failed to scan pantry" });
   }
 });
 
-// ── POST /ai/extract-recipe-url ──────────────────────────────────────────────
-// Fetches a recipe page and uses AI to extract the meal name + summary
-router.post("/ai/extract-recipe-url", async (req, res) => {
+// ── POST /ai/meal-recipe ─────────────────────────────────────────────────────
+// Returns a full recipe for a named meal, plus an optional AI-generated food photo
+router.post("/ai/meal-recipe", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
@@ -620,7 +606,7 @@ router.post("/ai/suggest-week", async (req, res) => {
       const mealName = mealPlanById.get(r.mealPlanId);
       if (!mealName) continue;
       if (!memberMealRatings.has(r.memberId)) memberMealRatings.set(r.memberId, new Map());
-      const mealMap = memberMealRatings.get(member.id);
+      const mealMap = memberMealRatings.get(r.memberId)!;
       if (!mealMap.has(mealName)) mealMap.set(mealName, []);
       mealMap.get(mealName)!.push(r.rating);
     }
@@ -648,51 +634,37 @@ router.post("/ai/suggest-week", async (req, res) => {
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
 
-    const SYSTEM = `You are HomeHub Assistant — a warm, knowledgeable household AI for this family.
-
-Family members:
-${memberLines}
-
-Properties:
-${propertyLines}
-
-${formatLiveSnapshot(liveSnapshot, snapshotNow)}
-
-What you help with:
-- Workout planning: they like 20–30 minute workouts, knees-over-toes (ATG/Ben Patrick) style. Analyze photos of their space.
-- Meal planning & recipes: family-friendly, practical, low food waste.
-- Grocery & shopping: organized lists, pantry scanning.
-- Household maintenance: seasonal checklists for both properties.
-- Kids chores, schedules, organization, family planning.
-- Household relationships and trusted contractors: use the people and contractor memory when relevant. Do not invent or expose contact details.
+    const SYSTEM = `You are a practical family meal planner.
 ${memoriesCtx}
-${peopleCtx}
-Shopping lists:
-${groceryListLines}
 
-You can take household actions with the available tools:
-- Use a tool only when the user explicitly asks you to add, create, or schedule something.
-- Never claim an action was completed unless its tool result says it succeeded. After every successful action, clearly confirm what you did.
-- Use the supplied property, family member, and shopping-list IDs exactly. Do not invent IDs.
-- When the household has a House/Home property and the user does not name a property, use that for meals and chores; otherwise ask a clarification instead of guessing.
-- A single reminder is a one-time maintenance task. Use recurring only when the user asks for a repeated task.
-- For dates such as "Thursday" or "in 3 months", calculate an exact YYYY-MM-DD date using today: ${snapshotNow.toISOString().slice(0, 10)}.
+Recent meals to avoid repeating: ${mealHistory.slice(0, 30).join(", ") || "none"}
+Family meal preferences from past ratings:
+${memberPreferenceLines.join("\n") || "  - No ratings yet"}
 
-Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
+Create a varied, family-friendly week with simple breakfasts, lunches, and dinners.
+Respond ONLY with valid JSON:
+{
+  "days": [
+    {
+      "dayName": "Monday",
+      "breakfast": "Scrambled Eggs & Toast",
+      "lunch": "PB&J Sandwiches",
+      "dinner": "Spaghetti Bolognese"
+    }
+  ]
+}`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 256,
+      max_completion_tokens: 1024,
       messages: [
-        {
-          role: "user",
-          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
-        },
+        { role: "system", content: SYSTEM },
+        { role: "user", content: "Please suggest a full week of meals for our family." },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
@@ -738,13 +710,13 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as { items: Array<{ name: string; quantity: string; category: string }> };
+    const parsed = JSON.parse(jsonMatch[0]) as { name?: string; error?: string };
     if (parsed.error) {
       res.status(422).json({ error: parsed.error });
       return;
@@ -956,6 +928,14 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
       groceryLists,
       now: snapshotNow,
     };
+    const conversation: any[] = [{ role: "system", content: SYSTEM }, ...builtMessages];
+    const completedActions = new Set<string>();
+    const confirmations: string[] = [];
+    const failures: string[] = [];
+    let assistantMessage: any;
+    let reply = "";
+
+    for (let round = 0; round < 4; round += 1) {
       const chatResponse = await openai.chat.completions.create({
         model: "gpt-5.6-luna",
         max_completion_tokens: 1024,
@@ -964,19 +944,116 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
         tool_choice: "auto",
       });
 
-      const assistantMessage = chatResponse.choices[0]?.message;
-    let reply = "";
+      assistantMessage = chatResponse.choices[0]?.message;
+      if (!assistantMessage) break;
 
-    for (let round = 0; round < 4; round += 1) {
+      const toolCalls = (assistantMessage.tool_calls ?? []) as any[];
+      if (toolCalls.length === 0) {
+        reply = assistantMessage.content ?? "";
+        break;
+      }
+
+      conversation.push(assistantMessage);
+      for (const toolCall of toolCalls) {
+        const toolName = toolCall.type === "function" ? toolCall.function.name : "";
+        let result: AiActionResult;
+        try {
+          const args = toolCall.type === "function"
+            ? JSON.parse(toolCall.function.arguments || "{}")
+            : {};
+          const fingerprint = actionFingerprint(toolName, args);
+          if (completedActions.has(fingerprint)) {
+            result = { ok: true, confirmation: "That action was already completed." };
+          } else {
+            result = await executeAiAction(toolName, args, toolContext);
+            if (result.ok) completedActions.add(fingerprint);
+          }
+        } catch (error) {
+          result = {
+            ok: false,
+            error: error instanceof Error ? error.message : "The action could not be completed",
+          };
+        }
+
+        if (result.ok && result.confirmation) confirmations.push(result.confirmation);
+        if (!result.ok) failures.push(result.error ?? "The action could not be completed");
+        conversation.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result),
+        });
+      }
+    }
+
+    if (!reply) {
+      const outcomes = [...confirmations, ...failures].join("\n");
+      reply = outcomes || assistantMessage?.content || "Sorry, I couldn't generate a response.";
+    }
+
     const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
     const newMemories = lastUserMsg
       ? await extractAndSaveMemories(scope.householdId, lastUserMsg.content, reply, existingMemories)
       : [];
 
+    if (lastUserMsg) {
+      await db.insert(chatMessagesTable).values([
+        {
+          householdId: scope.householdId,
+          role: "user",
+          content: typeof lastUserMsg.content === "string" ? lastUserMsg.content.slice(0, MAX_MSG_LEN) : "",
+        },
+        {
+          householdId: scope.householdId,
+          role: "assistant",
+          content: reply.slice(0, MAX_MSG_LEN),
+        },
+      ]);
+    }
+
     res.json({ reply, memorized: newMemories });
   } catch (err) {
     console.error("Chat error:", err);
     res.status(500).json({ error: "Failed to generate response" });
+  }
+});
+
+// ── GET /ai/chat/history ──────────────────────────────────────────────────────
+router.get("/ai/chat/history", async (req, res) => {
+  try {
+    const scope = await requireAiScope(req, res);
+    if (!scope) return;
+
+    const rows = await db
+      .select({
+        role: chatMessagesTable.role,
+        content: chatMessagesTable.content,
+      })
+      .from(chatMessagesTable)
+      .where(eq(chatMessagesTable.householdId, scope.householdId))
+      .orderBy(desc(chatMessagesTable.createdAt), desc(chatMessagesTable.id))
+      .limit(20);
+
+    res.json({ messages: rows.reverse() });
+  } catch (err) {
+    console.error("Get chat history error:", err);
+    res.status(500).json({ error: "Failed to load chat history" });
+  }
+});
+
+// ── DELETE /ai/chat/history ───────────────────────────────────────────────────
+router.delete("/ai/chat/history", async (req, res) => {
+  try {
+    const scope = await requireAiScope(req, res);
+    if (!scope) return;
+
+    await db
+      .delete(chatMessagesTable)
+      .where(eq(chatMessagesTable.householdId, scope.householdId));
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Clear chat history error:", err);
+    res.status(500).json({ error: "Failed to clear chat history" });
   }
 });
 
@@ -1068,19 +1145,11 @@ function optionalActionString(value: unknown, maxLength = 500): string | null {
   return cleaned || null;
 }
 
-    const outcomes = [...confirmations, ...failures].join("\n");
-
-          const fingerprint = actionFingerprint(toolName, args);
-
 type AiActionResult = {
   ok: boolean;
   confirmation?: string;
   error?: string;
 };
-
-    const confirmations: string[] = [];
-
-      const toolCalls = (assistantMessage.tool_calls ?? []) as any[];
 
 const AI_ACTION_TOOLS = [
   {
@@ -1176,10 +1245,6 @@ function nextRecurringDueDate(startDate: string, frequencyDays: number, now: Dat
   return start.toISOString().slice(0, 10);
 }
 
-        const toolName = toolCall.type === "function" ? toolCall.function.name : "";
-
-        let result: AiActionResult;
-
 function actionFingerprint(name: string, rawArgs: unknown): string {
   const args = (rawArgs && typeof rawArgs === "object" ? rawArgs : {}) as Record<string, unknown>;
   const normalized: Record<string, unknown> = {};
@@ -1216,8 +1281,6 @@ function parseActionDate(value: unknown, field: string): string {
   return date;
 }
 
-const VALID_MAINTENANCE_CATEGORIES = ["filter", "water", "seasonal", "appliance", "yard", "other", "cleaning"] as const;
-
 function resolveGroceryList(
   args: Record<string, unknown>,
   context: AiActionContext,
@@ -1246,8 +1309,6 @@ function resolveGroceryList(
   }
   return null;
 }
-
-    const completedActions = new Set<string>();
 
 function authorizedPropertyId(value: unknown, propertyIds: number[]): number {
   const propertyId = Number(value);
@@ -1380,10 +1441,6 @@ async function executeAiAction(
   }
 }
 
-    const conversation: any[] = [{ role: "system", content: SYSTEM }, ...builtMessages];
-
-    const failures: string[] = [];
-
 const NUMERIC_ACTION_FIELDS = new Set([
   "propertyId",
   "listId",
@@ -1391,10 +1448,6 @@ const NUMERIC_ACTION_FIELDS = new Set([
   "points",
   "frequencyDays",
 ]);
-
-          const args = toolCall.type === "function"
-            ? JSON.parse(toolCall.function.arguments || "{}")
-            : {};
 
 type AiActionContext = {
   scope: PropertyAuthorizationScope;

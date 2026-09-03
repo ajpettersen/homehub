@@ -73,6 +73,8 @@ function HouseholdChat() {
   const [input, setInput] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [memories, setMemories] = useState<StoredMemory[]>([]);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -87,13 +89,51 @@ function HouseholdChat() {
     } catch { /* silent */ }
   }, []);
 
-  useEffect(() => { loadMemories(); }, [loadMemories]);
+  const loadHistory = useCallback(async () => {
+    try {
+      const res = await fetch("/api/ai/chat/history", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load chat history");
+      const data = await res.json();
+      const restored = Array.isArray(data.messages)
+        ? data.messages.filter((message: any) =>
+            (message?.role === "user" || message?.role === "assistant") &&
+            typeof message?.content === "string",
+          )
+        : [];
+      setMessages(restored);
+    } catch {
+      setMessages([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMemories();
+    loadHistory();
+  }, [loadHistory, loadMemories]);
 
   const handleDeleteMemory = async (id: number) => {
     setDeletingId(id);
     await fetch(`/api/ai/memories/${id}`, { method: "DELETE" });
     setMemories(prev => prev.filter(m => m.id !== id));
     setDeletingId(null);
+  };
+
+  const clearHistory = async () => {
+    setClearingHistory(true);
+    try {
+      const res = await fetch("/api/ai/chat/history", {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to clear chat history");
+      setMessages([]);
+    } catch {
+      // Keep the visible conversation if the server could not clear it.
+    } finally {
+      setClearingHistory(false);
+    }
   };
 
   const readFileAsDataUrl = (file: File): Promise<string> =>
@@ -111,7 +151,7 @@ function HouseholdChat() {
   };
 
   const send = async (text = input) => {
-    if (!text.trim() && images.length === 0) return;
+    if (historyLoading || loading || (!text.trim() && images.length === 0)) return;
     const userMsg: Message = { role: "user", content: text.trim(), images: images.length > 0 ? [...images] : undefined };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -158,7 +198,7 @@ function HouseholdChat() {
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
   };
 
-  const isEmpty = messages.length === 0;
+  const isEmpty = !historyLoading && messages.length === 0;
 
   return (
     <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
@@ -187,8 +227,12 @@ function HouseholdChat() {
             <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${memoryOpen ? "rotate-180" : ""}`} />
           </button>
           {messages.length > 0 && (
-            <button onClick={() => setMessages([])} className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-muted">
-              Clear
+            <button
+              onClick={clearHistory}
+              disabled={clearingHistory || loading}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-muted disabled:opacity-40"
+            >
+              {clearingHistory ? "Clearing…" : "Clear history"}
             </button>
           )}
         </div>
@@ -228,6 +272,7 @@ function HouseholdChat() {
       {/* Messages */}
       <div className={`overflow-y-auto px-5 transition-all ${isEmpty ? "h-0" : "max-h-[420px] py-4"}`}>
         <div className="space-y-4">
+          {historyLoading && <p className="text-xs text-muted-foreground text-center py-2">Loading conversation…</p>}
           {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
           {loading && <ThinkingBubble />}
         </div>
@@ -281,6 +326,7 @@ function HouseholdChat() {
           value={input}
           onChange={e => { setInput(e.target.value); autoResize(); }}
           onKeyDown={handleKeyDown}
+          disabled={historyLoading || loading}
           placeholder="Ask anything… or attach a photo of your workout space"
           rows={1}
           className="flex-1 bg-muted/50 border border-border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-primary transition-colors min-h-[36px] max-h-[120px]"
@@ -289,7 +335,7 @@ function HouseholdChat() {
 
         <button
           onClick={() => send()}
-          disabled={loading || (!input.trim() && images.length === 0)}
+          disabled={historyLoading || loading || (!input.trim() && images.length === 0)}
           className="w-9 h-9 flex items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 shrink-0"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
