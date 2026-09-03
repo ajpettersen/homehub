@@ -11,6 +11,8 @@ export * from "./maintenanceTasks";
 export * from "./pushTokens";
 export * from "./webPushSubscriptions";
 export * from "./userProfiles";
+export * from "./householdJoinRequests";
+export * from "./joinRequestRateLimits";
 export * from "./workouts";
 export * from "./aiMemories";
 export * from "./recipes";

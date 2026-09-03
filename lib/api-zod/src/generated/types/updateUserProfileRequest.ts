@@ -9,6 +9,7 @@ import type { UpdateUserProfileRequestRole } from './updateUserProfileRequestRol
 
 export interface UpdateUserProfileRequest {
   role?: UpdateUserProfileRequestRole;
+  isAdmin?: boolean;
   allowedPropertyId?: string | null;
   linkedFamilyMemberId?: string | null;
 }

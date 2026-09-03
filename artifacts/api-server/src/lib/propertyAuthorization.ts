@@ -16,6 +16,7 @@ export interface PropertyAuthorizationScope {
   householdId: number;
   propertyIds: number[];
   role: "family" | "cleaner";
+  isAdmin: boolean;
 }
 
 export async function getPropertyAuthorizationScope(
@@ -40,11 +41,12 @@ export async function getPropertyAuthorizationScope(
       householdId: profile.householdId,
       propertyIds: properties.map(property => property.id),
       role: "family",
+      isAdmin: profile.isAdmin,
     };
   }
 
   if (!profile.allowedPropertyId) {
-    return { householdId: profile.householdId, propertyIds: [], role: "cleaner" };
+    return { householdId: profile.householdId, propertyIds: [], role: "cleaner", isAdmin: false };
   }
   const [property] = await db
     .select({ id: propertiesTable.id })
@@ -58,5 +60,6 @@ export async function getPropertyAuthorizationScope(
     householdId: profile.householdId,
     propertyIds: property ? [property.id] : [],
     role: "cleaner",
+    isAdmin: false,
   };
 }

@@ -20,7 +20,7 @@ async function requireHouseholdScope(
     return null;
   }
   const scope = await getPropertyAuthorizationScope(clerkId);
-  if (!scope || (familyAdminOnly && scope.role !== "family")) {
+  if (!scope || (familyAdminOnly && (scope.role !== "family" || !scope.isAdmin))) {
     res.status(403).json({ error: familyAdminOnly ? "Family administrator access required" : "Household access required" });
     return null;
   }

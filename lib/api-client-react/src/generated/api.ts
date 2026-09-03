@@ -41,6 +41,7 @@ import type {
   CreateTodoListInput,
   CreateWorkoutInput,
   DashboardSummary,
+  DecideHouseholdJoinRequest200,
   Exercise,
   FamilyMember,
   GetChoresParams,
@@ -55,6 +56,10 @@ import type {
   GroceryList,
   HealthStatus,
   Household,
+  HouseholdJoinRequest,
+  HouseholdJoinRequestAccepted,
+  HouseholdJoinRequestDecision,
+  HouseholdJoinRequestInput,
   HouseholdTabVisibility,
   MaintenanceTask,
   MealPlanEntry,
@@ -3139,6 +3144,77 @@ export function useGetMe<TData = Awaited<ReturnType<typeof getMe>>, TError = Err
 
 
 
+export const getRequestHouseholdJoinUrl = () => {
+
+
+
+
+  return `/api/me/join-request`
+}
+
+/**
+ * @summary Request access to an existing household using its administrator email
+ */
+export const requestHouseholdJoin = async (householdJoinRequestInput: HouseholdJoinRequestInput, options?: RequestInit): Promise<HouseholdJoinRequestAccepted> => {
+
+  return customFetch<HouseholdJoinRequestAccepted>(getRequestHouseholdJoinUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(householdJoinRequestInput)
+  }
+);}
+
+
+
+
+
+export const getRequestHouseholdJoinMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestHouseholdJoin>>, TError,{data: BodyType<HouseholdJoinRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestHouseholdJoin>>, TError,{data: BodyType<HouseholdJoinRequestInput>}, TContext> => {
+
+const mutationKey = ['requestHouseholdJoin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestHouseholdJoin>>, {data: BodyType<HouseholdJoinRequestInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestHouseholdJoin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestHouseholdJoinMutationResult = NonNullable<Awaited<ReturnType<typeof requestHouseholdJoin>>>
+    export type RequestHouseholdJoinMutationBody = BodyType<HouseholdJoinRequestInput>
+    export type RequestHouseholdJoinMutationError = ErrorType<void>
+
+    /**
+ * @summary Request access to an existing household using its administrator email
+ */
+export const useRequestHouseholdJoin = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestHouseholdJoin>>, TError,{data: BodyType<HouseholdJoinRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestHouseholdJoin>>,
+        TError,
+        {data: BodyType<HouseholdJoinRequestInput>},
+        TContext
+      > => {
+      return useMutation(getRequestHouseholdJoinMutationOptions(options));
+    }
+
 export const getListUsersUrl = () => {
 
 
@@ -3286,6 +3362,155 @@ export const useUpdateUserProfile = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateUserProfileMutationOptions(options));
+    }
+
+export const getListHouseholdJoinRequestsUrl = () => {
+
+
+
+
+  return `/api/admin/join-requests`
+}
+
+/**
+ * @summary List pending household join requests (household administrator only)
+ */
+export const listHouseholdJoinRequests = async ( options?: RequestInit): Promise<HouseholdJoinRequest[]> => {
+
+  return customFetch<HouseholdJoinRequest[]>(getListHouseholdJoinRequestsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListHouseholdJoinRequestsQueryKey = () => {
+    return [
+    `/api/admin/join-requests`
+    ] as const;
+    }
+
+
+export const getListHouseholdJoinRequestsQueryOptions = <TData = Awaited<ReturnType<typeof listHouseholdJoinRequests>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listHouseholdJoinRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListHouseholdJoinRequestsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listHouseholdJoinRequests>>> = ({ signal }) => listHouseholdJoinRequests({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listHouseholdJoinRequests>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListHouseholdJoinRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof listHouseholdJoinRequests>>>
+export type ListHouseholdJoinRequestsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List pending household join requests (household administrator only)
+ */
+
+export function useListHouseholdJoinRequests<TData = Awaited<ReturnType<typeof listHouseholdJoinRequests>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listHouseholdJoinRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListHouseholdJoinRequestsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDecideHouseholdJoinRequestUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/admin/join-requests/${requestId}`
+}
+
+/**
+ * @summary Approve or deny a household join request (household administrator only)
+ */
+export const decideHouseholdJoinRequest = async (requestId: string,
+    householdJoinRequestDecision: HouseholdJoinRequestDecision, options?: RequestInit): Promise<DecideHouseholdJoinRequest200> => {
+
+  return customFetch<DecideHouseholdJoinRequest200>(getDecideHouseholdJoinRequestUrl(requestId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(householdJoinRequestDecision)
+  }
+);}
+
+
+
+
+
+export const getDecideHouseholdJoinRequestMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideHouseholdJoinRequest>>, TError,{requestId: string;data: BodyType<HouseholdJoinRequestDecision>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof decideHouseholdJoinRequest>>, TError,{requestId: string;data: BodyType<HouseholdJoinRequestDecision>}, TContext> => {
+
+const mutationKey = ['decideHouseholdJoinRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof decideHouseholdJoinRequest>>, {requestId: string;data: BodyType<HouseholdJoinRequestDecision>}> = (props) => {
+          const {requestId,data} = props ?? {};
+
+          return  decideHouseholdJoinRequest(requestId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DecideHouseholdJoinRequestMutationResult = NonNullable<Awaited<ReturnType<typeof decideHouseholdJoinRequest>>>
+    export type DecideHouseholdJoinRequestMutationBody = BodyType<HouseholdJoinRequestDecision>
+    export type DecideHouseholdJoinRequestMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Approve or deny a household join request (household administrator only)
+ */
+export const useDecideHouseholdJoinRequest = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideHouseholdJoinRequest>>, TError,{requestId: string;data: BodyType<HouseholdJoinRequestDecision>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof decideHouseholdJoinRequest>>,
+        TError,
+        {requestId: string;data: BodyType<HouseholdJoinRequestDecision>},
+        TContext
+      > => {
+      return useMutation(getDecideHouseholdJoinRequestMutationOptions(options));
     }
 
 export const getGetTodoListsUrl = () => {

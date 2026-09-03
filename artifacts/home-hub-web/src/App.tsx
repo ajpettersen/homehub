@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useAuth } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
@@ -20,6 +20,7 @@ import Settings from '@/pages/Settings';
 import People from '@/pages/People';
 import NotFound from '@/pages/not-found';
 import Landing from '@/pages/Landing';
+import AccountSetup from '@/pages/AccountSetup';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -116,9 +117,37 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   // the authoritative signal that the user is signed in. (Clerk's client
   // state can lag or fail to hydrate while cookie auth still works, which
   // previously let un-onboarded households slip past this gate.)
-  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const { signOut } = useClerk();
+  const { data: me, isLoading, isError, refetch } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
 
-  if (me?.role === 'family' && !me.onboardingCompleted) {
+  if (isError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="max-w-sm text-center">
+          <p className="font-bold text-foreground">We couldn’t load your account.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Try again, or sign out and return later.</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button type="button" onClick={() => void refetch()} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">Try again</button>
+            <button type="button" onClick={() => void signOut({ redirectUrl: basePath || '/' })} className="rounded-lg border border-border px-4 py-2 text-sm font-bold">Sign out</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading || !me) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Loading your account…</p>
+      </div>
+    );
+  }
+
+  if (me.role === 'pending') {
+    return <AccountSetup />;
+  }
+
+  if (me?.role === 'family' && me.isAdmin && !me.onboardingCompleted) {
     return <Onboarding />;
   }
   return <>{children}</>;

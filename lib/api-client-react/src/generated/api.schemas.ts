@@ -769,6 +769,9 @@ export const UserProfileRole = {
 export interface UserProfile {
   clerkId: string;
   role: UserProfileRole;
+  isAdmin: boolean;
+  /** @nullable */
+  householdId: string | null;
   householdName?: string | null;
   onboardingCompleted: boolean;
   visibleTabs: HomeHubWebTab[];
@@ -777,6 +780,39 @@ export interface UserProfile {
   linkedFamilyMemberId?: string | null;
   linkedFamilyMemberName?: string | null;
   createdAt?: string | null;
+}
+
+export interface HouseholdJoinRequest {
+  id: string;
+  requesterDisplayName: string;
+  requesterEmail: string;
+  createdAt: string;
+}
+
+export interface HouseholdJoinRequestAccepted {
+  accepted: boolean;
+}
+
+export type HouseholdJoinRequestDecisionDecision = typeof HouseholdJoinRequestDecisionDecision[keyof typeof HouseholdJoinRequestDecisionDecision];
+
+
+export const HouseholdJoinRequestDecisionDecision = {
+  approved: 'approved',
+  denied: 'denied',
+} as const;
+
+export interface HouseholdJoinRequestDecision {
+  decision: HouseholdJoinRequestDecisionDecision;
+  /** @nullable */
+  linkedFamilyMemberId?: string | null;
+}
+
+export interface HouseholdJoinRequestInput {
+  /**
+     * @minLength 3
+     * @maxLength 254
+     */
+  administratorEmail: string;
 }
 
 export type UpdateUserProfileRequestRole = typeof UpdateUserProfileRequestRole[keyof typeof UpdateUserProfileRequestRole];
@@ -790,6 +826,7 @@ export const UpdateUserProfileRequestRole = {
 
 export interface UpdateUserProfileRequest {
   role?: UpdateUserProfileRequestRole;
+  isAdmin?: boolean;
   allowedPropertyId?: string | null;
   linkedFamilyMemberId?: string | null;
 }
@@ -903,6 +940,10 @@ propertyId: string;
 };
 
 export type UpdateUserProfile200 = {
+  ok?: boolean;
+};
+
+export type DecideHouseholdJoinRequest200 = {
   ok?: boolean;
 };
 

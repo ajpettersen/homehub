@@ -6,6 +6,8 @@ import {
   useCreateMaintenanceTask, useUpdateMaintenanceTask, useDeleteMaintenanceTask,
   getGetFamilyMembersQueryKey, getGetPropertiesQueryKey,
   useGetMe, getGetMeQueryKey, useUpdateHouseholdTabVisibility,
+   useListUsers, getListUsersQueryKey, useUpdateUserProfile,
+   useListHouseholdJoinRequests, getListHouseholdJoinRequestsQueryKey, useDecideHouseholdJoinRequest,
   type HomeHubWebTab,
   type CreateMaintenanceTaskInputCategory,
   type UpdateMaintenanceTaskInputCategory,
@@ -16,7 +18,7 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
   ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
-  SlidersHorizontal,
+   SlidersHorizontal, UserCog,
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import {
@@ -175,6 +177,7 @@ function AppearanceAndTabsSection() {
   const updateVisibility = useUpdateHouseholdTabVisibility();
   const [visibilityError, setVisibilityError] = useState<string | null>(null);
   const tab = preferences.tabs;
+  const canAdministerHousehold = me?.role === "family" && me.isAdmin;
   const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? ["home", "properties", "chores", "meals", "tasks", "workouts", "people", "settings"]);
   const optionalTabs: Array<{ key: HomeHubWebTab; label: string; description: string }> = [
     { key: "properties", label: "Properties", description: "Maintenance schedules and home upkeep." },
@@ -256,7 +259,7 @@ function AppearanceAndTabsSection() {
                   key={item.key}
                   type="button"
                   aria-pressed={enabled}
-                  disabled={updateVisibility.isPending || me?.role !== "family"}
+                  disabled={updateVisibility.isPending || !canAdministerHousehold}
                   onClick={() => void toggleTab(item.key)}
                   className={`flex items-center justify-between gap-4 rounded-xl border p-3.5 text-left transition-colors ${
                     enabled ? "border-primary/40 bg-primary/5" : "border-border bg-background/60"
@@ -273,8 +276,8 @@ function AppearanceAndTabsSection() {
               );
             })}
           </div>
-          {me?.role !== "family" && (
-            <p className="mt-3 text-xs text-muted-foreground">Only a family account can change household-wide tabs.</p>
+          {!canAdministerHousehold && (
+            <p className="mt-3 text-xs text-muted-foreground">Only a household administrator can change household-wide tabs.</p>
           )}
           {visibilityError && <p className="mt-3 text-sm font-medium text-destructive">{visibilityError}</p>}
         </div>
@@ -696,8 +699,8 @@ function NewPropertyForm({ onSave, onCancel, saving }: {
   );
 }
 
-function PropertyRow({ property, onSaveInfo, saving }: {
-  property: any; onSaveInfo: (data: PropertyFormState) => void; saving: boolean;
+function PropertyRow({ property, onSaveInfo, saving, canAdminister }: {
+  property: any; onSaveInfo: (data: PropertyFormState) => void; saving: boolean; canAdminister: boolean;
 }) {
   const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
   const streetViewSrc = `${baseUrl}/api/properties/${property.id}/streetview`;
@@ -724,7 +727,7 @@ function PropertyRow({ property, onSaveInfo, saving }: {
           )}
         </div>
 
-        {editingInfo ? (
+        {editingInfo && canAdminister ? (
           <form onSubmit={handleSave} className="flex-1 flex flex-col gap-2">
             <div className="flex gap-2">
               <input autoFocus required value={infoForm.name}
@@ -755,15 +758,17 @@ function PropertyRow({ property, onSaveInfo, saving }: {
               <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
                 <MapPin className="w-3 h-3 shrink-0" />{property.address}
               </p>
-            ) : (
+            ) : canAdminister ? (
               <button onClick={() => setEditingInfo(true)} className="text-xs text-primary/60 hover:text-primary mt-0.5 flex items-center gap-1 transition-colors">
                 <MapPin className="w-3 h-3 shrink-0" /> Add address…
               </button>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">No address added</p>
             )}
           </div>
         )}
 
-        {!editingInfo && (
+        {!editingInfo && canAdminister && (
           <button onClick={() => setEditingInfo(true)}
             className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors shrink-0">
             <Pencil className="w-3.5 h-3.5" />
@@ -851,7 +856,7 @@ function MemberForm({ initial, onSave, onCancel, saving }: {
 }
 
 // ── MemberCard ────────────────────────────────────────────────────────────────
-function MemberCard({ member, onEdit, onDelete }: { member: any; onEdit: () => void; onDelete: () => void }) {
+function MemberCard({ member, onEdit, onDelete, canAdminister }: { member: any; onEdit: () => void; onDelete: () => void; canAdminister: boolean }) {
   return (
     <Card className="group relative overflow-hidden hover:shadow-md transition-shadow">
       <CardContent className="p-4 flex items-center gap-3.5">
@@ -869,14 +874,14 @@ function MemberCard({ member, onEdit, onDelete }: { member: any; onEdit: () => v
           <h3 className="font-bold text-base leading-tight truncate">{member.name}</h3>
           <p className="text-xs text-muted-foreground capitalize mt-0.5">{member.role}</p>
         </div>
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+        {canAdminister && <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
           <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Edit">
             <Pencil className="w-3.5 h-3.5" />
           </button>
           <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors" title="Delete">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
-        </div>
+        </div>}
       </CardContent>
     </Card>
   );
@@ -1048,10 +1053,162 @@ function WebNotificationsSection() {
   );
 }
 
+function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
+  const queryClient = useQueryClient();
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const { data: accounts } = useListUsers({
+    query: {
+      queryKey: getListUsersQueryKey(),
+      enabled: me?.role === "family" && me.isAdmin,
+      refetchOnWindowFocus: true,
+    },
+  });
+  const { data: joinRequests, isLoading: joinRequestsLoading } = useListHouseholdJoinRequests({
+    query: {
+      queryKey: getListHouseholdJoinRequestsQueryKey(),
+      enabled: me?.role === "family" && me.isAdmin,
+      refetchOnWindowFocus: true,
+    },
+  });
+  const updateAccount = useUpdateUserProfile();
+  const decideJoinRequest = useDecideHouseholdJoinRequest();
+  const [memberLinks, setMemberLinks] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  if (me?.role !== "family" || !me.isAdmin) return null;
+
+  const save = async (
+    clerkId: string,
+    data: { role?: "family" | "cleaner" | "pending"; linkedFamilyMemberId?: string | null },
+  ) => {
+    setError(null);
+    try {
+      await updateAccount.mutateAsync({ clerkId, data });
+      await queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    } catch {
+      setError("Could not update this account. Please try again.");
+    }
+  };
+
+  const pending = joinRequests ?? [];
+  const active = accounts?.filter(account => account.role !== "pending") ?? [];
+  const accountLabel = (clerkId: string) =>
+    clerkId === me.clerkId ? "Your account" : `Household account •••${clerkId.slice(-4)}`;
+
+  return (
+    <AccordionSection
+      icon={<UserCog className="h-4 w-4" />}
+      title="Accounts & Access"
+      summary={<span className="text-xs text-muted-foreground">{pending.length} pending request{pending.length === 1 ? "" : "s"}</span>}
+      defaultOpen={pending.length > 0}
+    >
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pending join requests</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Approve only accounts you recognize. Account emails are never shown here.</p>
+          <div className="mt-3 space-y-3">
+            {joinRequestsLoading && <div className="h-20 animate-pulse rounded-xl bg-muted" />}
+            {!joinRequestsLoading && pending.length === 0 && (
+              <p className="rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">No one is waiting for approval.</p>
+            )}
+            {pending.map(request => {
+              const selectedMember = memberLinks[request.id] ?? "";
+              return (
+                <div key={request.id} className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                  <p className="text-sm font-bold text-foreground">{request.requesterDisplayName}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{request.requesterEmail} · Requested {new Date(request.createdAt).toLocaleDateString()}</p>
+                  <label className="mt-3 block text-xs font-bold text-muted-foreground">
+                    Link to a family member (optional)
+                    <select
+                      value={selectedMember}
+                      onChange={event => setMemberLinks(current => ({ ...current, [request.id]: event.target.value }))}
+                      className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    >
+                      <option value="">No linked member</option>
+                      {familyMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={decideJoinRequest.isPending}
+                    onClick={() => void (async () => {
+                      setError(null);
+                      try {
+                        await decideJoinRequest.mutateAsync({ requestId: request.id, data: { decision: "approved", linkedFamilyMemberId: selectedMember || null } });
+                        await Promise.all([
+                          queryClient.invalidateQueries({ queryKey: getListHouseholdJoinRequestsQueryKey() }),
+                          queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() }),
+                        ]);
+                      } catch { setError("Could not decide this join request. Please try again."); }
+                    })()}
+                    className="mt-3 w-full rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground disabled:opacity-60"
+                  >
+                    {decideJoinRequest.isPending ? "Saving…" : "Approve as family member"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={decideJoinRequest.isPending}
+                    onClick={() => void (async () => {
+                      setError(null);
+                      try {
+                        await decideJoinRequest.mutateAsync({ requestId: request.id, data: { decision: "denied" } });
+                        await queryClient.invalidateQueries({ queryKey: getListHouseholdJoinRequestsQueryKey() });
+                      } catch { setError("Could not decide this join request. Please try again."); }
+                    })()}
+                    className="mt-2 w-full rounded-lg border border-border px-3 py-2 text-sm font-bold text-muted-foreground hover:bg-muted disabled:opacity-60"
+                  >
+                    Deny request
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Existing accounts</h3>
+          <div className="mt-3 divide-y divide-border rounded-xl border border-border">
+            {active.map(account => {
+              const isSelf = account.clerkId === me.clerkId;
+              return (
+                <div key={account.clerkId} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{accountLabel(account.clerkId)}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {account.isAdmin ? "Household administrator" : "Household member"}
+                      {account.linkedFamilyMemberName ? ` · Linked to ${account.linkedFamilyMemberName}` : " · Not linked to a family member"}
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                    Role
+                    <select
+                      value={account.role}
+                      disabled={isSelf || updateAccount.isPending}
+                      title={isSelf ? "You cannot demote your own active administrator account" : undefined}
+                      onChange={event => void save(account.clerkId, { role: event.target.value as "family" | "cleaner" })}
+                      className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-bold capitalize text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="family">Family</option>
+                      <option value="cleaner">Cleaner</option>
+                    </select>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+      </div>
+    </AccordionSection>
+  );
+}
+
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function Settings() {
   const queryClient = useQueryClient();
   const { preferences } = usePreferences();
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const canAdministerHousehold = me?.role === "family" && me.isAdmin;
 
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
@@ -1095,6 +1252,8 @@ export default function Settings() {
 
       <AppearanceAndTabsSection />
 
+      <AccountsAndAccessSection familyMembers={familyMembers ?? []} />
+
       {/* ── Family Members (person-first: leads the page) ───────────────────── */}
       <AccordionSection
         icon={<Users className="w-4 h-4" />}
@@ -1102,7 +1261,7 @@ export default function Settings() {
         summary={memberSummary}
         defaultOpen={preferences.tabs.settings.startSection === "members"}
         action={
-          !addingMember ? (
+          canAdministerHousehold && !addingMember ? (
             <button onClick={() => { setAddingMember(true); setEditingMemberId(null); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs hover:bg-primary/90 transition-colors">
               <Plus className="w-3.5 h-3.5" /> Add
@@ -1110,7 +1269,7 @@ export default function Settings() {
           ) : undefined
         }
       >
-        {addingMember && (
+        {canAdministerHousehold && addingMember && (
           <div className="mb-5">
             <MemberForm initial={{ name: "", role: "child", color: COLORS[0], photoUrl: "" }}
               onSave={data => createMember.mutate({ data: { name: data.name, role: data.role, color: data.color, photoUrl: data.photoUrl || null } },
@@ -1121,7 +1280,7 @@ export default function Settings() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {familyMembers?.map(member =>
-            editingMemberId === member.id ? (
+            canAdministerHousehold && editingMemberId === member.id ? (
               <div key={member.id} className="sm:col-span-2 md:col-span-3">
                 <MemberForm
                   initial={{ name: member.name, role: member.role as Role, color: member.color, photoUrl: member.photoUrl ?? "" }}
@@ -1131,13 +1290,14 @@ export default function Settings() {
               </div>
             ) : (
               <MemberCard key={member.id} member={member}
+                canAdminister={canAdministerHousehold}
                 onEdit={() => { setEditingMemberId(member.id); setAddingMember(false); }}
                 onDelete={() => { if (confirm(`Remove ${member.name}?`)) deleteMember.mutate({ id: member.id }, { onSuccess: invalidateMembers }); }} />
             )
           )}
         </div>
 
-        {!addingMember && (
+        {canAdministerHousehold && !addingMember && (
           <button onClick={() => { setAddingMember(true); setEditingMemberId(null); }}
             className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 text-muted-foreground text-sm font-medium transition-all">
             <Plus className="w-4 h-4 text-primary/60" /> Add family member
@@ -1152,7 +1312,7 @@ export default function Settings() {
         summary={<span className="text-xs text-muted-foreground">{properties?.length ?? 0} propert{properties?.length === 1 ? "y" : "ies"}</span>}
         defaultOpen={preferences.tabs.settings.startSection === "properties"}
         action={
-          !addingProperty ? (
+          canAdministerHousehold && !addingProperty ? (
             <button
               onClick={() => setAddingProperty(true)}
               className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90"
@@ -1163,7 +1323,7 @@ export default function Settings() {
         }
       >
         <div className="space-y-3">
-          {addingProperty && (
+          {canAdministerHousehold && addingProperty && (
             <NewPropertyForm
               onSave={data => createProperty.mutate(
                 {
@@ -1189,11 +1349,12 @@ export default function Settings() {
             <PropertyRow
               key={property.id}
               property={property}
+              canAdminister={canAdministerHousehold}
               onSaveInfo={data => updateProperty.mutate({ id: property.id, data: { name: data.name, address: data.address || null } }, { onSuccess: invalidateProps })}
               saving={updateProperty.isPending}
             />
           ))}
-          {!addingProperty && (
+          {canAdministerHousehold && !addingProperty && (
             <button
               onClick={() => setAddingProperty(true)}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/40 hover:bg-muted/30"

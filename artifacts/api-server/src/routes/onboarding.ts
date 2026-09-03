@@ -44,8 +44,8 @@ router.post("/onboarding", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
 
-    if (scope.role !== "family") {
-      res.status(403).json({ error: "Forbidden" });
+    if (scope.role !== "family" || !scope.isAdmin) {
+      res.status(403).json({ error: "Household administrator access required" });
       return;
     }
 

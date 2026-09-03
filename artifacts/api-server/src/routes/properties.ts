@@ -39,9 +39,8 @@ router.post("/properties", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
 
-    // Only family members may create properties.
-    if (scope.role !== "family") {
-      res.status(403).json({ error: "Forbidden" });
+    if (scope.role !== "family" || !scope.isAdmin) {
+      res.status(403).json({ error: "Household administrator access required" });
       return;
     }
 
@@ -96,9 +95,8 @@ router.put("/properties/:id", async (req, res) => {
       return;
     }
 
-    // Only family members may modify properties.
-    if (scope.role !== "family") {
-      res.status(403).json({ error: "Forbidden" });
+    if (scope.role !== "family" || !scope.isAdmin) {
+      res.status(403).json({ error: "Household administrator access required" });
       return;
     }
 

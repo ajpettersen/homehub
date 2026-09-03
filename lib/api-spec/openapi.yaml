@@ -828,6 +828,27 @@ paths:
         "401":
           description: Unauthorized
 
+  /me/join-request:
+    post:
+      operationId: requestHouseholdJoin
+      tags: [users]
+      summary: Request access to an existing household using its administrator email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdJoinRequestInput"
+      responses:
+        "200":
+          description: Join request accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdJoinRequestAccepted"
+        "401":
+          description: Unauthorized
+
   /admin/users:
     get:
       operationId: listUsers
@@ -863,6 +884,49 @@ paths:
       responses:
         "200":
           description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /admin/join-requests:
+    get:
+      operationId: listHouseholdJoinRequests
+      tags: [users]
+      summary: List pending household join requests (household administrator only)
+      responses:
+        "200":
+          description: Pending requests for the current household
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HouseholdJoinRequest"
+
+  /admin/join-requests/{requestId}:
+    put:
+      operationId: decideHouseholdJoinRequest
+      tags: [users]
+      summary: Approve or deny a household join request (household administrator only)
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdJoinRequestDecision"
+      responses:
+        "200":
+          description: Request decision recorded
           content:
             application/json:
               schema:
@@ -2564,13 +2628,17 @@ components:
 
     UserProfile:
       type: object
-      required: [clerkId, role, onboardingCompleted, visibleTabs]
+      required: [clerkId, role, isAdmin, householdId, onboardingCompleted, visibleTabs]
       properties:
         clerkId:
           type: string
         role:
           type: string
           enum: [family, cleaner, pending]
+        isAdmin:
+          type: boolean
+        householdId:
+          type: ["string", "null"]
         householdName:
           type: string
           nullable: true
@@ -2597,12 +2665,53 @@ components:
           type: string
           nullable: true
 
+    HouseholdJoinRequest:
+      type: object
+      required: [id, requesterDisplayName, requesterEmail, createdAt]
+      properties:
+        id:
+          type: string
+        requesterDisplayName:
+          type: string
+        requesterEmail:
+          type: string
+        createdAt:
+          type: string
+
+    HouseholdJoinRequestAccepted:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+
+    HouseholdJoinRequestDecision:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approved, denied]
+        linkedFamilyMemberId:
+          type: ["string", "null"]
+
+    HouseholdJoinRequestInput:
+      type: object
+      required: [administratorEmail]
+      properties:
+        administratorEmail:
+          type: string
+          minLength: 3
+          maxLength: 254
+
     UpdateUserProfileRequest:
       type: object
       properties:
         role:
           type: string
           enum: [family, cleaner, pending]
+        isAdmin:
+          type: boolean
         allowedPropertyId:
           type: string
           nullable: true

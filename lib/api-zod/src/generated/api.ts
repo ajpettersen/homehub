@@ -817,6 +817,8 @@ export const DeleteRecipeResponse = zod.void()
 export const GetMeResponse = zod.object({
   "clerkId": zod.string(),
   "role": zod.enum(['family', 'cleaner', 'pending']),
+  "isAdmin": zod.boolean(),
+  "householdId": zod.string().nullable(),
   "householdName": zod.string().nullish(),
   "onboardingCompleted": zod.boolean(),
   "visibleTabs": zod.array(zod.enum(['home', 'properties', 'chores', 'meals', 'tasks', 'workouts', 'people', 'settings'])),
@@ -829,11 +831,30 @@ export const GetMeResponse = zod.object({
 
 
 /**
+ * @summary Request access to an existing household using its administrator email
+ */
+export const requestHouseholdJoinBodyAdministratorEmailMin = 3;
+export const requestHouseholdJoinBodyAdministratorEmailMax = 254;
+
+
+
+export const RequestHouseholdJoinBody = zod.object({
+  "administratorEmail": zod.string().min(requestHouseholdJoinBodyAdministratorEmailMin).max(requestHouseholdJoinBodyAdministratorEmailMax)
+})
+
+export const RequestHouseholdJoinResponse = zod.object({
+  "accepted": zod.boolean()
+})
+
+
+/**
  * @summary List all user profiles (admin)
  */
 export const ListUsersResponseItem = zod.object({
   "clerkId": zod.string(),
   "role": zod.enum(['family', 'cleaner', 'pending']),
+  "isAdmin": zod.boolean(),
+  "householdId": zod.string().nullable(),
   "householdName": zod.string().nullish(),
   "onboardingCompleted": zod.boolean(),
   "visibleTabs": zod.array(zod.enum(['home', 'properties', 'chores', 'meals', 'tasks', 'workouts', 'people', 'settings'])),
@@ -855,11 +876,41 @@ export const UpdateUserProfileParams = zod.object({
 
 export const UpdateUserProfileBody = zod.object({
   "role": zod.enum(['family', 'cleaner', 'pending']).optional(),
+  "isAdmin": zod.boolean().optional(),
   "allowedPropertyId": zod.string().nullish(),
   "linkedFamilyMemberId": zod.string().nullish()
 })
 
 export const UpdateUserProfileResponse = zod.object({
+  "ok": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List pending household join requests (household administrator only)
+ */
+export const ListHouseholdJoinRequestsResponseItem = zod.object({
+  "id": zod.string(),
+  "requesterDisplayName": zod.string(),
+  "requesterEmail": zod.string(),
+  "createdAt": zod.string()
+})
+export const ListHouseholdJoinRequestsResponse = zod.array(ListHouseholdJoinRequestsResponseItem)
+
+
+/**
+ * @summary Approve or deny a household join request (household administrator only)
+ */
+export const DecideHouseholdJoinRequestParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+export const DecideHouseholdJoinRequestBody = zod.object({
+  "decision": zod.enum(['approved', 'denied']),
+  "linkedFamilyMemberId": zod.string().nullish()
+})
+
+export const DecideHouseholdJoinRequestResponse = zod.object({
   "ok": zod.boolean().optional()
 })
 

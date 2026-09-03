@@ -12,13 +12,13 @@ const router = Router();
 const VALID_WEB_TABS = new Set<string>(HOMEHUB_WEB_TABS);
 const REQUIRED_WEB_TABS = ["home", "settings"] satisfies HomeHubWebTab[];
 
-/** PATCH /api/household — rename the household and/or mark onboarding complete (family only) */
+/** PATCH /api/household — rename the household and/or mark onboarding complete (admin only) */
 router.patch("/household", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
 
-    if (scope.role !== "family") {
-      res.status(403).json({ error: "Forbidden" });
+    if (scope.role !== "family" || !scope.isAdmin) {
+      res.status(403).json({ error: "Household administrator access required" });
       return;
     }
 
@@ -66,13 +66,13 @@ router.patch("/household", async (req, res) => {
   }
 });
 
-/** PUT /api/household/tab-visibility — update household-wide web tab visibility (family only) */
+/** PUT /api/household/tab-visibility — update household-wide web tab visibility (admin only) */
 router.put("/household/tab-visibility", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
 
-    if (scope.role !== "family") {
-      res.status(403).json({ error: "Forbidden" });
+    if (scope.role !== "family" || !scope.isAdmin) {
+      res.status(403).json({ error: "Household administrator access required" });
       return;
     }
 

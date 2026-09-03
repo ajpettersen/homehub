@@ -11,6 +11,9 @@ import type { UserProfileRole } from './userProfileRole';
 export interface UserProfile {
   clerkId: string;
   role: UserProfileRole;
+  isAdmin: boolean;
+  /** @nullable */
+  householdId: string | null;
   householdName?: string | null;
   onboardingCompleted: boolean;
   visibleTabs: HomeHubWebTab[];
