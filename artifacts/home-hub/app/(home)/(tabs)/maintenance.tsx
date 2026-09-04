@@ -7,11 +7,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
-import { format, addDays } from 'date-fns';
+import { format, addDays, parseISO } from 'date-fns';
 import {
   useGetMaintenanceTasks,
   useCreateMaintenanceTask,
   useCompleteMaintenanceTask,
+  useUpdateMaintenanceTask,
   useDeleteMaintenanceTask,
   useGetFamilyMembers,
   getGetDashboardQueryKey,
@@ -26,9 +27,26 @@ import { useProperty } from '@/context/PropertyContext';
 import { useActiveMember } from '@/context/ActiveMemberContext';
 
 const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size: number; color: string }) => {
-  if (Platform.OS === 'ios') return <SymbolView name={iosName} tintColor={color} size={size} />;
+  if (Platform.OS === 'ios') return <SymbolView name={iosName as any} tintColor={color} size={size} />;
   return <FeatherIcon name={name} size={size} color={color} />;
 };
+
+function getResolvedTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+function isValidDateOnly(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  try {
+    return format(parseISO(value), 'yyyy-MM-dd') === value;
+  } catch {
+    return false;
+  }
+}
 
 function UrgencyBadge({ task, colors }: { task: MaintenanceTask; colors: any }) {
   const bg = task.isOverdue ? '#FEF2F2' : task.isDueSoon ? '#FEF9C3' : '#F0FDF4';
@@ -48,6 +66,8 @@ function TaskCard({
   colors,
   isPending,
   isDeleting,
+  onDueDateChange,
+  isUpdatingDueDate,
 }: {
   task: MaintenanceTask;
   onMarkDone: (task: MaintenanceTask) => void;
@@ -55,7 +75,11 @@ function TaskCard({
   colors: any;
   isPending: boolean;
   isDeleting: boolean;
+  onDueDateChange: (task: MaintenanceTask, nextDueDate: string) => void;
+  isUpdatingDueDate: boolean;
 }) {
+  const [editingDueDate, setEditingDueDate] = useState(false);
+  const [dueDate, setDueDate] = useState(task.nextDueDate);
   const lastDoneText = task.lastCompletedAt
     ? `Done ${format(new Date(task.lastCompletedAt), 'MMM d')}${task.lastCompletedBy ? ` by ${task.lastCompletedBy}` : ''}`
     : 'Never completed';
@@ -75,7 +99,7 @@ function TaskCard({
         <View style={styles.taskMeta}>
           <Icon name="calendar" iosName="calendar" size={13} color={colors.mutedForeground} />
           <Text style={[styles.taskMetaText, { color: colors.mutedForeground }]}>
-            {format(new Date(task.nextDueDate), 'MMM d')} · {task.scheduleType === 'one-time' ? 'one-time task' : `every ${task.frequencyDays}d`}
+            {format(parseISO(task.nextDueDate), 'MMM d')} · {task.scheduleType === 'one-time' ? 'one-time task' : `every ${task.frequencyDays}d`}
           </Text>
         </View>
         <View style={styles.taskMeta}>
@@ -125,6 +149,94 @@ function TaskCard({
           )}
         </Pressable>
       </View>
+      <View style={styles.dueDateActions}>
+        <Pressable
+          testID={`maintenance-snooze-tomorrow-${task.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`Snooze ${task.title} until tomorrow`}
+          style={({ pressed }) => [
+            styles.snoozeBtn,
+            { borderColor: colors.border, backgroundColor: colors.card },
+            (pressed || isUpdatingDueDate) && { opacity: 0.6 },
+          ]}
+          onPress={() => {
+            const nextDueDate = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+            setDueDate(nextDueDate);
+            onDueDateChange(task, nextDueDate);
+          }}
+          disabled={isPending || isDeleting || isUpdatingDueDate}
+        >
+          <Text style={[styles.snoozeBtnText, { color: colors.foreground }]}>Tomorrow</Text>
+        </Pressable>
+        <Pressable
+          testID={`maintenance-snooze-next-week-${task.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`Snooze ${task.title} until next week`}
+          style={({ pressed }) => [
+            styles.snoozeBtn,
+            { borderColor: colors.border, backgroundColor: colors.card },
+            (pressed || isUpdatingDueDate) && { opacity: 0.6 },
+          ]}
+          onPress={() => {
+            const nextDueDate = format(addDays(new Date(), 7), 'yyyy-MM-dd');
+            setDueDate(nextDueDate);
+            onDueDateChange(task, nextDueDate);
+          }}
+          disabled={isPending || isDeleting || isUpdatingDueDate}
+        >
+          <Text style={[styles.snoozeBtnText, { color: colors.foreground }]}>Next week</Text>
+        </Pressable>
+        <Pressable
+          testID={`maintenance-pick-date-${task.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`Choose next due date for ${task.title}`}
+          accessibilityState={{ expanded: editingDueDate }}
+          style={({ pressed }) => [
+            styles.snoozeBtn,
+            { borderColor: colors.primary, backgroundColor: colors.card },
+            pressed && { opacity: 0.7 },
+          ]}
+          onPress={() => setEditingDueDate((current) => !current)}
+          disabled={isPending || isDeleting || isUpdatingDueDate}
+        >
+          <Text style={[styles.snoozeBtnText, { color: colors.primary }]}>Pick date</Text>
+        </Pressable>
+      </View>
+      {editingDueDate && (
+        <View style={styles.dateEditor}>
+          <TextInput
+            testID={`maintenance-date-input-${task.id}`}
+            accessibilityLabel={`Next due date for ${task.title}, YYYY-MM-DD`}
+            style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+            value={dueDate}
+            onChangeText={setDueDate}
+            keyboardType="numbers-and-punctuation"
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={colors.mutedForeground}
+            editable={!isUpdatingDueDate}
+            maxLength={10}
+          />
+          <Pressable
+            testID={`maintenance-save-date-${task.id}`}
+            accessibilityRole="button"
+            accessibilityLabel={`Save next due date for ${task.title}`}
+            style={({ pressed }) => [
+              styles.saveDateBtn,
+              { backgroundColor: colors.primary },
+              (!isValidDateOnly(dueDate) || pressed || isUpdatingDueDate) && { opacity: 0.6 },
+            ]}
+            disabled={!isValidDateOnly(dueDate) || isUpdatingDueDate}
+            onPress={() => {
+              onDueDateChange(task, dueDate);
+              setEditingDueDate(false);
+            }}
+          >
+            {isUpdatingDueDate
+              ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+              : <Text style={[styles.saveDateText, { color: colors.primaryForeground }]}>Save</Text>}
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -137,6 +249,8 @@ function TaskSection({
   colors,
   pendingId,
   deletingId,
+  updatingDueDateId,
+  onDueDateChange,
   emptyText,
 }: {
   title: string;
@@ -146,6 +260,8 @@ function TaskSection({
   colors: any;
   pendingId: string | null;
   deletingId: string | null;
+  updatingDueDateId: string | null;
+  onDueDateChange: (task: MaintenanceTask, nextDueDate: string) => void;
   emptyText?: string;
 }) {
   const overdue = tasks.filter((t) => t.isOverdue);
@@ -173,7 +289,7 @@ function TaskSection({
         <View style={styles.subSection}>
           <Text style={[styles.subSectionLabel, { color: colors.danger }]}>Needs attention</Text>
           {overdue.map((t) => (
-            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} />
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} onDueDateChange={onDueDateChange} isUpdatingDueDate={updatingDueDateId === t.id} />
           ))}
         </View>
       )}
@@ -181,7 +297,7 @@ function TaskSection({
         <View style={styles.subSection}>
           <Text style={[styles.subSectionLabel, { color: '#B45309' }]}>Due soon</Text>
           {dueSoon.map((t) => (
-            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} />
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} onDueDateChange={onDueDateChange} isUpdatingDueDate={updatingDueDateId === t.id} />
           ))}
         </View>
       )}
@@ -189,7 +305,7 @@ function TaskSection({
         <View style={styles.subSection}>
           <Text style={[styles.subSectionLabel, { color: colors.mutedForeground }]}>Upcoming</Text>
           {upcoming.map((t) => (
-            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} />
+            <TaskCard key={t.id} task={t} onMarkDone={onMarkDone} onDelete={onDelete} colors={colors} isPending={pendingId === t.id} isDeleting={deletingId === t.id} onDueDateChange={onDueDateChange} isUpdatingDueDate={updatingDueDateId === t.id} />
           ))}
         </View>
       )}
@@ -204,18 +320,23 @@ export default function MaintenanceScreen() {
   const { selectedProperty } = useProperty();
   const { data: members } = useGetFamilyMembers();
   const { activeMember } = useActiveMember();
+  const timezone = getResolvedTimeZone();
+  const maintenanceQuery = {
+    ...(selectedProperty && { propertyId: selectedProperty.id }),
+    timezone,
+  };
 
-  const { data: tasks, isLoading, refetch } = useGetMaintenanceTasks(
-    selectedProperty ? { propertyId: selectedProperty.id } : undefined,
-  );
+  const { data: tasks, isLoading } = useGetMaintenanceTasks(maintenanceQuery);
 
   const completeTask = useCompleteMaintenanceTask();
   const createTask = useCreateMaintenanceTask();
+  const updateTask = useUpdateMaintenanceTask();
   const deleteTask = useDeleteMaintenanceTask();
 
   const [refreshing, setRefreshing] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [updatingDueDateId, setUpdatingDueDateId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<MaintenanceTask | null>(null);
 
   // "Who did it?" sheet
@@ -246,7 +367,13 @@ export default function MaintenanceScreen() {
     setWhoSheet(null);
     setPendingId(task.id);
     completeTask.mutate(
-      { id: task.id, data: { completedBy } },
+      {
+        id: task.id,
+        data: {
+          completedBy,
+          ...(task.scheduleType === 'recurring' && { timezone }),
+        },
+      },
       {
         onSettled: () => {
           setPendingId(null);
@@ -259,6 +386,27 @@ export default function MaintenanceScreen() {
 
   const handleDelete = (task: MaintenanceTask) => {
     setDeleteCandidate(task);
+  };
+
+  const handleDueDateChange = (task: MaintenanceTask, nextDueDate: string) => {
+    if (Platform.OS !== 'web') Haptics.selectionAsync();
+    setUpdatingDueDateId(task.id);
+    updateTask.mutate(
+      {
+        id: task.id,
+        data: {
+          nextDueDate,
+          ...(task.scheduleType === 'recurring' && { timezone }),
+        },
+      },
+      {
+        onSettled: () => {
+          setUpdatingDueDateId(null);
+          queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        },
+      },
+    );
   };
 
   const handleConfirmDelete = () => {
@@ -359,6 +507,8 @@ export default function MaintenanceScreen() {
             colors={colors}
             pendingId={pendingId}
             deletingId={deletingId}
+            updatingDueDateId={updatingDueDateId}
+            onDueDateChange={handleDueDateChange}
             emptyText="No cabin tasks yet. Tap + to add one."
           />
         ) : (
@@ -371,6 +521,8 @@ export default function MaintenanceScreen() {
               colors={colors}
               pendingId={pendingId}
               deletingId={deletingId}
+              updatingDueDateId={updatingDueDateId}
+              onDueDateChange={handleDueDateChange}
               emptyText="No personal tasks for this property."
             />
             <TaskSection
@@ -381,6 +533,8 @@ export default function MaintenanceScreen() {
               colors={colors}
               pendingId={pendingId}
               deletingId={deletingId}
+              updatingDueDateId={updatingDueDateId}
+              onDueDateChange={handleDueDateChange}
               emptyText="No cleaner tasks yet. Add one with the + button."
             />
           </>
@@ -700,6 +854,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 4,
+  },
+  dueDateActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  snoozeBtn: {
+    minHeight: 44,
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+  },
+  snoozeBtnText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  dateEditor: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dateInput: {
+    flex: 1,
+    height: 46,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+  },
+  saveDateBtn: {
+    minWidth: 72,
+    height: 46,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveDateText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
   },
   doneBtn: {
     flex: 1,

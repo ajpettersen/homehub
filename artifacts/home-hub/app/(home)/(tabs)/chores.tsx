@@ -11,6 +11,7 @@ import {
   useUpdateChore,
   useDeleteChore,
   getGetChoresQueryKey,
+  getGetDashboardQueryKey,
   ChoreFrequency,
   type Chore,
 } from '@workspace/api-client-react';
@@ -18,15 +19,26 @@ import { PropertySwitcher } from '@/components/PropertySwitcher';
 import { useProperty } from '@/context/PropertyContext';
 import { useActiveMember } from '@/context/ActiveMemberContext';
 import { useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
 
-const IconComponent = ({ name, iosName, size, color }: { name: any, iosName: string, size: number, color: string }) => {
+const IconComponent = ({ name, iosName, size, color }: { name: any, iosName: any, size: number, color: string }) => {
   if (Platform.OS === 'ios') {
     return <SymbolView name={iosName} tintColor={color} size={size} />;
   }
   return <FeatherIcon name={name} size={size} color={color} />;
+};
+
+const getDateOnlyAfter = (days: number) => format(addDays(new Date(), days), 'yyyy-MM-dd');
+
+const isValidDateOnly = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  try {
+    return format(parseISO(value), 'yyyy-MM-dd') === value;
+  } catch {
+    return false;
+  }
 };
 
 export default function ChoresScreen() {
@@ -38,7 +50,9 @@ export default function ChoresScreen() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [editingChore, setEditingChore] = useState<Chore | null>(null);
-  const [editForm, setEditForm] = useState<{ title: string; frequency: string; assigneeId?: string; propertyId: string }>({ title: '', frequency: 'weekly', propertyId: '' });
+  const [editForm, setEditForm] = useState<{ title: string; frequency: string; assigneeId?: string; propertyId: string; dueDate: string }>({ title: '', frequency: 'weekly', propertyId: '', dueDate: '' });
+  const [snoozingChoreId, setSnoozingChoreId] = useState<string | null>(null);
+  const [snoozeDate, setSnoozeDate] = useState('');
   
   const choreParams: any = {};
   if (selectedMemberId) choreParams.assigneeId = selectedMemberId;
@@ -61,6 +75,7 @@ export default function ChoresScreen() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
         setIsAddModalVisible(false);
         setNewChore({ title: '', frequency: 'weekly', propertyId: properties?.[0]?.id || '' });
       }
@@ -71,7 +86,7 @@ export default function ChoresScreen() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
-        setEditingChore(null);
+        queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
       }
     }
   });
@@ -120,6 +135,7 @@ export default function ChoresScreen() {
       frequency: chore.frequency,
       assigneeId: chore.assigneeId ?? undefined,
       propertyId: chore.propertyId,
+      dueDate: chore.dueDate ?? '',
     });
     setEditingChore(chore);
   };
@@ -133,8 +149,22 @@ export default function ChoresScreen() {
         frequency: editForm.frequency as any,
         assigneeId: editForm.assigneeId || undefined,
         propertyId: editForm.propertyId,
+        dueDate: editForm.dueDate || null,
       },
-    });
+    }, { onSuccess: () => setEditingChore(null) });
+  };
+
+  const openSnooze = (chore: Chore) => {
+    setSnoozingChoreId(current => current === chore.id ? null : chore.id);
+    setSnoozeDate(chore.dueDate ?? getDateOnlyAfter(1));
+  };
+
+  const handleSnooze = (id: string, dueDate: string) => {
+    if (!isValidDateOnly(dueDate)) return;
+    updateChore.mutate(
+      { id, data: { dueDate } },
+      { onSuccess: () => setSnoozingChoreId(null) },
+    );
   };
 
   const handleDelete = (id: string) => {
@@ -222,7 +252,7 @@ export default function ChoresScreen() {
                     <Text style={[styles.choreTitle, { color: colors.foreground }]}>{chore.title}</Text>
                     {chore.dueDate && (
                       <Text style={[styles.choreDue, { color: chore.isOverdue ? colors.danger : colors.mutedForeground }]}>
-                        {format(new Date(chore.dueDate), 'MMM d')}
+                        {format(parseISO(chore.dueDate), 'MMM d')}
                       </Text>
                     )}
                   </View>
@@ -237,6 +267,21 @@ export default function ChoresScreen() {
                       </View>
                     </View>
                     <View style={styles.cardActions}>
+                      <Pressable
+                        style={({pressed}) => [
+                          styles.cardActionBtn,
+                          { borderColor: colors.border },
+                          snoozingChoreId === chore.id && { backgroundColor: colors.secondary },
+                          pressed && { backgroundColor: colors.secondary }
+                        ]}
+                        onPress={() => openSnooze(chore)}
+                        disabled={updateChore.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Snooze ${chore.title}`}
+                        testID={`chore-snooze-${chore.id}`}
+                      >
+                        <IconComponent name="clock" iosName="clock.arrow.circlepath" size={14} color={colors.mutedForeground} />
+                      </Pressable>
                       <Pressable
                         style={({pressed}) => [
                           styles.cardActionBtn,
@@ -260,6 +305,61 @@ export default function ChoresScreen() {
                       </Pressable>
                     </View>
                   </View>
+                  {snoozingChoreId === chore.id && (
+                    <View style={[styles.snoozePanel, { borderTopColor: colors.border }]}>
+                      <Text style={[styles.snoozeLabel, { color: colors.mutedForeground }]}>Move due date</Text>
+                      <View style={styles.snoozeQuickRow}>
+                        <Pressable
+                          style={[styles.snoozeQuickButton, { backgroundColor: colors.secondary }]}
+                          onPress={() => handleSnooze(chore.id, getDateOnlyAfter(1))}
+                          disabled={updateChore.isPending}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Snooze ${chore.title} until tomorrow`}
+                          testID={`chore-snooze-tomorrow-${chore.id}`}
+                        >
+                          <Text style={[styles.snoozeQuickText, { color: colors.foreground }]}>Tomorrow</Text>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.snoozeQuickButton, { backgroundColor: colors.secondary }]}
+                          onPress={() => handleSnooze(chore.id, getDateOnlyAfter(7))}
+                          disabled={updateChore.isPending}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Snooze ${chore.title} until next week`}
+                          testID={`chore-snooze-next-week-${chore.id}`}
+                        >
+                          <Text style={[styles.snoozeQuickText, { color: colors.foreground }]}>Next week</Text>
+                        </Pressable>
+                      </View>
+                      <View style={styles.snoozeCustomRow}>
+                        <TextInput
+                          style={[styles.snoozeInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                          value={snoozeDate}
+                          onChangeText={setSnoozeDate}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor={colors.mutedForeground}
+                          keyboardType="numbers-and-punctuation"
+                          maxLength={10}
+                          accessibilityLabel={`Custom due date for ${chore.title}, YYYY-MM-DD`}
+                          testID={`chore-snooze-date-${chore.id}`}
+                        />
+                        <Pressable
+                          style={[styles.snoozeApplyButton, { backgroundColor: colors.primary }, !isValidDateOnly(snoozeDate) && { opacity: 0.5 }]}
+                          onPress={() => handleSnooze(chore.id, snoozeDate)}
+                          disabled={!isValidDateOnly(snoozeDate) || updateChore.isPending}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Apply custom due date for ${chore.title}`}
+                          testID={`chore-snooze-apply-${chore.id}`}
+                        >
+                          <Text style={[styles.snoozeApplyText, { color: colors.primaryForeground }]}>Apply</Text>
+                        </Pressable>
+                      </View>
+                      {!!snoozeDate && !isValidDateOnly(snoozeDate) && (
+                        <Text style={[styles.dateErrorText, { color: colors.danger }]} accessibilityLiveRegion="polite">
+                          Enter a valid date as YYYY-MM-DD.
+                        </Text>
+                      )}
+                    </View>
+                  )}
                 </View>
               </View>
             );
@@ -373,15 +473,35 @@ export default function ChoresScreen() {
               </ScrollView>
             </View>
 
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.foreground }]}>Due Date</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+                value={editForm.dueDate}
+                onChangeText={(dueDate) => setEditForm(prev => ({ ...prev, dueDate }))}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+                accessibilityLabel="Chore due date, YYYY-MM-DD"
+                testID="edit-chore-due-date"
+              />
+              {!!editForm.dueDate && !isValidDateOnly(editForm.dueDate) && (
+                <Text style={[styles.dateErrorText, { color: colors.danger }]} accessibilityLiveRegion="polite">
+                  Enter a valid date as YYYY-MM-DD.
+                </Text>
+              )}
+            </View>
+
             <Pressable
               style={({ pressed }) => [
                 styles.submitButton,
                 { backgroundColor: colors.primary },
-                (!editForm.title || !editForm.propertyId) && { opacity: 0.5 },
+                (!editForm.title || !editForm.propertyId || (!!editForm.dueDate && !isValidDateOnly(editForm.dueDate))) && { opacity: 0.5 },
                 pressed && { opacity: 0.8 }
               ]}
               onPress={handleSaveEdit}
-              disabled={!editForm.title || !editForm.propertyId || updateChore.isPending}
+              disabled={!editForm.title || !editForm.propertyId || (!!editForm.dueDate && !isValidDateOnly(editForm.dueDate)) || updateChore.isPending}
             >
               <Text style={[styles.submitButtonText, { color: colors.primaryForeground }]}>
                 {updateChore.isPending ? 'Saving…' : 'Save Changes'}
@@ -625,6 +745,59 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  snoozePanel: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    gap: 10,
+  },
+  snoozeLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  snoozeQuickRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  snoozeQuickButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  snoozeQuickText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  snoozeCustomRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  snoozeInput: {
+    flex: 1,
+    height: 42,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+  snoozeApplyButton: {
+    height: 42,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  snoozeApplyText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  dateErrorText: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
   },
   deleteButton: {
     flexDirection: 'row',

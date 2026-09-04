@@ -3,15 +3,18 @@ import {
   useGetChores, getGetChoresQueryKey,
   useCompleteChore,
   useCreateChore,
+  useUpdateChore,
   useDeleteChore,
+  getGetDashboardQueryKey,
   useGetProperties, getGetPropertiesQueryKey,
   useGetFamilyMembers, getGetFamilyMembersQueryKey,
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { usePreferences } from "@/context/PreferencesContext";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Plus, Trash2, X, Check, Home, RotateCcw } from "lucide-react";
-import { format, isToday, isPast, parseISO } from "date-fns";
+import { CheckCircle2, Plus, Trash2, X, Check, Home, CalendarClock } from "lucide-react";
+import { addDays, isToday, parseISO } from "date-fns";
+import { formatDateOnly, getLocalDateOnly } from "@/lib/dateOnly";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -29,13 +32,18 @@ function ChoreCard({
   chore,
   onComplete,
   onDelete,
+  onUpdateDueDate,
+  updating,
   members,
 }: {
   chore: any;
   onComplete: () => void;
   onDelete: () => void;
+  onUpdateDueDate: (dueDate: string) => void;
+  updating: boolean;
   members: any[];
 }) {
+  const [pickedDate, setPickedDate] = useState(chore.dueDate ?? getLocalDateOnly());
   const isDone = !!chore.completedAt;
   const overdue = !isDone && chore.isOverdue;
   const dueToday = !isDone && chore.dueDate && isToday(parseISO(chore.dueDate));
@@ -50,8 +58,15 @@ function ChoreCard({
     ? "border-border/30 bg-muted/20 opacity-60"
     : "border-border bg-card";
 
+  const snoozeByDays = (days: number) => {
+    const dueDate = getLocalDateOnly(addDays(new Date(), days));
+    setPickedDate(dueDate);
+    onUpdateDueDate(dueDate);
+  };
+
   return (
-    <div className={`group flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 transition-all ${urgency}`}>
+    <div className={`group rounded-2xl border-2 transition-all ${urgency}`}>
+      <div className="flex items-center gap-3 px-4 py-3.5">
       {/* Complete button */}
       <button
         onClick={onComplete}
@@ -76,7 +91,7 @@ function ChoreCard({
           <span className="capitalize">{chore.frequency}</span>
           {chore.dueDate && (
             <span className={overdue ? "text-destructive font-bold" : dueToday ? "text-primary font-bold" : ""}>
-              {overdue ? "Overdue" : dueToday ? "Due today" : `Due ${format(parseISO(chore.dueDate), "MMM d")}`}
+              {overdue ? "Overdue" : dueToday ? "Due today" : `Due ${formatDateOnly(chore.dueDate, "MMM d")}`}
             </span>
           )}
           {chore.propertyName && (
@@ -110,6 +125,47 @@ function ChoreCard({
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
+      </div>
+
+      {!isDone && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-2.5">
+          <span className="flex items-center gap-1 text-xs font-bold text-muted-foreground">
+            <CalendarClock className="h-3.5 w-3.5" /> Snooze
+          </span>
+          <button
+            type="button"
+            onClick={() => snoozeByDays(1)}
+            disabled={updating}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold hover:border-primary/50 hover:bg-primary/5 disabled:opacity-50"
+          >
+            Tomorrow
+          </button>
+          <button
+            type="button"
+            onClick={() => snoozeByDays(7)}
+            disabled={updating}
+            className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold hover:border-primary/50 hover:bg-primary/5 disabled:opacity-50"
+          >
+            Next week
+          </button>
+          <label className="sr-only" htmlFor={`chore-due-date-${chore.id}`}>Due date for {chore.title}</label>
+          <input
+            id={`chore-due-date-${chore.id}`}
+            type="date"
+            value={pickedDate}
+            onChange={event => setPickedDate(event.target.value)}
+            className="rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium focus:border-primary focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => pickedDate && onUpdateDueDate(pickedDate)}
+            disabled={!pickedDate || updating || pickedDate === chore.dueDate}
+            className="rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground disabled:opacity-50"
+          >
+            Set date
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -229,12 +285,16 @@ export default function Chores() {
 
   const completeChore = useCompleteChore();
   const createChore = useCreateChore();
+  const updateChore = useUpdateChore();
   const deleteChore = useDeleteChore();
 
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState<"all" | "mine" | "today" | "done">(() => preferences.tabs.chores.defaultFilter);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+  };
 
   const handleComplete = (id: string) => {
     completeChore.mutate(
@@ -248,6 +308,10 @@ export default function Chores() {
     deleteChore.mutate({ id }, { onSuccess: invalidate });
   };
 
+  const handleUpdateDueDate = (id: string, dueDate: string) => {
+    updateChore.mutate({ id, data: { dueDate } }, { onSuccess: invalidate });
+  };
+
   const handleCreate = (data: any) => {
     createChore.mutate({ data }, {
       onSuccess: () => { setAdding(false); invalidate(); }
@@ -255,7 +319,7 @@ export default function Chores() {
   };
 
   // Filtering
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateOnly();
   const filteredChores = (chores ?? []).filter(c => {
     if (filter === "mine") return c.assigneeId === activeMember?.id;
     if (filter === "today") return c.dueDate === today && !c.completedAt;
@@ -346,7 +410,7 @@ export default function Chores() {
               </h2>
               <div className="space-y-2">
                 {overdue.map(c => (
-                  <ChoreCard key={c.id} chore={c} members={members ?? []} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} />
+                  <ChoreCard key={c.id} chore={c} members={members ?? []} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} updating={updateChore.isPending} />
                 ))}
               </div>
             </section>
@@ -359,7 +423,7 @@ export default function Chores() {
               </h2>
               <div className="space-y-2">
                 {dueToday.map(c => (
-                  <ChoreCard key={c.id} chore={c} members={members ?? []} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} />
+                  <ChoreCard key={c.id} chore={c} members={members ?? []} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} updating={updateChore.isPending} />
                 ))}
               </div>
             </section>
@@ -372,7 +436,7 @@ export default function Chores() {
               </h2>
               <div className="space-y-2">
                 {upcoming.map(c => (
-                  <ChoreCard key={c.id} chore={c} members={members ?? []} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} />
+                  <ChoreCard key={c.id} chore={c} members={members ?? []} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} updating={updateChore.isPending} />
                 ))}
               </div>
             </section>
@@ -385,7 +449,7 @@ export default function Chores() {
               </h2>
               <div className="space-y-2">
                 {done.map(c => (
-                  <ChoreCard key={c.id} chore={c} members={members ?? []} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} />
+                  <ChoreCard key={c.id} chore={c} members={members ?? []} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} updating={updateChore.isPending} />
                 ))}
               </div>
             </section>

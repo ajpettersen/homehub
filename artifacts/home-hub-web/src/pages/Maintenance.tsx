@@ -7,6 +7,7 @@ import {
   useDeleteMaintenanceTask,
   useGetProperties, getGetPropertiesQueryKey,
   useGetFamilyMembers, getGetFamilyMembersQueryKey,
+  getGetDashboardQueryKey,
   useRecommendMaintenance,
   type CreateMaintenanceTaskInputCategory,
   type MaintenanceRecommendation,
@@ -19,7 +20,7 @@ import {
   TreePine, Home, CalendarDays, Repeat, Wrench, Droplets,
   Leaf, Filter, ChevronDown, ChevronUp, Sparkles, Loader2
 } from "lucide-react";
-import { format, parseISO, differenceInDays } from "date-fns";
+import { addDays, format, parseISO, differenceInDays } from "date-fns";
 import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
 
 // ── category config ────────────────────────────────────────────────────────────
@@ -46,14 +47,19 @@ function TaskCard({
   onComplete,
   onDelete,
   onAssign,
+  onDueDateChange,
+  updatingDueDate,
 }: {
   task: any;
   members: any[];
   onComplete: () => void;
   onDelete: () => void;
   onAssign: (assigneeId: string | null) => void;
+  onDueDateChange: (nextDueDate: string) => void;
+  updatingDueDate: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [dueDate, setDueDate] = useState(task.nextDueDate);
   const cat = getCategoryConfig(task.category);
   const CatIcon = cat.Icon;
 
@@ -111,7 +117,18 @@ function TaskCard({
           >
             <CheckCircle2 className="w-4 h-4" />
           </button>
-          {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation();
+              setExpanded(current => !current);
+            }}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? "Hide" : "Show"} details for ${task.title}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
         </div>
       </div>
 
@@ -160,6 +177,48 @@ function TaskCard({
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div onClick={e => e.stopPropagation()}>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Next due date</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={dueDate}
+                disabled={updatingDueDate}
+                aria-label={`Next due date for ${task.title}`}
+                onChange={event => {
+                  const nextDueDate = event.target.value;
+                  setDueDate(nextDueDate);
+                  if (nextDueDate) onDueDateChange(nextDueDate);
+                }}
+                className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:border-primary disabled:opacity-50"
+              />
+              <button
+                type="button"
+                disabled={updatingDueDate}
+                onClick={() => {
+                  const nextDueDate = getLocalDateOnly(addDays(new Date(), 1));
+                  setDueDate(nextDueDate);
+                  onDueDateChange(nextDueDate);
+                }}
+                className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold hover:border-primary disabled:opacity-50"
+              >
+                Tomorrow
+              </button>
+              <button
+                type="button"
+                disabled={updatingDueDate}
+                onClick={() => {
+                  const nextDueDate = getLocalDateOnly(addDays(new Date(), 7));
+                  setDueDate(nextDueDate);
+                  onDueDateChange(nextDueDate);
+                }}
+                className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold hover:border-primary disabled:opacity-50"
+              >
+                Next week
+              </button>
             </div>
           </div>
         </div>
@@ -538,8 +597,12 @@ export default function Properties() {
   const [adding, setAdding] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [updatingDueDateId, setUpdatingDueDateId] = useState<string | null>(null);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) });
+  const invalidate = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) }),
+    queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
+  ]);
 
   const handleComplete = (id: string) => {
     completeTask.mutate(
@@ -570,6 +633,23 @@ export default function Properties() {
         },
       },
       { onSuccess: invalidate },
+    );
+  };
+
+  const handleDueDateChange = (task: any, nextDueDate: string) => {
+    setUpdatingDueDateId(task.id);
+    updateTask.mutate(
+      {
+        id: task.id,
+        data: {
+          nextDueDate,
+          ...(task.scheduleType === "recurring" && { timezone }),
+        },
+      },
+      {
+        onSuccess: invalidate,
+        onSettled: () => setUpdatingDueDateId(null),
+      },
     );
   };
 
@@ -689,7 +769,7 @@ export default function Properties() {
                 <AlertTriangle className="w-3.5 h-3.5" /> Overdue ({overdue.length})
               </h2>
               <div className="space-y-2">
-                {overdue.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} />)}
+                {overdue.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} />)}
               </div>
             </section>
           )}
@@ -700,7 +780,7 @@ export default function Properties() {
                 <Clock className="w-3.5 h-3.5" /> Coming Up ({dueSoon.length})
               </h2>
               <div className="space-y-2">
-                {dueSoon.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} />)}
+                {dueSoon.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} />)}
               </div>
             </section>
           )}
@@ -711,7 +791,7 @@ export default function Properties() {
                 Scheduled ({upcoming.length})
               </h2>
               <div className="space-y-2">
-                {upcoming.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} />)}
+                {upcoming.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} />)}
               </div>
             </section>
           )}

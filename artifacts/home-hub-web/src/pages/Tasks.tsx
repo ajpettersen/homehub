@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, Plus, Check, Trash2, ArrowUp } from "lucide-react";
+import { CheckSquare, Plus, Check, Trash2, ArrowUp, CalendarClock, X } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import { formatDateOnly, getLocalDateOnly } from "@/lib/dateOnly";
 
@@ -101,7 +101,9 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
   const moveToTop = useMoveTodoListToTop();
   
   const [newItemContent, setNewItemContent] = useState("");
-  const [newItemDueDate, setNewItemDueDate] = useState(() => getLocalDateOnly());
+  const [newItemDueDate, setNewItemDueDate] = useState("");
+  const [editingDueDateId, setEditingDueDateId] = useState<string | null>(null);
+  const [dueDateError, setDueDateError] = useState<{ itemId: string; message: string } | null>(null);
   const [addError, setAddError] = useState("");
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
@@ -122,7 +124,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
       setAddError("Enter a task name.");
       return;
     }
-    if (!isValidDate(newItemDueDate)) {
+    if (newItemDueDate && !isValidDate(newItemDueDate)) {
       setAddError("Choose a valid due date.");
       return;
     }
@@ -132,18 +134,32 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
         id: list.id,
         data: {
           content: newItemContent.trim(),
-          dueDate: newItemDueDate,
+          ...(newItemDueDate && { dueDate: newItemDueDate }),
           ...(list.assigneeId && { assigneeId: list.assigneeId }),
         },
       },
       { 
         onSuccess: () => {
           setNewItemContent("");
-          setNewItemDueDate(getLocalDateOnly());
+          setNewItemDueDate("");
           queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
         },
         onError: () => setAddError("Could not add task. Please try again."),
       }
+    );
+  };
+
+  const handleDueDateChange = (itemId: string, dueDate: string | null) => {
+    updateItem.mutate(
+      { id: itemId, data: { dueDate } },
+      {
+        onSuccess: () => {
+          setEditingDueDateId(null);
+          setDueDateError(null);
+          queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
+        },
+        onError: () => setDueDateError({ itemId, message: "Could not update due date. Please try again." }),
+      },
     );
   };
 
@@ -237,25 +253,27 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
           <div className="text-center p-4 text-muted-foreground italic text-sm">No tasks yet.</div>
         ) : (
           items?.map((item: any) => (
-            <label 
+            <div
               key={item.id} 
-              className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer group ${
+              className={`flex items-start gap-3 p-3 rounded-lg border transition-all group ${
                 item.completed 
                   ? "bg-muted/30 border-transparent opacity-60" 
                   : "bg-background border-border hover:border-primary/50 shadow-sm"
               }`}
             >
-              <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                item.completed ? "bg-accent border-accent text-accent-foreground" : "border-input bg-background"
-              }`}>
-                {item.completed && <Check className="w-3 h-3" />}
-              </div>
-              <input 
-                type="checkbox" 
-                className="hidden" 
-                checked={item.completed}
-                onChange={() => handleToggle(item)}
-              />
+              <label className="cursor-pointer" aria-label={`${item.completed ? "Mark incomplete" : "Mark complete"}: ${item.content}`}>
+                <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                  item.completed ? "bg-accent border-accent text-accent-foreground" : "border-input bg-background"
+                }`}>
+                  {item.completed && <Check className="w-3 h-3" />}
+                </div>
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={item.completed}
+                  onChange={() => handleToggle(item)}
+                />
+              </label>
               <div className="flex-1">
                 <span className={`block font-medium leading-tight ${item.completed ? "line-through decoration-2 decoration-foreground/30 text-muted-foreground" : "text-foreground"}`}>
                   {item.content}
@@ -266,6 +284,74 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                     {item.assigneeName && <span>• {item.assigneeName}</span>}
                   </div>
                 )}
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    disabled={updateItem.isPending}
+                    onClick={() => handleDueDateChange(item.id, relativeDateOnly(1))}
+                  >
+                    Tomorrow
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    disabled={updateItem.isPending}
+                    onClick={() => handleDueDateChange(item.id, relativeDateOnly(7))}
+                  >
+                    Next week
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    disabled={updateItem.isPending}
+                    onClick={() => {
+                      setEditingDueDateId(editingDueDateId === item.id ? null : item.id);
+                      setDueDateError(null);
+                    }}
+                    aria-expanded={editingDueDateId === item.id}
+                  >
+                    <CalendarClock className="h-3 w-3" aria-hidden="true" />
+                    Pick date
+                  </Button>
+                  {item.dueDate && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-destructive"
+                      disabled={updateItem.isPending}
+                      onClick={() => handleDueDateChange(item.id, null)}
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                      Clear
+                    </Button>
+                  )}
+                  {editingDueDateId === item.id && (
+                    <Input
+                      type="date"
+                      defaultValue={item.dueDate ?? ""}
+                      className="h-8 w-40 text-xs"
+                      aria-label={`Due date for ${item.content}`}
+                      onChange={(e) => {
+                        if (!e.target.value || isValidDate(e.target.value)) {
+                          handleDueDateChange(item.id, e.target.value || null);
+                        }
+                      }}
+                    />
+                  )}
+                  {dueDateError && dueDateError.itemId === item.id && (
+                    <p className="basis-full text-xs text-destructive" role="alert">
+                      {dueDateError.message}
+                    </p>
+                  )}
+                </div>
               </div>
               <Button 
                 type="button" 
@@ -276,7 +362,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
               >
                 <Trash2 className="w-3 h-3" />
               </Button>
-            </label>
+            </div>
           ))
         )}
       </CardContent>
@@ -296,7 +382,6 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
               onChange={(e) => { setNewItemDueDate(e.target.value); setAddError(""); }}
               className="min-h-11 sm:w-40"
               aria-label="Due date"
-              required
             />
             <Button type="submit" variant="secondary" className="min-h-11" disabled={addItem.isPending}>
               <Plus className="w-4 h-4" aria-hidden="true" />
@@ -364,6 +449,12 @@ function isValidDate(value: string): boolean {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function relativeDateOnly(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return getLocalDateOnly(date);
 }
 
 function parseBulkTasks(text: string, defaultDueDate: string):
