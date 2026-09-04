@@ -1,11 +1,21 @@
 import { Redirect } from "expo-router";
 import { useAuth } from "@clerk/expo";
-import { Platform, View, ActivityIndicator, StyleSheet } from "react-native";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { useColors } from "@/hooks/useColors";
 
 export default function Index() {
   const { isSignedIn, isLoaded } = useAuth();
+  const colors = useColors();
 
-  // Auth temporarily bypassed for Expo Go testing — go straight to app
+  if (!isLoaded) {
+    return (
+      <View style={[styles.loading, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
   return <Redirect href="/(home)/(tabs)" />;
 }
 

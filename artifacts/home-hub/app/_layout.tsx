@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -13,12 +14,13 @@ import {
 } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { ClerkProvider, ClerkLoaded } from "@clerk/expo";
+import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/expo";
 import { tokenCache } from "../utils/tokenCache"; // I'll provide tokenCache
-import { setBaseUrl } from "@workspace/api-client-react";
+import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { ActiveMemberProvider } from "@/context/ActiveMemberContext";
+import { useColors } from "@/hooks/useColors";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -32,11 +34,30 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 function RootLayoutNav() {
+  const { getToken } = useAuth();
+  const colors = useColors();
+  const [authTransportReady, setAuthTransportReady] = React.useState(false);
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+    setAuthTransportReady(true);
+    return () => setAuthTokenGetter(null);
+  }, [getToken]);
+
   usePushNotifications();
+  if (!authTransportReady) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(home)" />
       <Stack.Screen name="(auth)" />
+      <Stack.Screen name="onboarding" options={{ presentation: "modal", gestureEnabled: false }} />
     </Stack>
   );
 }
