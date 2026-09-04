@@ -1411,7 +1411,7 @@ export const getCompleteOnboardingUrl = () => {
 }
 
 /**
- * @summary Seed the household from first-login setup (transactional and idempotent)
+ * @summary Seed the household from setup (transactional and duplicate-safe)
  */
 export const completeOnboarding = async (onboardingInput: OnboardingInput, options?: RequestInit): Promise<OnboardingResult> => {
 
@@ -1460,7 +1460,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CompleteOnboardingMutationError = ErrorType<void>
 
     /**
- * @summary Seed the household from first-login setup (transactional and idempotent)
+ * @summary Seed the household from setup (transactional and duplicate-safe)
  */
 export const useCompleteOnboarding = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,{data: BodyType<OnboardingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

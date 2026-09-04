@@ -15,6 +15,7 @@ import {
   type UpdateMaintenanceTaskInputCategory,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -1706,6 +1707,7 @@ function MergeDuplicateAdultsSection({ familyMembers }: { familyMembers: any[] }
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function Settings() {
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const { preferences, setTabPreference } = usePreferences();
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const canManageProperties = me?.role === "family" && !!me.linkedFamilyMemberId;
@@ -1758,6 +1760,28 @@ export default function Settings() {
       <YourProfile />
 
       <AppearanceAndTabsSection />
+
+      {me?.role === "family" && me.isAdmin && (
+        <Card>
+          <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-bold text-foreground">Guided household setup</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Review your household details and add any missing starter lists, chores, or maintenance tasks.
+                Existing content and tab preferences will be preserved.
+              </p>
+            </div>
+            <button
+              type="button"
+              data-testid="settings-run-setup"
+              onClick={() => navigate("/setup")}
+              className="shrink-0 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Run setup again
+            </button>
+          </CardContent>
+        </Card>
+      )}
 
       <FamilyLinkingSection familyMembers={familyMembers ?? []} />
 

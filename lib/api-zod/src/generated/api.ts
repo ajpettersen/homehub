@@ -344,12 +344,13 @@ export const UpdateHouseholdTabVisibilityResponse = zod.object({
 
 
 /**
- * @summary Seed the household from first-login setup (transactional and idempotent)
+ * @summary Seed the household from setup (transactional and duplicate-safe)
  */
-
+export const completeOnboardingBodyRerunDefault = false;
 
 
 export const CompleteOnboardingBody = zod.object({
+  "rerun": zod.boolean().default(completeOnboardingBodyRerunDefault).describe('Add missing starter content to an already-onboarded household without deleting existing data.'),
   "householdName": zod.string(),
   "property": zod.object({
   "name": zod.string(),

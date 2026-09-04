@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   useGetMe, getGetMeQueryKey,
   useUpdateHousehold, useCompleteOnboarding, useUpdateHouseholdTabVisibility,
+  useGetProperties, useGetFamilyMembers, useGetGroceryLists,
   type HomeHubWebTab,
   getGetPropertiesQueryKey, getGetFamilyMembersQueryKey, getGetGroceryListsQueryKey,
   getGetChoresQueryKey, getGetMaintenanceTasksQueryKey
@@ -562,9 +562,27 @@ function StepReview({ state, onBack, onFinish, isSubmitting, submitError, progre
 
 // --- Main Wizard Orchestrator ---
 
-export default function Onboarding() {
+export default function Onboarding({
+  rerun = false,
+  onCancel,
+  onComplete,
+}: {
+  rerun?: boolean;
+  onCancel?: () => void;
+  onComplete?: () => void;
+} = {}) {
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const { data: properties } = useGetProperties({
+    query: { queryKey: getGetPropertiesQueryKey(), enabled: rerun },
+  });
+  const { data: familyMembers } = useGetFamilyMembers({
+    query: { queryKey: getGetFamilyMembersQueryKey(), enabled: rerun },
+  });
+  const { data: groceryLists } = useGetGroceryLists({
+    query: { queryKey: getGetGroceryListsQueryKey(), enabled: rerun },
+  });
   const queryClient = useQueryClient();
+  const rerunInitialized = useRef(false);
 
   const [state, setState] = useState<OnboardingState>({
     householdName: "",
@@ -582,10 +600,41 @@ export default function Onboarding() {
   });
 
   useEffect(() => {
+    if (rerun && !rerunInitialized.current && me && properties && familyMembers && groceryLists) {
+      const primaryProperty = properties[0];
+      const primaryGroceryList = primaryProperty
+        ? groceryLists.find((list) => list.propertyId === primaryProperty.id)
+        : groceryLists[0];
+      setState((current) => ({
+        ...current,
+        householdName: me.householdName ?? current.householdName,
+        property: primaryProperty
+          ? {
+              name: primaryProperty.name,
+              type: primaryProperty.type === "cabin" ? "cabin" : "house",
+              address: primaryProperty.address ?? "",
+            }
+          : current.property,
+        familyMembers: familyMembers
+          .filter((member) => member.role === "child" || member.role === "pet")
+          .map((member) => ({
+            id: String(member.id),
+            name: member.name,
+            role: member.role as FamilyRole,
+            color: member.color,
+          })),
+        starter: {
+          ...current.starter,
+          groceryListName: primaryGroceryList?.name ?? current.starter.groceryListName,
+        },
+      }));
+      rerunInitialized.current = true;
+      return;
+    }
     if (me?.householdName && !state.householdName) {
       setState(s => ({ ...s, householdName: me.householdName! }));
     }
-  }, [me, state.householdName]);
+  }, [familyMembers, groceryLists, me, properties, rerun, state.householdName]);
 
   const update = (partial: Partial<OnboardingState>) => setState(s => ({ ...s, ...partial }));
 
@@ -636,14 +685,17 @@ export default function Onboarding() {
         ...(state.modules.people ? ["people" as const] : []),
         "settings",
       ];
-      await updateTabVisibilityMutation.mutateAsync({ data: { visibleTabs } });
+      if (!rerun) {
+        await updateTabVisibilityMutation.mutateAsync({ data: { visibleTabs } });
+      }
 
-      // One transactional, idempotent request seeds everything server-side:
-      // either it all commits (including the completion flag) or nothing does,
-      // so retrying after a failure can never create duplicates.
+      // One transactional, duplicate-safe request seeds everything server-side.
+      // First runs preserve account-backed adults; deliberate reruns preserve
+      // all current household data and add only missing starter records.
       setProgressText("Setting up your home...");
       await completeOnboardingMutation.mutateAsync({
         data: {
+          rerun,
           householdName: state.householdName,
           property: {
             name: state.property.name,
@@ -669,7 +721,8 @@ export default function Onboarding() {
       await queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
       await queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
       await queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
-      
+
+      onComplete?.();
       // Completion naturally flows as the gate in App.tsx detects onboardingCompleted: true
     } catch (err: any) {
       console.error(err);
@@ -679,7 +732,7 @@ export default function Onboarding() {
   };
 
   const handleSkip = async () => {
-    if (confirm("Are you sure you want to skip setup? You can manually add everything later, but the automated setup won't be available again.")) {
+    if (confirm("Are you sure you want to skip setup? You can run the guided setup later from Settings.")) {
       setIsSubmitting(true);
       try {
         await updateHouseholdMutation.mutateAsync({ data: { onboardingCompleted: true } });
@@ -727,10 +780,10 @@ export default function Onboarding() {
         {!isSubmitting && (
           <button 
             data-testid="onboarding-skip"
-            onClick={handleSkip}
+            onClick={rerun ? onCancel : handleSkip}
             className="text-sm font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors px-4 py-2 rounded-full hover:bg-muted/50"
           >
-            Skip Setup
+            {rerun ? "Cancel" : "Skip Setup"}
           </button>
         )}
       </header>

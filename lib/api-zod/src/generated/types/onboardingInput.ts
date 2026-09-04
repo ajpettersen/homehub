@@ -11,6 +11,8 @@ import type { OnboardingMemberInput } from './onboardingMemberInput';
 import type { OnboardingPropertyInput } from './onboardingPropertyInput';
 
 export interface OnboardingInput {
+  /** Add missing starter content to an already-onboarded household without deleting existing data. */
+  rerun?: boolean;
   householdName: string;
   property: OnboardingPropertyInput;
   familyMembers: OnboardingMemberInput[];

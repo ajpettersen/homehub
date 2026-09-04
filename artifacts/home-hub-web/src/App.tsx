@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
-import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
 import { useGetMe, getGetMeQueryKey } from '@workspace/api-client-react';
 import { ActiveMemberProvider, useActiveMember } from '@/context/ActiveMemberContext';
@@ -23,6 +22,7 @@ import Landing from '@/pages/Landing';
 import AccountSetup from '@/pages/AccountSetup';
 import Invite from '@/pages/Invite';
 import PersonalSetup from '@/pages/PersonalSetup';
+import { Redirect, Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -177,6 +177,30 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function SetupRerun() {
+  const [, navigate] = useLocation();
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+
+  if (!me) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Loading household setup…</p>
+      </div>
+    );
+  }
+
+  if (me.role !== "family" || !me.isAdmin) {
+    return <Redirect to="/settings" />;
+  }
+
+  return (
+    <Onboarding
+      rerun
+      onCancel={() => navigate("/settings")}
+      onComplete={() => navigate("/settings")}
+    />
+  );
+}
 function AuthenticatedApp() {
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -203,6 +227,7 @@ function AuthenticatedApp() {
           <Route path="/workouts" component={Workouts} />
           <Route path="/properties" component={Maintenance} />
           <Route path="/settings" component={Settings} />
+          <Route path="/setup" component={SetupRerun} />
           <Route path="/people" component={People} />
           <Route component={NotFound} />
         </Switch>

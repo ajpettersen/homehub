@@ -372,7 +372,7 @@ paths:
     post:
       operationId: completeOnboarding
       tags: [users]
-      summary: Seed the household from first-login setup (transactional and idempotent)
+      summary: Seed the household from setup (transactional and duplicate-safe)
       requestBody:
         required: true
         content:
@@ -3118,6 +3118,10 @@ components:
     OnboardingInput:
       type: object
       properties:
+        rerun:
+          type: boolean
+          default: false
+          description: Add missing starter content to an already-onboarded household without deleting existing data.
         householdName:
           type: string
         property:

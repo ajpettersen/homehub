@@ -49,8 +49,9 @@ router.post("/onboarding", async (req, res) => {
       return;
     }
 
-    const { householdName, property, familyMembers, groceryListName, chores, maintenanceTasks } =
+    const { rerun, householdName, property, familyMembers, groceryListName, chores, maintenanceTasks } =
       (req.body ?? {}) as {
+        rerun?: unknown;
         householdName?: unknown;
         property?: { name?: unknown; type?: unknown; address?: unknown };
         familyMembers?: Array<{ name?: unknown; role?: unknown; color?: unknown }>;
@@ -60,6 +61,10 @@ router.post("/onboarding", async (req, res) => {
       };
 
     // ── Validate everything up front so the transaction can't half-fail on input ──
+    if (rerun !== undefined && typeof rerun !== "boolean") {
+      res.status(400).json({ error: "rerun must be a boolean" });
+      return;
+    }
     if (!isNonEmptyString(householdName)) {
       res.status(400).json({ error: "householdName is required" });
       return;
@@ -127,7 +132,7 @@ router.post("/onboarding", async (req, res) => {
       if (!household) {
         return { status: 404 as const };
       }
-      if (household.onboardingCompletedAt !== null) {
+      if (household.onboardingCompletedAt !== null && rerun !== true) {
         if (scope.linkedFamilyMemberId) {
           await tx.update(userProfilesTable).set({ personalSetupCompletedAt: new Date() }).where(and(
             eq(userProfilesTable.clerkId, scope.clerkId),
@@ -137,6 +142,128 @@ router.post("/onboarding", async (req, res) => {
         }
         // A previous call already committed (its response may have been lost).
         return { status: 200 as const, alreadyCompleted: true };
+      }
+
+      if (rerun === true) {
+        const normalize = (value: string) => value.trim().toLocaleLowerCase();
+        const existingProperties = await tx
+          .select()
+          .from(propertiesTable)
+          .where(eq(propertiesTable.householdId, scope.householdId))
+          .orderBy(propertiesTable.createdAt, propertiesTable.id);
+
+        let targetProperty = existingProperties[0];
+        if (targetProperty) {
+          const [updatedProperty] = await tx
+            .update(propertiesTable)
+            .set({
+              name: (property.name as string).trim(),
+              type: propertyType,
+              icon: propertyType === "cabin" ? "mountain" : "home",
+              address: isNonEmptyString(property.address) ? property.address.trim() : null,
+            })
+            .where(eq(propertiesTable.id, targetProperty.id))
+            .returning();
+          targetProperty = updatedProperty;
+        } else {
+          [targetProperty] = await tx
+            .insert(propertiesTable)
+            .values({
+              householdId: scope.householdId,
+              name: (property.name as string).trim(),
+              type: propertyType,
+              icon: propertyType === "cabin" ? "mountain" : "home",
+              address: isNonEmptyString(property.address) ? property.address.trim() : null,
+            })
+            .returning();
+        }
+
+        await tx
+          .update(householdsTable)
+          .set({ name: householdName.trim() })
+          .where(eq(householdsTable.id, scope.householdId));
+
+        const existingMembers = await tx
+          .select()
+          .from(familyMembersTable)
+          .where(eq(familyMembersTable.householdId, scope.householdId));
+        const memberKeys = new Set(existingMembers.map((member) => `${normalize(member.name)}:${member.role}`));
+        for (const member of members) {
+          const name = (member.name as string).trim();
+          const key = `${normalize(name)}:${member.role}`;
+          if (memberKeys.has(key)) continue;
+          await tx.insert(familyMembersTable).values({
+            householdId: scope.householdId,
+            name,
+            role: member.role as string,
+            color: member.color as string,
+            avatarInitials: name.charAt(0).toUpperCase(),
+            photoUrl: null,
+          });
+          memberKeys.add(key);
+        }
+
+        if (isNonEmptyString(groceryListName)) {
+          const existingLists = await tx
+            .select()
+            .from(groceryListsTable)
+            .where(eq(groceryListsTable.propertyId, targetProperty.id));
+          if (!existingLists.some((list) => normalize(list.name) === normalize(groceryListName))) {
+            await tx.insert(groceryListsTable).values({
+              name: groceryListName.trim(),
+              propertyId: targetProperty.id,
+            });
+          }
+        }
+
+        const existingChores = await tx
+          .select()
+          .from(choresTable)
+          .where(eq(choresTable.propertyId, targetProperty.id));
+        const choreKeys = new Set(existingChores.map((chore) => `${normalize(chore.title)}:${chore.frequency}`));
+        for (const chore of choreInputs) {
+          const title = (chore.title as string).trim();
+          const key = `${normalize(title)}:${chore.frequency}`;
+          if (choreKeys.has(key)) continue;
+          await tx.insert(choresTable).values({
+            title,
+            assigneeId: null,
+            propertyId: targetProperty.id,
+            frequency: chore.frequency as string,
+            dueDate: null,
+            points: 10,
+          });
+          choreKeys.add(key);
+        }
+
+        const existingMaintenance = await tx
+          .select()
+          .from(maintenanceTasksTable)
+          .where(eq(maintenanceTasksTable.propertyId, targetProperty.id));
+        const maintenanceKeys = new Set(
+          existingMaintenance.map((task) => `${normalize(task.title)}:${task.category}`),
+        );
+        for (const task of maintenanceInputs) {
+          const title = (task.title as string).trim();
+          const key = `${normalize(title)}:${task.category}`;
+          if (maintenanceKeys.has(key)) continue;
+          const frequencyDays = task.frequencyDays as number;
+          await tx.insert(maintenanceTasksTable).values({
+            title,
+            description: null,
+            propertyId: targetProperty.id,
+            category: task.category as string,
+            frequencyDays,
+            scheduleType: "recurring",
+            isCompleted: false,
+            isCleanerTask: false,
+            startDate: null,
+            nextDueDate: isoDateFromToday(0),
+          });
+          maintenanceKeys.add(key);
+        }
+
+        return { status: 200 as const, alreadyCompleted: false };
       }
 
       // Preserve every existing family member. In particular, the bootstrap
