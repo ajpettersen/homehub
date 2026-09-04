@@ -1,13 +1,14 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { usePreferences } from "@/context/PreferencesContext";
 import {
   useGetWorkouts,
-  useGetFamilyMembers,
+  useGetFamilyMembers, useGetOverdueWorkoutSessions, useCompleteWorkoutSession, useUpdateWorkoutSessionStatus, useGetWorkoutPreferences, useUpdateWorkoutPreferences,
   getGetWorkoutsQueryKey,
-  getGetFamilyMembersQueryKey
+  getGetFamilyMembersQueryKey, getGetOverdueWorkoutSessionsQueryKey, getGetWorkoutSessionsQueryKey, getGetWorkoutPreferencesQueryKey, WorkoutPreferencesInput, DraftExercise
 } from "@workspace/api-client-react";
-import { Plus, History, Calendar, Sparkles, BookOpen } from "lucide-react";
+import { Plus, History, Calendar, Sparkles, BookOpen, WandSparkles, Bell, Check } from "lucide-react";
 import { WorkoutHistory } from "@/components/workouts/WorkoutHistory";
 import { WorkoutWeeklyPlan } from "@/components/workouts/WorkoutWeeklyPlan";
 import { WorkoutCoach } from "@/components/workouts/WorkoutCoach";
@@ -15,16 +16,42 @@ import { ExerciseLibrary } from "@/components/workouts/ExerciseLibrary";
 import { CreateWorkoutModal } from "@/components/workouts/CreateWorkoutModal";
 
 export default function Workouts() {
+  const queryClient = useQueryClient();
   const { data: allMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const { activeMember } = useActiveMember();
   const { preferences } = usePreferences();
+  const { data: workoutPreferences, isLoading: preferencesLoading, isError: preferencesMissing } = useGetWorkoutPreferences({ query: { queryKey: getGetWorkoutPreferencesQueryKey() } });
+  const updateWorkoutPreferences = useUpdateWorkoutPreferences();
+  const { data: overdueSessions } = useGetOverdueWorkoutSessions({ query: { queryKey: getGetOverdueWorkoutSessionsQueryKey() } });
+  const completeSession = useCompleteWorkoutSession();
+  const updateSessionStatus = useUpdateWorkoutSessionStatus();
+  const invalidateWorkoutViews = () => {
+    queryClient.invalidateQueries({ queryKey: getGetOverdueWorkoutSessionsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetWorkoutSessionsQueryKey() });
+  };
+  const overdue = overdueSessions?.[0];
 
   // Only parents can use workouts
   const parents = allMembers?.filter(m => m.role === "parent") ?? [];
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<"history" | "plan" | "coach" | "library">("history");
+  const [activeTab, setActiveTab] = useState<"history" | "plan" | "coach" | "library">("coach");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupStep, setSetupStep] = useState(1);
+  const [pendingLibraryExercise, setPendingLibraryExercise] = useState<DraftExercise | null>(null);
+  const [setupValues, setSetupValues] = useState<WorkoutPreferencesInput>({ daysOfWeek: [1, 3, 6], goals: "", sessionDurationMinutes: 30, equipment: "", limitations: "", notes: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+  useEffect(() => {
+    if (preferencesMissing) {
+      setSetupOpen(true);
+      return;
+    }
+    if (!workoutPreferences) return;
+    setSetupValues({ daysOfWeek: workoutPreferences.daysOfWeek, goals: workoutPreferences.goals, sessionDurationMinutes: workoutPreferences.sessionDurationMinutes, equipment: workoutPreferences.equipment, limitations: workoutPreferences.limitations, notes: workoutPreferences.notes, timezone: workoutPreferences.timezone });
+    if (!preferencesLoading && (!localStorage.getItem("homehub.workouts.experience.v1") || !workoutPreferences.updatedAt)) setSetupOpen(true);
+  }, [workoutPreferences, preferencesLoading, preferencesMissing]);
+  const saveSetup = () => updateWorkoutPreferences.mutate({ data: setupValues }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetWorkoutPreferencesQueryKey() }); localStorage.setItem("homehub.workouts.experience.v1", "seen"); setSetupOpen(false); } });
 
   // Initialize selected parents
   React.useEffect(() => {
@@ -62,32 +89,26 @@ export default function Workouts() {
   const defaultLogMember = singleSelected ?? null;
 
   const TABS = [
-    { id: "history", label: "History", Icon: History },
+    { id: "coach", label: "Coach", Icon: Sparkles },
     { id: "plan", label: "Weekly Plan", Icon: Calendar },
-    { id: "coach", label: "AI Coach", Icon: Sparkles },
+    { id: "history", label: "History", Icon: History },
     { id: "library", label: "Exercise Library", Icon: BookOpen }
   ] as const;
 
   return (
-    <div className="pb-12 animate-in fade-in duration-500 max-w-4xl mx-auto space-y-6">
+    <main className="pb-12 animate-in fade-in duration-500 max-w-5xl mx-auto space-y-5" data-testid="workouts-page">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="font-serif text-4xl md:text-5xl font-bold text-foreground tracking-tight">
-            Training
+            Move together, <em className="text-primary font-medium">without the admin.</em>
           </h1>
           <p className="text-muted-foreground mt-1 font-medium">
-            {bothSelected ? "Showing workouts for everyone" : singleSelected ? `Showing ${singleSelected.name}'s workouts` : "Select who to view"}
+            A shared place for the workouts that fit your actual week.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background font-bold hover:bg-foreground/90 transition-colors shadow-md"
-          >
-            <Plus className="w-5 h-5" />
-            Log Workout
-          </button>
+          <div className="flex flex-wrap gap-2"><button data-testid="button-review-workout-preferences" onClick={() => { setSetupStep(1); setSetupOpen(true); }} className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-primary font-bold hover:bg-primary/10 transition-colors text-sm"><WandSparkles className="w-4 h-4" />Review preferences</button><button data-testid="button-log-workout" onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background font-bold hover:bg-foreground/90 transition-colors shadow-md"><Plus className="w-5 h-5" />Log Workout</button></div>
         </div>
       </header>
 
@@ -117,6 +138,9 @@ export default function Workouts() {
           })}
         </div>
       )}
+      {overdue && <aside className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 to-amber-100/50 p-4 sm:p-5" data-testid={`overdue-workout-${overdue.id}`}>
+        <div className="flex gap-3"><Bell className="mt-0.5 h-5 w-5 text-primary shrink-0" /><div className="flex-1"><p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Workout check-in</p><h2 className="font-serif font-bold text-xl">Did you complete {overdue.title}?</h2><p className="mt-1 text-sm text-muted-foreground">A quick answer keeps your shared history honest and helps the coach learn what fits your week.</p><div className="mt-3 flex flex-wrap gap-2"><button data-testid="button-complete-overdue-workout" onClick={() => completeSession.mutate({ id: overdue.id, data: {} }, { onSuccess: invalidateWorkoutViews })} disabled={completeSession.isPending} className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background disabled:opacity-50"><Check className="w-4 h-4" />Yes, we completed it</button><button data-testid="button-skip-overdue-workout" onClick={() => updateSessionStatus.mutate({ id: overdue.id, data: { status: "skipped" } }, { onSuccess: invalidateWorkoutViews })} disabled={updateSessionStatus.isPending} className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold disabled:opacity-50">Not completed</button><button data-testid="button-dismiss-overdue-workout" onClick={() => updateSessionStatus.mutate({ id: overdue.id, data: { status: "dismissed" } }, { onSuccess: invalidateWorkoutViews })} disabled={updateSessionStatus.isPending} className="rounded-lg px-3 py-2 text-xs font-bold text-muted-foreground disabled:opacity-50">Dismiss</button></div></div></div>
+      </aside>}
 
       {/* Tabs */}
       <div className="grid grid-cols-2 md:flex md:flex-wrap gap-2 border-b border-border pb-3">
@@ -160,11 +184,11 @@ export default function Workouts() {
         )}
         
         {activeTab === "coach" && (
-          <WorkoutCoach participantIds={selectedIds} onWorkoutLogged={() => setActiveTab("history")} />
+          <WorkoutCoach participantIds={selectedIds} onWorkoutLogged={() => setActiveTab("history")} libraryExercise={pendingLibraryExercise} onLibraryExerciseAdded={() => setPendingLibraryExercise(null)} />
         )}
         
         {activeTab === "library" && (
-          <ExerciseLibrary />
+          <ExerciseLibrary onUse={exercise => { setPendingLibraryExercise(exercise); setActiveTab("coach"); }} />
         )}
       </div>
 
@@ -175,6 +199,7 @@ export default function Workouts() {
           onClose={() => setShowCreateModal(false)}
         />
       )}
-    </div>
+      {setupOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-3" role="dialog" aria-modal="true" aria-label="Workout preferences setup"><section className="w-full max-w-xl max-h-[90vh] overflow-auto rounded-3xl bg-background p-5 shadow-2xl"><div className="flex justify-between gap-4"><div><p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Your workout rhythm</p><h2 className="font-serif text-3xl font-bold">Make movement fit real life.</h2><p className="mt-1 text-sm text-muted-foreground">Step {setupStep} of 3</p></div><button data-testid="button-close-workout-setup" onClick={() => setSetupOpen(false)} className="h-9 rounded-lg border border-border px-3 text-sm font-bold">Close</button></div><div className="mt-5 grid gap-4">{setupStep === 1 && <><h3 className="font-serif text-xl font-bold">When do you want to move?</h3><div className="grid grid-cols-4 gap-2">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day, index) => <button data-testid={`button-setup-day-${index}`} key={day} onClick={() => setSetupValues(current => ({ ...current, daysOfWeek: current.daysOfWeek.includes(index) ? current.daysOfWeek.filter(value => value !== index) : [...current.daysOfWeek, index] }))} className={`rounded-xl border p-3 text-sm font-bold ${setupValues.daysOfWeek.includes(index) ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{day}</button>)}</div><label className="text-sm font-bold">How many sessions each week?<input data-testid="input-setup-frequency" type="number" min="1" max="7" value={setupValues.daysOfWeek.length} readOnly className="mt-1 block w-full rounded-lg border border-border bg-muted/30 p-2" /></label></>}{setupStep === 2 && <><h3 className="font-serif text-xl font-bold">What should the coach plan around?</h3><label className="text-sm font-bold">Session length<select data-testid="select-setup-duration" value={setupValues.sessionDurationMinutes} onChange={e => setSetupValues(current => ({ ...current, sessionDurationMinutes: Number(e.target.value) }))} className="mt-1 block w-full rounded-lg border border-border bg-background p-2">{[15,20,25,30,45,60].map(value => <option key={value} value={value}>{value} minutes</option>)}</select></label><label className="text-sm font-bold">Goals<input data-testid="input-setup-goals" value={setupValues.goals} onChange={e => setSetupValues(current => ({ ...current, goals: e.target.value }))} className="mt-1 block w-full rounded-lg border border-border p-2" placeholder="Strength together, mobility…" /></label><label className="text-sm font-bold">Equipment<input data-testid="input-setup-equipment" value={setupValues.equipment} onChange={e => setSetupValues(current => ({ ...current, equipment: e.target.value }))} className="mt-1 block w-full rounded-lg border border-border p-2" placeholder="Dumbbells, bands…" /></label></>}{setupStep === 3 && <><h3 className="font-serif text-xl font-bold">Anything to work around?</h3><label className="text-sm font-bold">Limitations or preferences<textarea data-testid="input-setup-limitations" value={setupValues.limitations} onChange={e => setSetupValues(current => ({ ...current, limitations: e.target.value }))} className="mt-1 block min-h-24 w-full rounded-lg border border-border p-2" placeholder="Knee-friendly options, injuries, dislikes…" /></label><label className="text-sm font-bold">Extra notes<textarea data-testid="input-setup-notes" value={setupValues.notes} onChange={e => setSetupValues(current => ({ ...current, notes: e.target.value }))} className="mt-1 block min-h-20 w-full rounded-lg border border-border p-2" /></label></>}</div><div className="mt-6 flex justify-between gap-3"><button data-testid="button-skip-workout-setup" onClick={() => { localStorage.setItem("homehub.workouts.experience.v1", "seen"); setSetupOpen(false); }} className="rounded-lg px-3 py-2 text-sm font-bold text-muted-foreground">Skip for now</button><div className="flex gap-2">{setupStep > 1 && <button onClick={() => setSetupStep(step => step - 1)} className="rounded-lg border border-border px-3 py-2 text-sm font-bold">Back</button>}{setupStep < 3 ? <button data-testid="button-next-workout-setup" onClick={() => setSetupStep(step => step + 1)} className="rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background">Next</button> : <button data-testid="button-save-workout-setup" onClick={saveSetup} disabled={updateWorkoutPreferences.isPending} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{updateWorkoutPreferences.isPending ? "Saving…" : "Save preferences"}</button>}</div></div></section></div>}
+    </main>
   );
 }

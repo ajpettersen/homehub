@@ -25,6 +25,16 @@ export const workoutsTable = pgTable("workouts", {
   memberId: integer("member_id").notNull().references(() => familyMembersTable.id, { onDelete: "restrict" }),
   title: text("title").notNull(),
   workoutDate: date("workout_date", { mode: "string" }).notNull(),
+  // workoutDate remains the compatibility/display date. Scheduled sessions use
+  // scheduledDate as their calendar anchor until they are completed.
+  scheduledDate: date("scheduled_date", { mode: "string" }),
+  scheduledTime: text("scheduled_time"),
+  scheduledTimezone: text("scheduled_timezone"),
+  sessionStatus: text("session_status").notNull().default("completed"),
+  sessionKind: text("session_kind").notNull().default("ad_hoc"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  followUpDismissedAt: timestamp("follow_up_dismissed_at", { withTimezone: true }),
+  rescheduledFromWorkoutId: integer("rescheduled_from_workout_id"),
   durationMinutes: integer("duration_minutes"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

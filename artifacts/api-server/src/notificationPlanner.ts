@@ -7,6 +7,10 @@ import {
   pushTokensTable,
   webPushSubscriptionsTable,
   userProfilesTable,
+  workoutParticipantsTable,
+  workoutPreferencesTable,
+  workoutsTable,
+  familyMembersTable,
 } from "@workspace/db/schema";
 import { and, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
 
@@ -248,6 +252,52 @@ export async function buildDueWebPushMessages(
           body: `Home maintenance due ${when}`,
           url: "/maintenance",
           tag: `maintenance-${task.id}-${today}`,
+        },
+      });
+    }
+  }
+
+  // Web-only: the following local day asks the household to confirm a session
+  // that was scheduled yesterday and is still unresolved. The key/tag follows
+  // the existing per-subscription/day dedupe convention.
+  const preferences = await db.select().from(workoutPreferencesTable)
+    .where(inArray(workoutPreferencesTable.householdId, householdIds));
+  const timezoneByHousehold = new Map(preferences.map(row => [row.householdId, row.timezone]));
+  const localDate = (timezone: string, offsetDays = 0) => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(now);
+    const value = (type: string) => parts.find(part => part.type === type)?.value;
+    const date = new Date(`${value("year")}-${value("month")}-${value("day")}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + offsetDays);
+    return date.toISOString().slice(0, 10);
+  };
+  const unresolved = await db.selectDistinct({
+    id: workoutsTable.id,
+    title: workoutsTable.title,
+    scheduledDate: workoutsTable.scheduledDate,
+    householdId: familyMembersTable.householdId,
+  }).from(workoutsTable)
+    .innerJoin(workoutParticipantsTable, eq(workoutsTable.id, workoutParticipantsTable.workoutId))
+    .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
+    .where(and(inArray(familyMembersTable.householdId, householdIds), eq(workoutsTable.sessionStatus, "scheduled"), isNull(workoutsTable.followUpDismissedAt)));
+  for (const workout of unresolved) {
+    const timezone = timezoneByHousehold.get(workout.householdId) ?? "UTC";
+    const todayForHousehold = localDate(timezone);
+    if (workout.scheduledDate !== localDate(timezone, -1)) continue;
+    for (const subscription of subscriptionsByHousehold.get(workout.householdId) ?? []) {
+      const key = `web:${subscription.id}:workout-follow-up:${workout.id}:${todayForHousehold}`;
+      if (sentKeys.has(key)) continue;
+      sentKeys.add(key);
+      messages.push({
+        subscriptionId: subscription.id,
+        endpoint: subscription.endpoint,
+        keys: subscription.keys,
+        payload: {
+          title: "Workout follow-up",
+          body: `Did you complete ${workout.title}?`,
+          url: "/workouts",
+          tag: `workout-follow-up-${workout.id}-${todayForHousehold}`,
         },
       });
     }

@@ -1,15 +1,27 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Pencil, X, Check, Search, BookOpen } from "lucide-react";
+import { Plus, Trash2, Pencil, Search, BookOpen } from "lucide-react";
 import {
   useListExerciseLibrary,
   useCreateLibraryExercise,
   useUpdateLibraryExercise,
   useDeleteLibraryExercise,
   getListExerciseLibraryQueryKey,
+  useGetExerciseHistory,
+  getGetExerciseHistoryQueryKey,
   MuscleGroup
 } from "@workspace/api-client-react";
 import { MUSCLE_GROUPS, formatMuscleGroup } from "./WorkoutHistory";
+
+function ExerciseHistory({ exerciseId, onUse }: { exerciseId: string; onUse: (exercise: any) => void }) {
+  const { data, isLoading, isError } = useGetExerciseHistory(exerciseId, { query: { queryKey: getGetExerciseHistoryQueryKey(exerciseId) } });
+  if (isLoading) return <p className="mt-2 text-xs text-muted-foreground">Loading completed appearances…</p>;
+  if (isError) return <p className="mt-2 text-xs text-destructive">Could not load exercise history.</p>;
+  return <div className="mt-3 rounded-lg bg-muted/40 p-3" data-testid={`exercise-history-${exerciseId}`}>
+    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{data?.completedAppearanceCount ?? 0} completed appearances</p>
+    {data?.appearances.length ? <><button data-testid={`button-add-history-exercise-${exerciseId}`} onClick={() => onUse(data.appearances[0].exercise)} className="mt-2 rounded-md text-xs font-bold text-primary hover:underline">+ Add latest setup to draft</button><div className="mt-2 space-y-2">{data.appearances.map(appearance => <div key={`${appearance.workoutId}-${appearance.exercise.id}`} className="border-t border-border/60 pt-2 text-xs"><div className="flex justify-between gap-2"><strong>{appearance.title}</strong><span className="whitespace-nowrap text-muted-foreground">{new Date(`${appearance.workoutDate}T12:00:00`).toLocaleDateString()}</span></div><p className="mt-1 text-muted-foreground">{appearance.participants.map(person => person.name).join(" + ")} · {[appearance.exercise.sets && `${appearance.exercise.sets} × ${appearance.exercise.reps ?? "—"}`, appearance.exercise.weightLbs && `${appearance.exercise.weightLbs} lb`, appearance.exercise.notes].filter(Boolean).join(" · ") || "Details not recorded"}</p></div>)}</div></> : <p className="mt-2 text-xs text-muted-foreground">No completed appearances yet.</p>}
+  </div>;
+}
 
 function LibraryExerciseForm({
   initial,
@@ -81,7 +93,7 @@ function LibraryExerciseForm({
   );
 }
 
-export function ExerciseLibrary() {
+export function ExerciseLibrary({ onUse }: { onUse?: (exercise: any) => void }) {
   const queryClient = useQueryClient();
   const { data: exercises, isLoading } = useListExerciseLibrary({
     query: { queryKey: getListExerciseLibraryQueryKey() }
@@ -93,6 +105,7 @@ export function ExerciseLibrary() {
 
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -241,15 +254,16 @@ export function ExerciseLibrary() {
                         />
                       </div>
                     ) : (
-                      <div key={ex.id} className="group flex items-center justify-between p-3 bg-card border border-border rounded-xl hover:border-primary/30 hover:shadow-sm transition-all">
-                        <div>
+                      <div key={ex.id} className="group p-3 bg-card border border-border rounded-xl hover:border-primary/30 hover:shadow-sm transition-all">
+                        <div className="flex items-center justify-between">
+                        <button data-testid={`button-exercise-history-${ex.id}`} onClick={() => setExpandedId(expandedId === ex.id ? null : ex.id)} className="flex-1 text-left">
                           <p className="font-bold text-sm">{ex.name}</p>
                           {ex.muscleGroups.length > 1 && (
                             <p className="text-xs text-muted-foreground mt-0.5">
                               Also: {ex.muscleGroups.slice(1).map(m => formatMuscleGroup(m)).join(", ")}
                             </p>
                           )}
-                        </div>
+                        </button>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                           <button onClick={() => { setEditingId(ex.id); setAdding(false); setErrorMsg(null); }}
                             className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors">
@@ -260,6 +274,8 @@ export function ExerciseLibrary() {
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
+                        </div>
+                        {expandedId === ex.id && <ExerciseHistory exerciseId={ex.id} onUse={exercise => onUse?.(exercise)} />}
                       </div>
                     )
                   ))}

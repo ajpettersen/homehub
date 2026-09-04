@@ -8,6 +8,13 @@
 import type { WorkoutWeekPlanItem } from './workoutWeekPlanItem';
 
 export interface SaveWorkoutWeekPlanInput {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  weekStart: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  timezone: string;
   /**
      * @minItems 1
      * @maxItems 7

@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Calendar, Settings, Sparkles, Check, RefreshCw } from "lucide-react";
-import { format, addDays } from "date-fns";
+import { Calendar, Settings, Sparkles, Check, RefreshCw, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
+import { format, addDays, addWeeks, startOfWeek } from "date-fns";
 import {
   useGetWorkoutPreferences,
   useUpdateWorkoutPreferences,
   useGenerateWorkoutWeekPlan,
   useSaveWorkoutWeekPlan,
+  useGetWorkoutSessions,
+  useCompleteWorkoutSession,
+  useUpdateWorkoutSessionStatus,
+  useRescheduleWorkoutSession,
   getGetWorkoutPreferencesQueryKey,
   getGetWorkoutsQueryKey,
+  getGetWorkoutSessionsQueryKey,
+  getGetOverdueWorkoutSessionsQueryKey,
   WorkoutPreferencesInput,
   WorkoutWeekPlanItem,
   WorkoutDraft
@@ -16,6 +22,14 @@ import {
 import { EditableDraftWorkout } from "./EditableDraftWorkout";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const currentMonday = () => format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
+
+function isMondayWeekStart(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T12:00:00`);
+  return !Number.isNaN(date.getTime()) && format(date, "yyyy-MM-dd") === value && date.getDay() === 1;
+}
 
 export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participantIds: string[], onPlanSaved: () => void }) {
   const queryClient = useQueryClient();
@@ -26,6 +40,9 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
   const updatePref = useUpdateWorkoutPreferences();
   const generatePlan = useGenerateWorkoutWeekPlan();
   const savePlan = useSaveWorkoutWeekPlan();
+  const completeSession = useCompleteWorkoutSession();
+  const updateSessionStatus = useUpdateWorkoutSessionStatus();
+  const rescheduleSession = useRescheduleWorkoutSession();
 
   const [preferences, setPreferences] = useState<WorkoutPreferencesInput>({
     daysOfWeek: [1, 3, 5],
@@ -39,9 +56,12 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
   const [showSettings, setShowSettings] = useState(false);
   const [planItems, setPlanItems] = useState<WorkoutWeekPlanItem[] | null>(null);
   const [saving, setSaving] = useState(false);
+  const [weekStart, setWeekStart] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (prefData) {
+      if (!weekStart) setWeekStart(isMondayWeekStart(prefData.currentWeekStart) ? prefData.currentWeekStart : currentMonday());
       setPreferences({
         daysOfWeek: prefData.daysOfWeek || [],
         goals: prefData.goals || "",
@@ -53,6 +73,27 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
       });
     }
   }, [prefData]);
+  const validWeekStart = isMondayWeekStart(weekStart) ? weekStart : currentMonday();
+  const sessionsQuery = useGetWorkoutSessions(
+    { weekStart: validWeekStart },
+    { query: { queryKey: getGetWorkoutSessionsQueryKey({ weekStart: validWeekStart }) } }
+  );
+  const invalidateSessions = () => {
+    queryClient.invalidateQueries({ queryKey: getGetWorkoutSessionsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetWorkoutSessionsQueryKey({ weekStart: validWeekStart }), exact: true });
+    queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetOverdueWorkoutSessionsQueryKey() });
+  };
+  const selectedSession = sessionsQuery.data?.find(session => session.id === selectedSessionId);
+  const resolve = (id: string, action: "complete" | "skipped" | "cancelled" | "dismissed") => {
+    if (action === "complete") completeSession.mutate({ id, data: {} }, { onSuccess: invalidateSessions });
+    else updateSessionStatus.mutate({ id, data: { status: action } }, { onSuccess: invalidateSessions });
+  };
+  const reschedule = (id: string) => {
+    const scheduledDate = window.prompt("Move this session to (YYYY-MM-DD):");
+    if (!scheduledDate) return;
+    rescheduleSession.mutate({ id, data: { scheduledDate, scheduledTimezone: prefData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone } }, { onSuccess: invalidateSessions });
+  };
 
   const handleSavePref = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,10 +127,12 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
     try {
       await savePlan.mutateAsync({
         data: {
-          items: planItems
+          items: planItems,
+          weekStart: validWeekStart,
+          timezone: preferences.timezone
         }
       });
-      queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+      invalidateSessions();
       setPlanItems(null);
       onPlanSaved();
     } catch (e) {
@@ -119,6 +162,20 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
 
   return (
     <div className="space-y-6">
+      <section className="bg-card border border-border rounded-3xl p-4 sm:p-6 shadow-sm" data-testid="weekly-plan-calendar">
+        <div className="flex flex-col sm:flex-row justify-between gap-4 sm:items-start">
+          <div><p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Shared schedule</p><h2 className="font-serif font-bold text-2xl">Make room for moving.</h2><p className="text-sm text-muted-foreground">Planned sessions and completed history, side by side.</p></div>
+          <div className="flex items-center gap-2"><button data-testid="button-previous-workout-week" onClick={() => setWeekStart(format(addWeeks(new Date(`${validWeekStart}T12:00:00`), -1), "yyyy-MM-dd"))} className="p-2 border border-border rounded-lg"><ChevronLeft className="w-4 h-4" /></button><strong className="text-xs min-w-36 text-center">{`${format(new Date(`${validWeekStart}T12:00:00`), "MMM d")} – ${format(addDays(new Date(`${validWeekStart}T12:00:00`), 6), "MMM d")}`}</strong><button data-testid="button-next-workout-week" onClick={() => setWeekStart(format(addWeeks(new Date(`${validWeekStart}T12:00:00`), 1), "yyyy-MM-dd"))} className="p-2 border border-border rounded-lg"><ChevronRight className="w-4 h-4" /></button></div>
+        </div>
+        <div className="mt-5 flex gap-2 overflow-x-auto pb-2 snap-x">
+          {Array.from({ length: 7 }, (_, day) => {
+            const date = format(addDays(new Date(`${validWeekStart}T12:00:00`), day), "yyyy-MM-dd");
+            const daySessions = sessionsQuery.data?.filter(item => (item.scheduledDate || item.workoutDate) === date) ?? [];
+            return <div data-testid={`plan-day-${date}`} key={date} className="snap-start shrink-0 w-32 min-h-28 p-3 text-left rounded-xl border border-border bg-background"><span className="block text-[10px] uppercase text-muted-foreground">{format(new Date(`${date}T12:00:00`), "EEE")}</span><strong className="font-serif text-xl">{format(new Date(`${date}T12:00:00`), "d")}</strong>{daySessions.length ? <div className="mt-2 space-y-1">{daySessions.map(session => <button data-testid={`button-plan-session-${session.id}`} key={session.id} onClick={() => setSelectedSessionId(session.id)} className={`block w-full rounded p-1 text-left text-[10px] font-bold ${selectedSessionId === session.id ? "bg-primary text-primary-foreground" : session.sessionStatus === "completed" ? "bg-green-100 text-green-800" : session.sessionStatus === "scheduled" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}><span className="block uppercase">{session.sessionStatus === "missed" ? "Needs confirmation" : session.sessionStatus}</span><span className="line-clamp-2">{session.title}</span></button>)}</div> : <span className="mt-4 block text-[10px] text-muted-foreground">Rest / open</span>}</div>;
+          })}
+        </div>
+        {sessionsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading this week…</p> : selectedSession ? <div className="mt-3 p-4 rounded-xl bg-muted/50" data-testid="workout-session-detail"><div className="flex justify-between gap-3"><div><span className="text-xs font-bold text-primary uppercase">{selectedSession.sessionStatus}</span><h3 className="font-serif font-bold text-xl">{selectedSession.title}</h3><p className="text-sm text-muted-foreground">{selectedSession.participants.map(p => p.name).join(" + ")} · {selectedSession.durationMinutes ?? "—"} min</p></div><Clock3 className="w-5 h-5 text-muted-foreground" /></div><div className="mt-3 flex flex-wrap gap-2">{selectedSession.sessionStatus === "scheduled" && <><button data-testid="button-complete-session" onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Complete</button><button data-testid="button-reschedule-session" onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button data-testid="button-skip-session" onClick={() => resolve(selectedSession.id, "skipped")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Skip</button></>}{selectedSession.sessionStatus === "missed" && <><button onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Yes, completed it</button><button onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button onClick={() => resolve(selectedSession.id, "dismissed")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Dismiss</button></>}</div></div> : <p className="mt-3 text-sm text-muted-foreground">Select a day to see its workout details.</p>}
+      </section>
       {!planItems ? (
         <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
           <div className="flex justify-between items-start mb-6">
@@ -167,8 +224,8 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
                   </div>
                   <div>
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Session Duration (mins)</label>
-                    <input type="number" value={preferences.sessionDurationMinutes} onChange={e => setPreferences({...preferences, sessionDurationMinutes: parseInt(e.target.value) || 45})}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+                    <select data-testid="select-workout-duration" value={preferences.sessionDurationMinutes} onChange={e => setPreferences({...preferences, sessionDurationMinutes: parseInt(e.target.value)})}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">{[15,20,25,30,45,60].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}</select>
                   </div>
                   <div>
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Equipment</label>

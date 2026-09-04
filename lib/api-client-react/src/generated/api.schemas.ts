@@ -55,6 +55,25 @@ export interface MaintenanceRecommendationResult {
   recommendations: MaintenanceRecommendation[];
 }
 
+export type WorkoutSessionStatus = typeof WorkoutSessionStatus[keyof typeof WorkoutSessionStatus];
+
+
+export const WorkoutSessionStatus = {
+  scheduled: 'scheduled',
+  completed: 'completed',
+  skipped: 'skipped',
+  missed: 'missed',
+  cancelled: 'cancelled',
+} as const;
+
+export type WorkoutSessionKind = typeof WorkoutSessionKind[keyof typeof WorkoutSessionKind];
+
+
+export const WorkoutSessionKind = {
+  weekly_plan: 'weekly_plan',
+  ad_hoc: 'ad_hoc',
+} as const;
+
 export interface WorkoutParticipant {
   id: string;
   name: string;
@@ -68,6 +87,23 @@ export interface Workout {
   participantIds: string[];
   participants: WorkoutParticipant[];
   workoutDate: string;
+  /** @nullable */
+  scheduledDate: string | null;
+  /**
+     * @nullable
+     * @pattern ^\d{2}:\d{2}$
+     */
+  scheduledTime: string | null;
+  /** @nullable */
+  scheduledTimezone: string | null;
+  sessionStatus: WorkoutSessionStatus;
+  sessionKind: WorkoutSessionKind;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  followUpDismissedAt: string | null;
+  /** @nullable */
+  rescheduledFromWorkoutId: string | null;
   /**
      * @minLength 1
      * @maxLength 160
@@ -136,6 +172,25 @@ export interface Exercise {
   notes?: string | null;
 }
 
+export type WorkoutDetailSessionStatus = typeof WorkoutDetailSessionStatus[keyof typeof WorkoutDetailSessionStatus];
+
+
+export const WorkoutDetailSessionStatus = {
+  scheduled: 'scheduled',
+  completed: 'completed',
+  skipped: 'skipped',
+  missed: 'missed',
+  cancelled: 'cancelled',
+} as const;
+
+export type WorkoutDetailSessionKind = typeof WorkoutDetailSessionKind[keyof typeof WorkoutDetailSessionKind];
+
+
+export const WorkoutDetailSessionKind = {
+  weekly_plan: 'weekly_plan',
+  ad_hoc: 'ad_hoc',
+} as const;
+
 export interface WorkoutDetail {
   id: string;
   memberId: string;
@@ -143,6 +198,23 @@ export interface WorkoutDetail {
   participantIds: string[];
   participants: WorkoutParticipant[];
   workoutDate: string;
+  /** @nullable */
+  scheduledDate: string | null;
+  /**
+     * @nullable
+     * @pattern ^\d{2}:\d{2}$
+     */
+  scheduledTime: string | null;
+  /** @nullable */
+  scheduledTimezone: string | null;
+  sessionStatus: WorkoutDetailSessionStatus;
+  sessionKind: WorkoutDetailSessionKind;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  followUpDismissedAt: string | null;
+  /** @nullable */
+  rescheduledFromWorkoutId: string | null;
   /**
      * @minLength 1
      * @maxLength 160
@@ -237,6 +309,83 @@ export interface CreateExerciseInput {
   durationSeconds?: number | null;
   /** @maxLength 500 */
   notes?: string | null;
+}
+
+export interface WorkoutSessionInput {
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  participantIds: string[];
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  title: string;
+  scheduledDate: string;
+  /**
+     * @nullable
+     * @pattern ^\d{2}:\d{2}$
+     */
+  scheduledTime?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  scheduledTimezone: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     * @nullable
+     */
+  durationMinutes?: number | null;
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  notes?: string | null;
+  /** @maxItems 30 */
+  exercises?: CreateExerciseInput[];
+}
+
+export interface WorkoutCompletionInput {
+  /** @nullable */
+  completedAt?: string | null;
+}
+
+export type WorkoutSessionStatusInputStatus = typeof WorkoutSessionStatusInputStatus[keyof typeof WorkoutSessionStatusInputStatus];
+
+
+export const WorkoutSessionStatusInputStatus = {
+  skipped: 'skipped',
+  cancelled: 'cancelled',
+  dismissed: 'dismissed',
+} as const;
+
+export interface WorkoutSessionStatusInput {
+  status: WorkoutSessionStatusInputStatus;
+}
+
+export interface WorkoutRescheduleInput {
+  scheduledDate: string;
+  /**
+     * @nullable
+     * @pattern ^\d{2}:\d{2}$
+     */
+  scheduledTime?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  scheduledTimezone: string;
+}
+
+export interface ExerciseAppearance {
+  workoutId: string;
+  workoutDate: string;
+  title: string;
+  participants: WorkoutParticipant[];
+  exercise: Exercise;
 }
 
 export interface RecommendWorkoutInput {
@@ -423,6 +572,13 @@ export interface WorkoutWeekPlan {
 }
 
 export interface SaveWorkoutWeekPlanInput {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  weekStart: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  timezone: string;
   /**
      * @minItems 1
      * @maxItems 7
@@ -1421,6 +1577,17 @@ export type DecideHouseholdJoinRequest200 = {
 
 export type GetWorkoutsParams = {
 memberId?: string;
+};
+
+export type GetWorkoutSessionsParams = {
+weekStart: string;
+memberId?: string;
+};
+
+export type GetExerciseHistory200 = {
+  exerciseId: string;
+  completedAppearanceCount: number;
+  appearances: ExerciseAppearance[];
 };
 
 export type GetMaintenanceTasksParams = {

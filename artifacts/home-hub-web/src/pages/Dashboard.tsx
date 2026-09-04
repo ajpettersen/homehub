@@ -1,11 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useGetDashboard, getGetDashboardQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useCompleteWorkoutSession, useGetDashboard, useGetOverdueWorkoutSessions, useUpdateWorkoutSessionStatus,
+  getGetDashboardQueryKey, getGetOverdueWorkoutSessionsQueryKey, getGetWorkoutsQueryKey, getGetWorkoutSessionsQueryKey,
+} from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle2, Clock, Utensils, AlertTriangle, CheckSquare,
-  Sparkles, Send, Paperclip, X, Loader2, Brain, ChevronDown,
+  Sparkles, Send, Paperclip, X, Loader2, Brain, ChevronDown, Bell, Check,
 } from "lucide-react";
 import { format } from "date-fns";
 import { usePreferences } from "@/context/PreferencesContext";
@@ -358,11 +362,37 @@ function HouseholdChat() {
   );
 }
 
+function overdueWorkoutQuestion(scheduledDate: string | null, workoutDate: string): string {
+  const date = scheduledDate ?? workoutDate;
+  const scheduled = new Date(`${date}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysAgo = Math.max(1, Math.round((today.getTime() - scheduled.getTime()) / 86_400_000));
+
+  return daysAgo === 1
+    ? "Did you complete your workout yesterday?"
+    : `Did you complete your workout ${daysAgo} days ago?`;
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const { preferences } = usePreferences();
+  const queryClient = useQueryClient();
   const { data: dashboard, isLoading } = useGetDashboard({ query: { queryKey: getGetDashboardQueryKey() } });
+  const { data: overdueSessions, isLoading: overdueLoading } = useGetOverdueWorkoutSessions({
+    query: { queryKey: getGetOverdueWorkoutSessionsQueryKey() },
+  });
+  const completeSession = useCompleteWorkoutSession();
+  const updateSessionStatus = useUpdateWorkoutSessionStatus();
+  const overdueWorkout = overdueSessions?.[0];
+  const isUpdatingOverdueWorkout = completeSession.isPending || updateSessionStatus.isPending;
+  const invalidateWorkoutViews = () => {
+    queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetOverdueWorkoutSessionsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetWorkoutSessionsQueryKey() });
+  };
 
   if (isLoading) {
     return <div className="p-8 animate-pulse flex flex-col gap-6">
@@ -383,6 +413,57 @@ export default function Dashboard() {
         </h1>
         <p className="text-muted-foreground text-lg">Here's what's happening around the house today.</p>
       </div>
+
+      {/* Workout follow-up */}
+      {overdueLoading ? (
+        <div className="h-36 rounded-2xl bg-muted animate-pulse" data-testid="loading-overdue-workout" />
+      ) : overdueWorkout ? (
+        <aside className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 to-amber-100/50 p-5 shadow-sm" data-testid={`overdue-workout-${overdueWorkout.id}`}>
+          <div className="flex gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <Bell className="w-4 h-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Workout check-in</p>
+              <h2 className="font-serif font-bold text-xl mt-0.5" data-testid={`text-overdue-workout-question-${overdueWorkout.id}`}>
+                {overdueWorkoutQuestion(overdueWorkout.scheduledDate, overdueWorkout.workoutDate)}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {overdueWorkout.title} — a quick answer keeps your shared history up to date.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  data-testid={`button-complete-overdue-workout-${overdueWorkout.id}`}
+                  onClick={() => completeSession.mutate({ id: overdueWorkout.id, data: {} }, { onSuccess: invalidateWorkoutViews })}
+                  disabled={isUpdatingOverdueWorkout}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background hover:bg-foreground/90 disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" /> Completed
+                </button>
+                <button
+                  data-testid={`button-skip-overdue-workout-${overdueWorkout.id}`}
+                  onClick={() => updateSessionStatus.mutate({ id: overdueWorkout.id, data: { status: "skipped" } }, { onSuccess: invalidateWorkoutViews })}
+                  disabled={isUpdatingOverdueWorkout}
+                  className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold hover:bg-muted disabled:opacity-50"
+                >
+                  Not completed
+                </button>
+                <button
+                  data-testid={`button-dismiss-overdue-workout-${overdueWorkout.id}`}
+                  onClick={() => updateSessionStatus.mutate({ id: overdueWorkout.id, data: { status: "dismissed" } }, { onSuccess: invalidateWorkoutViews })}
+                  disabled={isUpdatingOverdueWorkout}
+                  className="rounded-lg px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50"
+                >
+                  Dismiss for now
+                </button>
+                <Link href="/workouts" data-testid={`link-overdue-workout-details-${overdueWorkout.id}`} className="ml-auto text-xs font-semibold text-primary hover:underline underline-offset-4">
+                  View workout details →
+                </Link>
+              </div>
+            </div>
+          </div>
+        </aside>
+      ) : null}
 
       {/* Summary cards */}
       <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 ${preferences.tabs.home.focus === "assistant" ? "order-2" : "order-1"}`}>

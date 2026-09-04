@@ -1,26 +1,34 @@
 import React, { useState, useEffect, useRef } from "react";
+import { format, startOfWeek } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
-import { Send, User, Sparkles, Activity } from "lucide-react";
+import { Send, User, Sparkles, Activity, CalendarDays } from "lucide-react";
 import {
   useGetWorkoutCoachConversation,
   useSendWorkoutCoachMessage,
   useCreateWorkout,
   useAddExercise,
+  useScheduleWorkoutSession,
   useGetWorkoutPreferences,
   getGetWorkoutCoachConversationQueryKey,
   getGetWorkoutsQueryKey,
+  getGetWorkoutSessionsQueryKey,
+  getGetOverdueWorkoutSessionsQueryKey,
   getGetWorkoutPreferencesQueryKey,
   WorkoutCoachMessage,
-  WorkoutDraft
+  WorkoutDraft, DraftExercise
 } from "@workspace/api-client-react";
 import { EditableDraftWorkout } from "./EditableDraftWorkout";
 
 export function WorkoutCoach({
   participantIds,
-  onWorkoutLogged
+  onWorkoutLogged,
+  libraryExercise,
+  onLibraryExerciseAdded
 }: {
   participantIds: string[];
   onWorkoutLogged: () => void;
+  libraryExercise?: DraftExercise | null;
+  onLibraryExerciseAdded?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { data: conversation, isLoading } = useGetWorkoutCoachConversation({
@@ -29,6 +37,7 @@ export function WorkoutCoach({
   const sendMessage = useSendWorkoutCoachMessage();
   const createWorkout = useCreateWorkout();
   const addExercise = useAddExercise();
+  const scheduleSession = useScheduleWorkoutSession();
   const { data: preferences } = useGetWorkoutPreferences({
     query: { queryKey: getGetWorkoutPreferencesQueryKey() }
   });
@@ -36,11 +45,24 @@ export function WorkoutCoach({
   const [input, setInput] = useState("");
   const [draft, setDraft] = useState<WorkoutDraft | null>(null);
   const [isLogging, setIsLogging] = useState(false);
+  const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null);
+  const [workoutDate, setWorkoutDate] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation?.messages, draft, sendMessage.isPending]);
+  useEffect(() => {
+    if (preferences?.currentLocalDate && !workoutDate) setWorkoutDate(preferences.currentLocalDate);
+  }, [preferences?.currentLocalDate, workoutDate]);
+  useEffect(() => {
+    if (!libraryExercise) return;
+    setDraft(current => current ? { ...current, exercises: [...current.exercises, libraryExercise] } : {
+      title: "Workout draft", durationMinutes: preferences?.sessionDurationMinutes ?? 30, notes: null,
+      rationale: "Started from a movement in your completed history.", exercises: [libraryExercise]
+    });
+    onLibraryExerciseAdded?.();
+  }, [libraryExercise, onLibraryExerciseAdded, preferences?.sessionDurationMinutes]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,12 +70,14 @@ export function WorkoutCoach({
 
     const text = input;
     setInput("");
+    setOptimisticMessage(text);
     
     sendMessage.mutate(
       { data: { content: text, participantIds } },
       {
         onSuccess: (data) => {
           queryClient.invalidateQueries({ queryKey: getGetWorkoutCoachConversationQueryKey() });
+          setOptimisticMessage(null);
           if (data.draft) {
             setDraft(data.draft);
           } else {
@@ -62,6 +86,7 @@ export function WorkoutCoach({
         },
         onError: () => {
           setInput(text);
+          setOptimisticMessage(null);
         }
       }
     );
@@ -72,17 +97,26 @@ export function WorkoutCoach({
     setIsLogging(true);
     
     try {
-      const newWorkout = await createWorkout.mutateAsync({
-        data: {
+      const isFuture = workoutDate > (preferences?.currentLocalDate ?? "");
+      if (isFuture) {
+        await scheduleSession.mutateAsync({ data: {
           participantIds,
           title: draft.title,
-          workoutDate: preferences?.currentLocalDate ?? new Date().toISOString().slice(0, 10),
+          scheduledDate: workoutDate,
+          scheduledTimezone: preferences?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
           durationMinutes: draft.durationMinutes,
           notes: draft.notes || null,
-        }
-      });
-
-      for (const ex of draft.exercises) {
+          exercises: draft.exercises.filter(ex => ex.name).map(ex => ({
+            name: ex.name, muscleGroups: ex.muscleGroups, sets: ex.sets, reps: ex.reps,
+            weightLbs: ex.weightLbs, durationSeconds: ex.durationSeconds, notes: ex.notes
+          }))
+        }});
+      } else {
+        const newWorkout = await createWorkout.mutateAsync({ data: {
+          participantIds, title: draft.title, workoutDate,
+          durationMinutes: draft.durationMinutes, notes: draft.notes || null,
+        }});
+        for (const ex of draft.exercises) {
         if (!ex.name) continue;
         await addExercise.mutateAsync({
           id: newWorkout.id,
@@ -97,8 +131,14 @@ export function WorkoutCoach({
           }
         });
       }
+      }
 
       queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetWorkoutSessionsQueryKey() });
+      if (/^\d{4}-\d{2}-\d{2}$/.test(workoutDate)) {
+        queryClient.invalidateQueries({ queryKey: getGetWorkoutSessionsQueryKey({ weekStart: format(startOfWeek(new Date(`${workoutDate}T12:00:00`), { weekStartsOn: 1 }), "yyyy-MM-dd") }), exact: true });
+      }
+      queryClient.invalidateQueries({ queryKey: getGetOverdueWorkoutSessionsQueryKey() });
       setDraft(null);
       onWorkoutLogged();
     } catch (e) {
@@ -161,6 +201,12 @@ export function WorkoutCoach({
             </div>
           ))
         )}
+        {optimisticMessage && (
+          <div className="flex gap-3 max-w-[85%] ml-auto flex-row-reverse" data-testid="status-pending-coach-message">
+            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0"><User className="w-4 h-4" /></div>
+            <div className="p-3 rounded-2xl text-sm bg-primary text-primary-foreground rounded-tr-sm">{optimisticMessage}</div>
+          </div>
+        )}
 
         {sendMessage.isPending && (
           <div className="flex gap-3 max-w-[85%]">
@@ -176,12 +222,16 @@ export function WorkoutCoach({
         {draft && (
           <div className="max-w-[100%] pt-2 animate-in slide-in-from-bottom-2">
             <EditableDraftWorkout draft={draft} onUpdate={setDraft} />
+            <label className="mt-3 block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Workout date
+              <input data-testid="input-draft-workout-date" type="date" value={workoutDate} onChange={e => setWorkoutDate(e.target.value)} className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground" />
+            </label>
             <button
               onClick={handleLogDraft}
               disabled={isLogging}
               className="w-full mt-3 py-3 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {isLogging ? "Logging..." : <><Activity className="w-5 h-5" /> Log This Workout</>}
+              {isLogging ? "Saving..." : workoutDate > (preferences?.currentLocalDate ?? "") ? <><CalendarDays className="w-5 h-5" /> Add to weekly schedule</> : <><Activity className="w-5 h-5" /> Log completed workout</>}
             </button>
             <button
               onClick={() => setDraft(null)}
@@ -200,6 +250,7 @@ export function WorkoutCoach({
           <input
             type="text"
             value={input}
+            data-testid="input-coach-message"
             onChange={(e) => setInput(e.target.value)}
             disabled={sendMessage.isPending}
             placeholder="E.g., I have dumbbells and 30 mins for chest & back..."
@@ -207,6 +258,7 @@ export function WorkoutCoach({
           />
           <button
             type="submit"
+            data-testid="button-send-coach-message"
             disabled={sendMessage.isPending || !input.trim()}
             className="absolute right-1.5 top-1.5 bottom-1.5 w-10 flex items-center justify-center bg-primary text-primary-foreground rounded-full hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >

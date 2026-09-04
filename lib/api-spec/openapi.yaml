@@ -1269,6 +1269,123 @@ paths:
               schema:
                 $ref: "#/components/schemas/Exercise"
 
+  /workout-sessions:
+    get:
+      operationId: getWorkoutSessions
+      tags: [workouts]
+      summary: List scheduled and completed workout sessions for a week
+      parameters:
+        - name: weekStart
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: memberId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Household workout sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Workout" }
+    post:
+      operationId: scheduleWorkoutSession
+      tags: [workouts]
+      summary: Save a future workout session draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkoutSessionInput" }
+      responses:
+        "201":
+          description: Scheduled workout session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkoutDetail" }
+
+  /workout-sessions/overdue:
+    get:
+      operationId: getOverdueWorkoutSessions
+      tags: [workouts]
+      summary: List scheduled sessions overdue for household confirmation
+      responses:
+        "200":
+          description: Overdue sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Workout" }
+
+  /workout-sessions/{id}/complete:
+    post:
+      operationId: completeWorkoutSession
+      tags: [workouts]
+      summary: Complete a scheduled workout session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkoutCompletionInput" }
+      responses:
+        "200":
+          description: Completed workout
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkoutDetail" }
+
+  /workout-sessions/{id}/status:
+    post:
+      operationId: updateWorkoutSessionStatus
+      tags: [workouts]
+      summary: Skip, cancel, or dismiss a workout session follow-up
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkoutSessionStatusInput" }
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkoutDetail" }
+
+  /workout-sessions/{id}/reschedule:
+    post:
+      operationId: rescheduleWorkoutSession
+      tags: [workouts]
+      summary: Reschedule a future workout session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkoutRescheduleInput" }
+      responses:
+        "200":
+          description: Rescheduled session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkoutDetail" }
+
   /workout-exercises/{id}:
     delete:
       operationId: deleteExercise
@@ -1355,6 +1472,31 @@ paths:
           description: Deleted
         "409":
           description: Exercise is referenced by a workout
+
+  /exercise-library/{id}/history:
+    get:
+      operationId: getExerciseHistory
+      tags: [workouts]
+      summary: List completed workouts in which a library exercise appeared
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Exercise history and transparent frequency signal
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exerciseId, appearances, completedAppearanceCount]
+                properties:
+                  exerciseId: { type: string }
+                  completedAppearanceCount: { type: integer }
+                  appearances:
+                    type: array
+                    items: { $ref: "#/components/schemas/ExerciseAppearance" }
 
   /ai/workout-draft:
     post:
@@ -1827,6 +1969,14 @@ components:
         workoutDate:
           type: string
           format: date
+        scheduledDate: { type: [string, "null"], format: date }
+        scheduledTime: { type: [string, "null"], pattern: '^\d{2}:\d{2}$' }
+        scheduledTimezone: { type: [string, "null"] }
+        sessionStatus: { type: string, enum: [scheduled, completed, skipped, missed, cancelled] }
+        sessionKind: { type: string, enum: [weekly_plan, ad_hoc] }
+        completedAt: { type: [string, "null"], format: date-time }
+        followUpDismissedAt: { type: [string, "null"], format: date-time }
+        rescheduledFromWorkoutId: { type: [string, "null"] }
         title:
           type: string
           minLength: 1
@@ -1852,6 +2002,14 @@ components:
         - participantIds
         - participants
         - workoutDate
+        - scheduledDate
+        - scheduledTime
+        - scheduledTimezone
+        - sessionStatus
+        - sessionKind
+        - completedAt
+        - followUpDismissedAt
+        - rescheduledFromWorkoutId
         - title
         - exerciseCount
         - createdAt
@@ -1923,6 +2081,14 @@ components:
         workoutDate:
           type: string
           format: date
+        scheduledDate: { type: [string, "null"], format: date }
+        scheduledTime: { type: [string, "null"], pattern: '^\d{2}:\d{2}$' }
+        scheduledTimezone: { type: [string, "null"] }
+        sessionStatus: { type: string, enum: [scheduled, completed, skipped, missed, cancelled] }
+        sessionKind: { type: string, enum: [weekly_plan, ad_hoc] }
+        completedAt: { type: [string, "null"], format: date-time }
+        followUpDismissedAt: { type: [string, "null"], format: date-time }
+        rescheduledFromWorkoutId: { type: [string, "null"] }
         title:
           type: string
           minLength: 1
@@ -1950,6 +2116,14 @@ components:
         - participantIds
         - participants
         - workoutDate
+        - scheduledDate
+        - scheduledTime
+        - scheduledTimezone
+        - sessionStatus
+        - sessionKind
+        - completedAt
+        - followUpDismissedAt
+        - rescheduledFromWorkoutId
         - title
         - exercises
         - createdAt
@@ -2000,6 +2174,38 @@ components:
         durationMinutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
         notes: { type: [string, "null"], maxLength: 4000 }
 
+    WorkoutSessionInput:
+      type: object
+      required: [participantIds, title, scheduledDate, scheduledTimezone]
+      properties:
+        participantIds: { type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: { type: string } }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        scheduledDate: { type: string, format: date }
+        scheduledTime: { type: [string, "null"], pattern: '^\d{2}:\d{2}$' }
+        scheduledTimezone: { type: string, minLength: 1, maxLength: 100 }
+        durationMinutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
+        notes: { type: [string, "null"], maxLength: 4000 }
+        exercises: { type: array, maxItems: 30, items: { $ref: "#/components/schemas/CreateExerciseInput" } }
+
+    WorkoutCompletionInput:
+      type: object
+      properties:
+        completedAt: { type: [string, "null"], format: date-time }
+
+    WorkoutSessionStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [skipped, cancelled, dismissed] }
+
+    WorkoutRescheduleInput:
+      type: object
+      required: [scheduledDate, scheduledTimezone]
+      properties:
+        scheduledDate: { type: string, format: date }
+        scheduledTime: { type: [string, "null"], pattern: '^\d{2}:\d{2}$' }
+        scheduledTimezone: { type: string, minLength: 1, maxLength: 100 }
+
     CreateExerciseInput:
       type: object
       properties:
@@ -2039,6 +2245,18 @@ components:
           maxLength: 500
       required:
         - name
+
+    ExerciseAppearance:
+      type: object
+      required: [workoutId, workoutDate, title, participants, exercise]
+      properties:
+        workoutId: { type: string }
+        workoutDate: { type: string, format: date }
+        title: { type: string }
+        participants:
+          type: array
+          items: { $ref: "#/components/schemas/WorkoutParticipant" }
+        exercise: { $ref: "#/components/schemas/Exercise" }
 
     RecommendWorkoutInput:
       type: object
@@ -2243,8 +2461,10 @@ components:
     SaveWorkoutWeekPlanInput:
       type: object
       additionalProperties: false
-      required: [items]
+      required: [weekStart, timezone, items]
       properties:
+        weekStart: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        timezone: { type: string, minLength: 1, maxLength: 100 }
         items:
           type: array
           minItems: 1

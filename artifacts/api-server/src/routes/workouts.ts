@@ -14,17 +14,21 @@ import {
   AddExerciseBody,
   CreateLibraryExerciseBody,
   CreateWorkoutBody,
+  CompleteWorkoutSessionBody,
   DraftWorkoutBody,
   DraftWorkoutResponse,
   GenerateWorkoutWeekPlanBody,
   GenerateWorkoutWeekPlanResponse,
   SaveWorkoutWeekPlanBody,
   SendWorkoutCoachMessageBody,
+  ScheduleWorkoutSessionBody,
+  UpdateWorkoutSessionStatusBody,
+  RescheduleWorkoutSessionBody,
   UpdateLibraryExerciseBody,
   UpdateWorkoutBody,
   UpdateWorkoutPreferencesBody,
 } from "@workspace/api-zod";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
@@ -42,6 +46,13 @@ function dateOnly(value: unknown): string | null {
   const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
   if (!match || Number.isNaN(Date.parse(`${match[1]}T00:00:00Z`))) return null;
   return match[1];
+}
+
+function exactDateOnlyString(value: unknown): string | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) return null;
+  return value;
 }
 
 function normalizeName(value: string): string {
@@ -130,6 +141,14 @@ async function formatWorkout(workout: typeof workoutsTable.$inferSelect, include
     participantIds: participants.map(participant => participant.id),
     participants,
     workoutDate: workout.workoutDate,
+    scheduledDate: workout.scheduledDate,
+    scheduledTime: workout.scheduledTime,
+    scheduledTimezone: workout.scheduledTimezone,
+    sessionStatus: workout.sessionStatus,
+    sessionKind: workout.sessionKind,
+    completedAt: workout.completedAt?.toISOString() ?? null,
+    followUpDismissedAt: workout.followUpDismissedAt?.toISOString() ?? null,
+    rescheduledFromWorkoutId: workout.rescheduledFromWorkoutId ? String(workout.rescheduledFromWorkoutId) : null,
     title: workout.title,
     durationMinutes: workout.durationMinutes,
     notes: workout.notes,
@@ -254,6 +273,7 @@ router.post("/workouts", async (req, res) => {
         workoutDate,
         durationMinutes: parsed.data.durationMinutes ?? null,
         notes: parsed.data.notes ?? null,
+        completedAt: new Date(),
       }).returning();
       await tx.insert(workoutParticipantsTable).values(members.map(member => ({
         workoutId: created.id,
@@ -291,6 +311,9 @@ router.put("/workouts/:id", async (req, res) => {
     const scope = getApprovedHouseholdScope(res);
     const existing = await authorizedWorkout(workoutId, scope.householdId);
     if (!existing) return res.status(404).json({ error: "Workout not found" });
+    if (existing.sessionStatus === "scheduled") {
+      return badRequest(res, "Scheduled workouts must be changed through the session reschedule endpoint");
+    }
     const replacementMembers = parsed.data.participantIds
       ? await validateAdultIds(db, parsed.data.participantIds, scope.householdId)
       : null;
@@ -372,6 +395,196 @@ router.delete("/workouts/:id", async (req, res) => {
   }
 });
 
+router.get("/workout-sessions", async (req, res) => {
+  const weekStart = dateOnly(req.query.weekStart);
+  if (!weekStart) return badRequest(res, "weekStart must be a date-only value");
+  const memberId = req.query.memberId === undefined ? null : id(req.query.memberId);
+  if (req.query.memberId !== undefined && !memberId) return badRequest(res, "Invalid memberId");
+  const weekEnd = new Date(`${weekStart}T12:00:00Z`);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    if (memberId && !(await validateAdultIds(db, [memberId], scope.householdId))) {
+      res.status(404).json({ error: "Adult participant not found" });
+      return;
+    }
+    // PostgreSQL requires every DISTINCT ordering expression in the select
+    // list. The explicit sort column preserves one row per workout despite
+    // the participant authorization join.
+    const sessionDateExpression = sql<string>`COALESCE(${workoutsTable.scheduledDate}, ${workoutsTable.workoutDate})`;
+    const sessionDate = sessionDateExpression.as("session_date");
+    const rows = await db.selectDistinct({ workout: workoutsTable, sessionDate }).from(workoutsTable)
+      .innerJoin(workoutParticipantsTable, eq(workoutsTable.id, workoutParticipantsTable.workoutId))
+      .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
+      .where(and(eq(familyMembersTable.householdId, scope.householdId),
+        ...(memberId ? [eq(workoutParticipantsTable.memberId, memberId)] : []),
+        gte(sessionDateExpression, weekStart),
+        lt(sessionDateExpression, weekEnd.toISOString().slice(0, 10)),
+      )).orderBy(asc(sessionDate), asc(workoutsTable.id));
+    res.json(await Promise.all(rows.map(row => formatWorkout(row.workout))));
+  } catch (err) {
+    req.log.error({ err }, "Failed to list workout sessions");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/workout-sessions/overdue", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const [preferences] = await db.select().from(workoutPreferencesTable)
+      .where(eq(workoutPreferencesTable.householdId, scope.householdId)).limit(1);
+    const today = householdDates(preferences?.timezone ?? "UTC").currentLocalDate;
+    const rows = await db.selectDistinct({ workout: workoutsTable }).from(workoutsTable)
+      .innerJoin(workoutParticipantsTable, eq(workoutsTable.id, workoutParticipantsTable.workoutId))
+      .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
+      .where(and(eq(familyMembersTable.householdId, scope.householdId), eq(workoutsTable.sessionStatus, "scheduled"),
+        lt(workoutsTable.scheduledDate, today), isNull(workoutsTable.followUpDismissedAt)))
+      .orderBy(asc(workoutsTable.scheduledDate));
+    res.json(await Promise.all(rows.map(row => formatWorkout(row.workout))));
+  } catch (err) {
+    req.log.error({ err }, "Failed to list overdue workout sessions");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/workout-sessions", async (req, res) => {
+  const parsed = ScheduleWorkoutSessionBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid workout session", parsed.error.flatten());
+  const scheduledDate = dateOnly(parsed.data.scheduledDate);
+  if (!scheduledDate) return badRequest(res, "scheduledDate must be a date-only value");
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: parsed.data.scheduledTimezone });
+    const scope = getApprovedHouseholdScope(res);
+    const members = await validateAdultIds(db, parsed.data.participantIds, scope.householdId);
+    if (!members) return badRequest(res, "Every participant must be a unique active adult in this household");
+    const workout = await db.transaction(async tx => {
+      await lockWorkoutDate(tx, scope.householdId, scheduledDate);
+      await assertNoWorkoutDuplicate(tx, scope.householdId, scheduledDate, parsed.data.title, members.map(member => member.id));
+      const [created] = await tx.insert(workoutsTable).values({
+        memberId: members[0].id, title: parsed.data.title.trim(), workoutDate: scheduledDate,
+        scheduledDate, scheduledTime: parsed.data.scheduledTime ?? null, scheduledTimezone: parsed.data.scheduledTimezone,
+        sessionStatus: "scheduled", sessionKind: "ad_hoc", durationMinutes: parsed.data.durationMinutes ?? null, notes: parsed.data.notes ?? null,
+      }).returning();
+      await tx.insert(workoutParticipantsTable).values(members.map(member => ({ workoutId: created.id, memberId: member.id })));
+      if (parsed.data.exercises?.length) await insertExercises(tx, created.id, scope.householdId, parsed.data.exercises);
+      return created;
+    });
+    res.status(201).json(await formatWorkout(workout, true));
+  } catch (err) {
+    if ((err as Error).message === "DUPLICATE") return res.status(409).json({ error: "An identical workout is already scheduled for these participants and date" });
+    req.log.error({ err }, "Failed to schedule workout session");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/workout-sessions/:id/complete", async (req, res) => {
+  const workoutId = id(req.params.id);
+  const parsed = CompleteWorkoutSessionBody.safeParse(req.body);
+  if (!workoutId || !parsed.success) return badRequest(res, "Invalid workout completion");
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const existing = await authorizedWorkout(workoutId, scope.householdId);
+    if (!existing) { res.status(404).json({ error: "Workout not found" }); return; }
+    if (existing.sessionStatus === "completed") {
+      res.json(await formatWorkout(existing, true));
+      return;
+    }
+    if (existing.sessionStatus !== "scheduled") return badRequest(res, "Only scheduled workouts can be completed");
+    const completedAt = parsed.data.completedAt ? new Date(parsed.data.completedAt) : new Date();
+    if (Number.isNaN(completedAt.valueOf())) return badRequest(res, "completedAt must be a valid timestamp");
+    const [updated] = await db.update(workoutsTable).set({ sessionStatus: "completed", completedAt, followUpDismissedAt: new Date() })
+      .where(and(eq(workoutsTable.id, workoutId), eq(workoutsTable.sessionStatus, "scheduled"))).returning();
+    if (!updated) {
+      // A concurrent completion is idempotent; no other terminal transition is.
+      const current = await authorizedWorkout(workoutId, scope.householdId);
+      if (current?.sessionStatus === "completed") {
+        res.json(await formatWorkout(current, true));
+        return;
+      }
+      res.status(409).json({ error: "Workout session is no longer scheduled" });
+      return;
+    }
+    res.json(await formatWorkout(updated, true));
+  } catch (err) {
+    req.log.error({ err }, "Failed to complete workout session");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/workout-sessions/:id/status", async (req, res) => {
+  const workoutId = id(req.params.id);
+  const parsed = UpdateWorkoutSessionStatusBody.safeParse(req.body);
+  if (!workoutId || !parsed.success) return badRequest(res, "Invalid workout session status");
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const existing = await authorizedWorkout(workoutId, scope.householdId);
+    if (!existing) { res.status(404).json({ error: "Workout not found" }); return; }
+    if (existing.sessionStatus !== "scheduled") return badRequest(res, "Only scheduled workouts can have their status updated");
+    let today: string | null = null;
+    if (parsed.data.status === "dismissed") {
+      const [preferences] = await db.select().from(workoutPreferencesTable)
+        .where(eq(workoutPreferencesTable.householdId, scope.householdId)).limit(1);
+      today = householdDates(preferences?.timezone ?? "UTC").currentLocalDate;
+      if (!existing.scheduledDate || existing.scheduledDate >= today) {
+        return badRequest(res, "Only overdue scheduled workouts can have their follow-up dismissed");
+      }
+    }
+    const condition = parsed.data.status === "dismissed"
+      ? and(
+          eq(workoutsTable.id, workoutId),
+          eq(workoutsTable.sessionStatus, "scheduled"),
+          lt(workoutsTable.scheduledDate, today!),
+          isNull(workoutsTable.followUpDismissedAt),
+        )
+      : and(eq(workoutsTable.id, workoutId), eq(workoutsTable.sessionStatus, "scheduled"));
+    const [updated] = await db.update(workoutsTable).set(parsed.data.status === "dismissed"
+      ? { followUpDismissedAt: new Date() }
+      : { sessionStatus: parsed.data.status, followUpDismissedAt: new Date() })
+      .where(condition).returning();
+    if (!updated) {
+      res.status(409).json({ error: "Workout session is no longer eligible for that transition" });
+      return;
+    }
+    res.json(await formatWorkout(updated, true));
+  } catch (err) {
+    req.log.error({ err }, "Failed to update workout session status");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/workout-sessions/:id/reschedule", async (req, res) => {
+  const workoutId = id(req.params.id);
+  const parsed = RescheduleWorkoutSessionBody.safeParse(req.body);
+  const scheduledDate = parsed.success ? dateOnly(parsed.data.scheduledDate) : null;
+  if (!workoutId || !parsed.success || !scheduledDate) return badRequest(res, "Invalid workout reschedule");
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: parsed.data.scheduledTimezone });
+    const scope = getApprovedHouseholdScope(res);
+    const existing = await authorizedWorkout(workoutId, scope.householdId);
+    if (!existing) { res.status(404).json({ error: "Workout not found" }); return; }
+    if (existing.sessionStatus !== "scheduled") return badRequest(res, "Only scheduled workouts can be rescheduled");
+    const updated = await db.transaction(async tx => {
+      const participants = await tx.select({ memberId: workoutParticipantsTable.memberId })
+        .from(workoutParticipantsTable).where(eq(workoutParticipantsTable.workoutId, workoutId)).for("update");
+      for (const date of [...new Set([existing.workoutDate, scheduledDate])].sort()) {
+        await lockWorkoutDate(tx, scope.householdId, date);
+      }
+      await assertNoWorkoutDuplicate(tx, scope.householdId, scheduledDate, existing.title,
+        participants.map(participant => participant.memberId), workoutId);
+      const [row] = await tx.update(workoutsTable).set({
+        workoutDate: scheduledDate, scheduledDate, scheduledTime: parsed.data.scheduledTime ?? null,
+        scheduledTimezone: parsed.data.scheduledTimezone, followUpDismissedAt: null,
+      }).where(eq(workoutsTable.id, workoutId)).returning();
+      return row;
+    });
+    res.json(await formatWorkout(updated, true));
+  } catch (err) {
+    if ((err as Error).message === "DUPLICATE") return res.status(409).json({ error: "An identical workout is already scheduled for these participants and date" });
+    req.log.error({ err }, "Failed to reschedule workout session");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/workouts/:id/exercises", async (req, res) => {
   const workoutId = id(req.params.id);
   const parsed = AddExerciseBody.safeParse(req.body);
@@ -443,6 +656,36 @@ router.get("/exercise-library", async (_req, res) => {
     .where(eq(exerciseLibraryTable.householdId, scope.householdId))
     .orderBy(asc(exerciseLibraryTable.name));
   res.json(rows.map(formatLibrary));
+});
+
+router.get("/exercise-library/:id/history", async (req, res) => {
+  const exerciseId = id(req.params.id);
+  if (!exerciseId) return badRequest(res, "Invalid exercise id");
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const [library] = await db.select({ id: exerciseLibraryTable.id }).from(exerciseLibraryTable)
+      .where(and(eq(exerciseLibraryTable.id, exerciseId), eq(exerciseLibraryTable.householdId, scope.householdId))).limit(1);
+    if (!library) { res.status(404).json({ error: "Exercise not found" }); return; }
+    const rows = await db.select({ workout: workoutsTable, exercise: workoutExercisesTable })
+      .from(workoutExercisesTable)
+      .innerJoin(workoutsTable, eq(workoutExercisesTable.workoutId, workoutsTable.id))
+      .innerJoin(workoutParticipantsTable, eq(workoutsTable.id, workoutParticipantsTable.workoutId))
+      .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
+      .where(and(eq(workoutExercisesTable.libraryExerciseId, exerciseId), eq(workoutsTable.sessionStatus, "completed"),
+        eq(familyMembersTable.householdId, scope.householdId)))
+      .orderBy(desc(workoutsTable.workoutDate));
+    const unique = new Map<number, typeof rows[number]>();
+    for (const row of rows) unique.set(row.workout.id, row);
+    const participants = await participantsFor([...unique.keys()]);
+    const appearances = [...unique.values()].map(row => ({
+      workoutId: String(row.workout.id), workoutDate: row.workout.workoutDate, title: row.workout.title,
+      participants: participants.get(row.workout.id) ?? [], exercise: formatExercise(row.exercise),
+    }));
+    res.json({ exerciseId: String(exerciseId), completedAppearanceCount: appearances.length, appearances });
+  } catch (err) {
+    req.log.error({ err }, "Failed to retrieve exercise history");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 router.post("/exercise-library", async (req, res) => {
@@ -759,8 +1002,24 @@ router.post("/ai/workout-week-plan", async (req, res) => {
 });
 
 router.post("/workout-week-plan/save", async (req, res) => {
+  const rawWeekStart = exactDateOnlyString((req.body as { weekStart?: unknown } | null)?.weekStart);
+  if (!rawWeekStart) return badRequest(res, "weekStart must be an exact real yyyy-MM-dd date");
   const parsed = SaveWorkoutWeekPlanBody.safeParse(req.body);
   if (!parsed.success) return badRequest(res, "Invalid reviewed week plan", parsed.error.flatten());
+  const weekStart = rawWeekStart;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: parsed.data.timezone });
+  } catch {
+    return badRequest(res, "timezone must be a valid IANA timezone");
+  }
+  const weekStartTimestamp = Date.parse(`${weekStart}T00:00:00Z`);
+  if (new Date(weekStartTimestamp).getUTCDay() !== 1) return badRequest(res, "weekStart must be a Monday");
+  const hasDateOutsideWeek = parsed.data.items.some(item => {
+    const itemDate = dateOnly(item.workoutDate);
+    const timestamp = itemDate ? Date.parse(`${itemDate}T00:00:00Z`) : Number.NaN;
+    return !Number.isFinite(timestamp) || timestamp < weekStartTimestamp || timestamp >= weekStartTimestamp + 7 * 86400000;
+  });
+  if (hasDateOutsideWeek) return badRequest(res, "All workout dates must belong to the requested week");
   if (parsed.data.items.some(item => new Set(item.participantIds).size !== item.participantIds.length)) {
     return badRequest(res, "Each planned workout must have unique participantIds");
   }
@@ -784,6 +1043,10 @@ router.post("/workout-week-plan/save", async (req, res) => {
           workoutDate,
           durationMinutes: item.workout.durationMinutes,
           notes: item.workout.notes ?? item.workout.rationale,
+          sessionKind: "weekly_plan",
+          sessionStatus: "scheduled",
+          scheduledDate: workoutDate,
+          scheduledTimezone: parsed.data.timezone,
         }).returning();
         await tx.insert(workoutParticipantsTable).values(participantNumbers.map(memberId => ({ workoutId: workout.id, memberId })));
         await insertExercises(tx, workout.id, scope.householdId, item.workout.exercises);

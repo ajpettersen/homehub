@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Exercise } from './exercise';
+import type { WorkoutDetailSessionKind } from './workoutDetailSessionKind';
+import type { WorkoutDetailSessionStatus } from './workoutDetailSessionStatus';
 import type { WorkoutParticipant } from './workoutParticipant';
 
 export interface WorkoutDetail {
@@ -15,6 +17,23 @@ export interface WorkoutDetail {
   participantIds: string[];
   participants: WorkoutParticipant[];
   workoutDate: Date;
+  /** @nullable */
+  scheduledDate: Date | null;
+  /**
+     * @nullable
+     * @pattern ^\d{2}:\d{2}$
+     */
+  scheduledTime: string | null;
+  /** @nullable */
+  scheduledTimezone: string | null;
+  sessionStatus: WorkoutDetailSessionStatus;
+  sessionKind: WorkoutDetailSessionKind;
+  /** @nullable */
+  completedAt: Date | null;
+  /** @nullable */
+  followUpDismissedAt: Date | null;
+  /** @nullable */
+  rescheduledFromWorkoutId: string | null;
   /**
      * @minLength 1
      * @maxLength 160
