@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Outfit:wght@100..900&display=swap');
+
+.homehub-meal-week {
+  --background: 37 44% 96%;
+  --foreground: 22 27% 19%;
+  --border: 28 24% 82%;
+  --input: 28 24% 82%;
+  --ring: 14 59% 45%;
+  --card: 43 50% 98%;
+  --card-foreground: 22 27% 19%;
+  --card-border: 28 24% 82%;
+  --primary: 14 59% 45%;
+  --primary-foreground: 43 50% 98%;
+  --secondary: 138 20% 41%;
+  --secondary-foreground: 43 50% 98%;
+  --muted: 33 29% 90%;
+  --muted-foreground: 23 13% 42%;
+  --accent: 42 70% 68%;
+  --accent-foreground: 22 27% 19%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --radius: 1rem;
+  min-height: 100vh;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font-family: 'Outfit', sans-serif;
+}
+
+.homehub-meal-week,
+.homehub-meal-week * { box-sizing: border-box; }
+.homehub-meal-week button,
+.homehub-meal-week input { font-family: inherit; }
+.homehub-meal-week .font-serif { font-family: 'Fraunces', serif; }
+.homehub-meal-week button:focus-visible,
+.homehub-meal-week input:focus-visible { outline: 3px solid hsl(var(--ring) / .35); outline-offset: 2px; }
+
+@media (max-width: 767px) {
+  .homehub-meal-week .desktop-sidebar { display: none; }
+  .homehub-meal-week .mobile-header { display: flex; }
+  .homehub-meal-week .mobile-tabs { display: flex; }
+}
+
+@media (min-width: 768px) {
+  .homehub-meal-week .mobile-header,
+  .homehub-meal-week .mobile-tabs { display: none; }
+}
+
+.homehub-meal-week.dark {
+  --background: 20 20% 15%;
+  --foreground: 40 33% 96%;
+  --border: 20 10% 25%;
+  --input: 20 10% 25%;
+  --ring: 15 70% 50%;
+  --card: 20 20% 18%;
+  --card-foreground: 40 33% 96%;
+  --card-border: 20 10% 25%;
+  --primary: 15 70% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 110 20% 40%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 20 10% 25%;
+  --muted-foreground: 40 20% 70%;
+  --accent: 45 80% 50%;
+  --accent-foreground: 20 20% 15%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 100%;
+}
