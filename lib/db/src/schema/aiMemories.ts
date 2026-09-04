@@ -1,6 +1,5 @@
-import { foreignKey, index, pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { index, pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
 import { householdsTable } from "./households";
-import { familyMembersTable } from "./familyMembers";
 
 export const aiMemoriesTable = pgTable("ai_memories", {
   id: serial("id").primaryKey(),
@@ -11,11 +10,6 @@ export const aiMemoriesTable = pgTable("ai_memories", {
   source: text("source"), // chat | meals | auto
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
-  foreignKey({
-    columns: [table.subjectFamilyMemberId, table.householdId],
-    foreignColumns: [familyMembersTable.id, familyMembersTable.householdId],
-    name: "ai_memories_subject_household_family_member_fk",
-  }).onDelete("cascade"),
   index("ai_memories_household_subject_idx").on(table.householdId, table.subjectFamilyMemberId),
 ]);
 
