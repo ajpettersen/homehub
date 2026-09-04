@@ -1,4 +1,8 @@
 #!/bin/bash
 set -e
-pnpm install --frozen-lockfile
-pnpm --filter db push
+
+export CI=1
+export PNPM_DISABLE_SELF_UPDATE_CHECK=1
+
+pnpm install --frozen-lockfile --prefer-offline --reporter=append-only
+PGCONNECT_TIMEOUT=10 node lib/db/migrate.mjs
