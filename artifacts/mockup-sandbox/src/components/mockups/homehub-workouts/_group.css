@@ -46,3 +46,129 @@
 @media(max-width:720px){.follow-up-card{grid-template-columns:1fr;gap:12px;padding:14px}.follow-up-copy h2{font-size:21px}.push-preview{min-height:0}}
  .library-panel{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:20px;padding:22px;box-shadow:0 10px 30px hsl(25 25% 25%/.06)}.library-heading{display:flex;justify-content:space-between;gap:20px;align-items:start;border-bottom:1px solid hsl(var(--border));padding-bottom:18px}.library-heading h2{font:700 27px/1.05 'Fraunces',serif;margin:5px 0 7px}.library-heading p{margin:0;max-width:540px;color:hsl(var(--muted-foreground));font-size:13px;line-height:1.4}.library-count{display:flex;align-items:center;gap:6px;white-space:nowrap;padding:8px 10px;border-radius:9px;background:hsl(var(--accent)/.22);font-size:11px;font-weight:850}.library-count svg{width:14px}.library-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 22px;margin-top:20px}.library-group-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}.library-group-title h3{margin:0;font:700 18px 'Fraunces',serif}.library-group-title span{font-size:10px;color:hsl(var(--muted-foreground))}.library-exercise{border-top:1px solid hsl(var(--border)/.75)}.library-exercise-toggle{display:grid;grid-template-columns:30px 1fr 16px;align-items:center;gap:9px;width:100%;padding:11px 0;border:0;background:transparent;text-align:left;cursor:pointer;color:hsl(var(--foreground))}.library-exercise-toggle>svg{width:14px;color:hsl(var(--muted-foreground));transition:transform .2s}.library-exercise.is-open .library-exercise-toggle>svg{transform:rotate(180deg)}.library-exercise-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:hsl(var(--secondary)/.15);font:700 15px 'Fraunces',serif;color:hsl(var(--secondary))}.library-exercise-name strong,.library-exercise-name small{display:block}.library-exercise-name strong{font-size:12px}.library-exercise-name small{margin-top:2px;color:hsl(var(--muted-foreground));font-size:10px}.library-workouts{margin:0 0 12px 39px;padding:10px 11px;border-radius:10px;background:hsl(var(--muted)/.42)}.library-workouts-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;color:hsl(var(--muted-foreground));font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}.library-workouts-head button{display:flex;align-items:center;gap:4px;border:0;background:transparent;color:hsl(var(--primary));font-size:10px;font-weight:850;cursor:pointer}.library-workouts-head button svg{width:12px}.library-workout{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid hsl(var(--border)/.65)}.library-workout strong,.library-workout span{display:block}.library-workout strong{font-size:11px}.library-workout span{display:flex;align-items:center;gap:4px;margin-top:2px;color:hsl(var(--muted-foreground));font-size:9px}.library-workout span svg{width:11px}.library-workout b{align-self:center;white-space:nowrap;font-size:10px;color:hsl(var(--secondary))}@media(max-width:720px){.library-panel{padding:16px}.library-heading{display:block}.library-count{display:inline-flex;margin-top:12px}.library-groups{grid-template-columns:1fr;gap:14px}.library-workouts{margin-left:0}.library-workouts-head{align-items:flex-start;flex-direction:column;gap:5px}.library-workout{align-items:flex-start;flex-direction:column;gap:4px}.library-workout b{align-self:flex-start}}
  .weekly-plan{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:20px;padding:22px;box-shadow:0 10px 30px hsl(25 25% 25%/.06)}.weekly-plan-heading{display:flex;justify-content:space-between;gap:20px;align-items:start}.weekly-plan-heading h2{font:700 28px/1.05 'Fraunces',serif;margin:5px 0 7px}.weekly-plan-heading p{margin:0;color:hsl(var(--muted-foreground));font-size:13px}.week-controls{display:flex;align-items:center;gap:9px}.week-controls button{display:grid;place-items:center;width:32px;height:32px;border:1px solid hsl(var(--border));border-radius:9px;background:hsl(var(--background));cursor:pointer}.week-controls button svg{width:16px}.week-controls strong{min-width:150px;text-align:center;font-size:12px}.plan-legend{display:flex;gap:13px;flex-wrap:wrap;margin:22px 0 12px;padding:10px 12px;border-radius:10px;background:hsl(var(--muted)/.42);font-size:10px;font-weight:750;color:hsl(var(--muted-foreground))}.plan-legend span{display:flex;align-items:center;gap:5px}.legend-symbol{display:grid;place-items:center;width:17px;height:17px;border:1px solid currentColor;border-radius:50%;font-style:normal;font-size:10px}.planned-symbol{color:hsl(var(--primary))}.complete-symbol{color:hsl(var(--secondary))}.confirm-symbol{color:hsl(var(--destructive))}.open-symbol{color:hsl(var(--muted-foreground))}.plan-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}.plan-day{min-height:145px;padding:9px;border:1px solid hsl(var(--border));border-radius:12px;background:hsl(var(--background));text-align:left;cursor:pointer;color:hsl(var(--foreground));transition:transform .2s,border-color .2s}.plan-day:hover{border-color:hsl(var(--primary)/.65);transform:translateY(-2px)}.plan-day.selected{border-color:hsl(var(--primary));box-shadow:inset 0 0 0 1px hsl(var(--primary)/.35);background:hsl(var(--primary)/.04)}.plan-day-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;color:hsl(var(--muted-foreground));font-size:10px;text-transform:uppercase;letter-spacing:.08em}.plan-day-top strong{font:700 20px 'Fraunces',serif;color:hsl(var(--foreground));letter-spacing:0}.plan-day-session,.plan-day-open{display:block}.plan-day-session strong,.plan-day-session small,.plan-day-open small{display:block}.plan-day-session strong{margin-top:5px;font-size:11px;line-height:1.25}.plan-day-session small,.plan-day-open small{margin-top:7px;color:hsl(var(--muted-foreground));font-size:9px;line-height:1.25}.status-symbol{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid currentColor;font-style:normal;font-size:11px;font-weight:900}.status-symbol.completed{color:hsl(var(--secondary))}.status-symbol.planned{color:hsl(var(--primary))}.status-symbol.needs-confirmation,.status-symbol.missed{color:hsl(var(--destructive))}.plan-day-open i{display:grid;place-items:center;width:22px;height:22px;color:hsl(var(--muted-foreground));font-style:normal;font-weight:900}.plan-detail{margin-top:16px;padding:17px;border-radius:14px;background:hsl(var(--muted)/.42);min-height:150px}.plan-detail-top{display:flex;justify-content:space-between;gap:14px}.plan-detail h3{font:700 22px 'Fraunces',serif;margin:5px 0}.plan-detail p{margin:0;color:hsl(var(--muted-foreground));font-size:12px}.detail-status{display:flex;align-items:center;gap:5px;height:max-content;padding:6px 8px;border-radius:8px;background:hsl(var(--card));font-size:10px;font-weight:850;white-space:nowrap}.detail-status i{display:grid;place-items:center;width:16px;height:16px;border:1px solid currentColor;border-radius:50%;font-style:normal}.detail-status.completed{color:hsl(var(--secondary))}.detail-status.planned{color:hsl(var(--primary))}.detail-status.needs-confirmation,.detail-status.missed{color:hsl(var(--destructive))}.plan-detail-meta{display:flex;gap:28px;margin-top:16px}.plan-detail-meta span{display:grid;gap:3px;color:hsl(var(--muted-foreground));font-size:11px}.plan-detail-meta strong{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:hsl(var(--foreground))}.plan-detail-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:15px}.plan-detail-actions button{display:flex;align-items:center;gap:6px;border:0;border-radius:9px;padding:9px 11px;background:hsl(var(--foreground));color:hsl(var(--background));font-size:11px;font-weight:850;cursor:pointer}.plan-detail-actions button svg{width:14px}@media(max-width:720px){.weekly-plan{padding:16px}.weekly-plan-heading{display:block}.weekly-plan-heading h2{font-size:25px}.week-controls{justify-content:space-between;margin-top:15px}.week-controls strong{flex:1}.plan-legend{gap:8px;margin-top:16px}.plan-days{display:flex;overflow-x:auto;gap:7px;padding-bottom:5px;scroll-snap-type:x mandatory}.plan-day{flex:0 0 104px;min-height:135px;scroll-snap-align:start}.plan-detail{padding:14px}.plan-detail-top{display:block}.detail-status{display:inline-flex;margin-top:12px}.plan-detail-meta{gap:14px;flex-wrap:wrap}.plan-detail-actions button{flex:1;justify-content:center;min-width:150px}}
+
+@media (max-width:720px) {
+  .homehub-workouts { padding: 16px 12px 38px; }
+  .topbar { gap: 10px; margin-bottom: 14px; }
+  .topbar h1 { font-size: 30px; margin: 4px 0 5px; }
+  .topbar p, .draft-heading p, .composer-hint { display: none; }
+  .topbar-actions { gap: 6px; }
+  .preference-link { font-size: 10px; }
+  .session-nav { gap: 4px; }
+  .session-arrow { flex-basis: 32px; }
+  .date-card { padding: 8px 10px; border-radius: 11px; }
+  .date-card strong { font-size: 12px; }
+  .date-card small { display: none; }
+  .people-bar { margin-bottom: 10px; }
+  .people-bar > span { display: none; }
+  .person { padding: 5px 8px; font-size: 11px; }
+  nav { gap: 4px; padding-bottom: 9px; margin-bottom: 13px; }
+  nav button { gap: 5px; padding: 7px 6px; font-size: 11px; }
+  nav button svg { width: 14px; }
+  .follow-up-card { margin-bottom: 12px; }
+  .follow-up-copy p, .push-preview small { display: none; }
+  .follow-up-copy h2 { font-size: 19px; margin: 5px 0 3px; }
+  .follow-up-actions { margin-top: 8px; }
+  .follow-up-actions button { padding: 7px 8px; font-size: 10px; }
+  .coach-layout { gap: 10px; }
+  .chat { padding: 12px; border-radius: 15px; }
+  .coach-title { padding-bottom: 9px; }
+  .coach-title h2, .draft-heading h2, .idea-top h3 { font-size: 18px; }
+  .chat-thread { max-height: 164px; overflow: auto; padding: 10px 0; gap: 8px; }
+  .bubble { padding: 8px 10px; font-size: 11px; }
+  .quick-prompts { flex-wrap: nowrap; overflow-x: auto; margin-bottom: 7px; }
+  .quick-prompts button { flex: 0 0 auto; padding: 5px 7px; font-size: 10px; }
+  .chat textarea { min-height: 58px; padding: 9px 38px 9px 10px; font-size: 11px; }
+  .draft-editor { padding: 12px; border-radius: 15px; }
+  .draft-fields { margin: 10px 0; gap: 6px; }
+  .draft-fields label:nth-child(2), .draft-fields label:nth-child(3) { display: none; }
+  .draft-fields label:first-child { grid-column: 1; }
+  .draft-fields input, .exercise-row input { padding: 6px; font-size: 11px; }
+  .exercise-row { grid-template-columns: 24px minmax(0,1fr) 39px 39px 25px; gap: 4px; padding: 7px 0; }
+  .exercise-mark { width: 23px; height: 23px; font-size: 12px; }
+  .exercise-main span { font-size: 9px; }
+  .section-line { margin-bottom: 4px; }
+  .idea-drawer { margin-top: 10px; padding-top: 10px; }
+  .idea-top .eyebrow, .suggestion-copy, .history-inspiration { display: none; }
+  .muscles { margin: 8px 0 5px; flex-wrap: nowrap; overflow-x: auto; }
+  .muscles button { flex: 0 0 auto; padding: 5px 7px; font-size: 10px; }
+  .option { padding: 7px; }
+  .option span { display: none; }
+  .option button { padding: 5px 7px; }
+  .action-footer { margin-top: 10px; padding: 10px 12px; border-radius: 13px; }
+  .action-footer strong { font-size: 12px; }
+  .action-footer>button { padding: 9px 10px; font-size: 11px; }
+  .saved-note { font-size: 11px; margin-top: 7px; }
+  .setup-backdrop { padding: 8px; }
+  .setup-card { max-height: calc(100dvh - 16px); padding: 14px; border-radius: 16px; }
+  .setup-top { gap: 10px; }
+  .setup-top h2 { font-size: 22px; margin: 4px 0; }
+  .setup-top p { display: none; }
+  .setup-progress { margin: 12px 0 14px; }
+  .setup-step { gap: 10px; }
+  .setup-question { font-size: 18px; }
+  .choice { padding: 9px; }
+  .choice strong { font-size: 20px; }
+  .choice span, .day span { font-size: 9px; }
+  .setup-actions { margin-top: 0; }
+}
+
+/* Mobile-only density pass: keep the desktop composition unchanged. */
+@media (max-width:720px) {
+  .homehub-workouts { padding: 10px 9px 28px; }
+  .workout-shell { width: 100%; }
+  .topbar { gap: 7px; margin-bottom: 9px; }
+  .topbar h1 { font-size: 28px; line-height: .98; }
+  .topbar-actions { gap: 3px; }
+  .session-nav { gap: 3px; }
+  .session-arrow { min-width: 40px; min-height: 40px; }
+  .date-card { min-height: 40px; padding: 6px 8px; }
+  .people-bar { gap: 3px; margin-bottom: 7px; }
+  .person { min-height: 40px; padding: 5px 7px; }
+  nav { margin-bottom: 9px; padding-bottom: 6px; }
+  nav button { min-height: 44px; padding: 5px 4px; }
+  .follow-up-card { gap: 8px; margin-bottom: 9px; padding: 10px; }
+  .follow-up-actions { gap: 4px; margin-top: 5px; }
+  .follow-up-actions button { min-height: 40px; padding: 6px 7px; }
+  .coach-layout { gap: 7px; }
+  .chat, .draft-editor, .library-panel, .weekly-plan { padding: 10px; border-radius: 13px; }
+  .coach-title { padding-bottom: 7px; }
+  .chat-thread { max-height: 142px; padding: 7px 0; gap: 6px; }
+  .quick-prompts { margin-bottom: 4px; }
+  .quick-prompts button { min-height: 40px; }
+  .chat textarea { min-height: 54px; }
+  .chat form button { width: 34px; height: 34px; right: 7px; bottom: 7px; }
+  .draft-fields { margin: 7px 0; }
+  .exercise-row { padding: 6px 0; }
+  .exercise-row .remove-button { min-width: 32px; min-height: 32px; }
+  .idea-drawer { margin-top: 7px; padding-top: 7px; }
+  .drawer-toggle, .option button, .history-build { min-height: 40px; }
+  .muscles { margin: 5px 0 3px; }
+  .muscles button { min-height: 40px; }
+  .action-footer { margin-top: 7px; padding: 8px 10px; }
+  .action-footer>button { min-height: 44px; }
+  .saved-note { padding: 8px 10px; }
+  .setup-backdrop { padding: 6px; }
+  .setup-card { padding: 11px; border-radius: 14px; }
+  .setup-top { gap: 7px; }
+  .setup-close { min-width: 40px; min-height: 40px; }
+  .setup-progress { margin: 9px 0 10px; }
+  .setup-step { gap: 8px; }
+  .choice { min-height: 58px; padding: 7px; }
+  .day { min-height: 44px; padding: 6px 4px; }
+  .setup-next, .setup-skip { min-height: 44px; }
+  .weekly-plan-heading h2 { margin-bottom: 4px; }
+  .week-controls { margin-top: 8px; }
+  .week-controls button { min-width: 40px; min-height: 40px; }
+  .plan-legend { margin: 10px 0 8px; padding: 7px 9px; }
+  .plan-day { min-height: 124px; }
+  .plan-detail { margin-top: 9px; padding: 10px; min-height: 0; }
+  .plan-detail-meta { margin-top: 9px; }
+  .plan-detail-actions { margin-top: 9px; }
+  .plan-detail-actions button { min-height: 44px; }
+  .library-heading { padding-bottom: 10px; }
+  .library-count { margin-top: 7px; }
+  .library-groups { gap: 9px; margin-top: 10px; }
+  .library-exercise-toggle { min-height: 44px; padding: 7px 0; }
+  .library-workouts { margin-bottom: 7px; padding: 7px 8px; }
+}
