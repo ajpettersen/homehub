@@ -61,6 +61,8 @@ import type {
   HouseholdJoinRequestDecision,
   HouseholdJoinRequestInput,
   HouseholdTabVisibility,
+  LibraryExercise,
+  LibraryExerciseInput,
   MaintenanceRecommendationInput,
   MaintenanceRecommendationResult,
   MaintenanceTask,
@@ -68,6 +70,8 @@ import type {
   MealRating,
   MealRatingList,
   MealRecipeResult,
+  MergeDuplicateAdultInput,
+  MergeDuplicateAdultResult,
   OnboardingInput,
   OnboardingResult,
   PantryScanResult,
@@ -75,7 +79,10 @@ import type {
   Property,
   Recipe,
   RecommendWorkoutInput,
+  SaveWorkoutWeekPlanInput,
   ScanPantryBody,
+  SelfFamilyProfile,
+  SelfFamilyProfileUpdate,
   SuggestMealsResult,
   TodoItem,
   TodoList,
@@ -93,11 +100,21 @@ import type {
   UpdateTodoItemInput,
   UpdateUserProfile200,
   UpdateUserProfileRequest,
+  UpdateWorkoutInput,
   UpsertMealRatingInput,
   UserProfile,
   Workout,
+  WorkoutCoachConversation,
+  WorkoutCoachMessageInput,
+  WorkoutCoachReply,
   WorkoutDetail,
-  WorkoutRecommendation
+  WorkoutDraft,
+  WorkoutDraftInput,
+  WorkoutPreferences,
+  WorkoutPreferencesInput,
+  WorkoutRecommendation,
+  WorkoutWeekPlan,
+  WorkoutWeekPlanInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -3217,6 +3234,154 @@ export function useGetMe<TData = Awaited<ReturnType<typeof getMe>>, TError = Err
 
 
 
+export const getGetMyFamilyProfileUrl = () => {
+
+
+
+
+  return `/api/me/family-profile`
+}
+
+/**
+ * @summary Get the approved family account's linked adult profile
+ */
+export const getMyFamilyProfile = async ( options?: RequestInit): Promise<SelfFamilyProfile> => {
+
+  return customFetch<SelfFamilyProfile>(getGetMyFamilyProfileUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyFamilyProfileQueryKey = () => {
+    return [
+    `/api/me/family-profile`
+    ] as const;
+    }
+
+
+export const getGetMyFamilyProfileQueryOptions = <TData = Awaited<ReturnType<typeof getMyFamilyProfile>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyFamilyProfile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyFamilyProfileQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyFamilyProfile>>> = ({ signal }) => getMyFamilyProfile({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyFamilyProfile>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyFamilyProfileQueryResult = NonNullable<Awaited<ReturnType<typeof getMyFamilyProfile>>>
+export type GetMyFamilyProfileQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the approved family account's linked adult profile
+ */
+
+export function useGetMyFamilyProfile<TData = Awaited<ReturnType<typeof getMyFamilyProfile>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyFamilyProfile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyFamilyProfileQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateMyFamilyProfileUrl = () => {
+
+
+
+
+  return `/api/me/family-profile`
+}
+
+/**
+ * @summary Update the approved family account's own linked adult profile
+ */
+export const updateMyFamilyProfile = async (selfFamilyProfileUpdate: SelfFamilyProfileUpdate, options?: RequestInit): Promise<SelfFamilyProfile> => {
+
+  return customFetch<SelfFamilyProfile>(getUpdateMyFamilyProfileUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(selfFamilyProfileUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateMyFamilyProfileMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyFamilyProfile>>, TError,{data: BodyType<SelfFamilyProfileUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMyFamilyProfile>>, TError,{data: BodyType<SelfFamilyProfileUpdate>}, TContext> => {
+
+const mutationKey = ['updateMyFamilyProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMyFamilyProfile>>, {data: BodyType<SelfFamilyProfileUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateMyFamilyProfile(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMyFamilyProfileMutationResult = NonNullable<Awaited<ReturnType<typeof updateMyFamilyProfile>>>
+    export type UpdateMyFamilyProfileMutationBody = BodyType<SelfFamilyProfileUpdate>
+    export type UpdateMyFamilyProfileMutationError = ErrorType<void>
+
+    /**
+ * @summary Update the approved family account's own linked adult profile
+ */
+export const useUpdateMyFamilyProfile = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyFamilyProfile>>, TError,{data: BodyType<SelfFamilyProfileUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMyFamilyProfile>>,
+        TError,
+        {data: BodyType<SelfFamilyProfileUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateMyFamilyProfileMutationOptions(options));
+    }
+
 export const getRequestHouseholdJoinUrl = () => {
 
 
@@ -4400,6 +4565,78 @@ export function useGetWorkout<TData = Awaited<ReturnType<typeof getWorkout>>, TE
 
 
 
+export const getUpdateWorkoutUrl = (id: string,) => {
+
+
+
+
+  return `/api/workouts/${id}`
+}
+
+/**
+ * @summary Update a workout and its participants
+ */
+export const updateWorkout = async (id: string,
+    updateWorkoutInput: UpdateWorkoutInput, options?: RequestInit): Promise<WorkoutDetail> => {
+
+  return customFetch<WorkoutDetail>(getUpdateWorkoutUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateWorkoutInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateWorkoutMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWorkout>>, TError,{id: string;data: BodyType<UpdateWorkoutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateWorkout>>, TError,{id: string;data: BodyType<UpdateWorkoutInput>}, TContext> => {
+
+const mutationKey = ['updateWorkout'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateWorkout>>, {id: string;data: BodyType<UpdateWorkoutInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateWorkout(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateWorkoutMutationResult = NonNullable<Awaited<ReturnType<typeof updateWorkout>>>
+    export type UpdateWorkoutMutationBody = BodyType<UpdateWorkoutInput>
+    export type UpdateWorkoutMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a workout and its participants
+ */
+export const useUpdateWorkout = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWorkout>>, TError,{id: string;data: BodyType<UpdateWorkoutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateWorkout>>,
+        TError,
+        {id: string;data: BodyType<UpdateWorkoutInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateWorkoutMutationOptions(options));
+    }
+
 export const getDeleteWorkoutUrl = (id: string,) => {
 
 
@@ -4612,6 +4849,877 @@ export const useDeleteExercise = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteExerciseMutationOptions(options));
+    }
+
+export const getListExerciseLibraryUrl = () => {
+
+
+
+
+  return `/api/exercise-library`
+}
+
+/**
+ * @summary List the household exercise library
+ */
+export const listExerciseLibrary = async ( options?: RequestInit): Promise<LibraryExercise[]> => {
+
+  return customFetch<LibraryExercise[]>(getListExerciseLibraryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListExerciseLibraryQueryKey = () => {
+    return [
+    `/api/exercise-library`
+    ] as const;
+    }
+
+
+export const getListExerciseLibraryQueryOptions = <TData = Awaited<ReturnType<typeof listExerciseLibrary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExerciseLibrary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListExerciseLibraryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listExerciseLibrary>>> = ({ signal }) => listExerciseLibrary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listExerciseLibrary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListExerciseLibraryQueryResult = NonNullable<Awaited<ReturnType<typeof listExerciseLibrary>>>
+export type ListExerciseLibraryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the household exercise library
+ */
+
+export function useListExerciseLibrary<TData = Awaited<ReturnType<typeof listExerciseLibrary>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExerciseLibrary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListExerciseLibraryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateLibraryExerciseUrl = () => {
+
+
+
+
+  return `/api/exercise-library`
+}
+
+/**
+ * @summary Create a household exercise
+ */
+export const createLibraryExercise = async (libraryExerciseInput: LibraryExerciseInput, options?: RequestInit): Promise<LibraryExercise> => {
+
+  return customFetch<LibraryExercise>(getCreateLibraryExerciseUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(libraryExerciseInput)
+  }
+);}
+
+
+
+
+
+export const getCreateLibraryExerciseMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLibraryExercise>>, TError,{data: BodyType<LibraryExerciseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLibraryExercise>>, TError,{data: BodyType<LibraryExerciseInput>}, TContext> => {
+
+const mutationKey = ['createLibraryExercise'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLibraryExercise>>, {data: BodyType<LibraryExerciseInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createLibraryExercise(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLibraryExerciseMutationResult = NonNullable<Awaited<ReturnType<typeof createLibraryExercise>>>
+    export type CreateLibraryExerciseMutationBody = BodyType<LibraryExerciseInput>
+    export type CreateLibraryExerciseMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a household exercise
+ */
+export const useCreateLibraryExercise = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLibraryExercise>>, TError,{data: BodyType<LibraryExerciseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLibraryExercise>>,
+        TError,
+        {data: BodyType<LibraryExerciseInput>},
+        TContext
+      > => {
+      return useMutation(getCreateLibraryExerciseMutationOptions(options));
+    }
+
+export const getUpdateLibraryExerciseUrl = (id: string,) => {
+
+
+
+
+  return `/api/exercise-library/${id}`
+}
+
+/**
+ * @summary Update a household exercise
+ */
+export const updateLibraryExercise = async (id: string,
+    libraryExerciseInput: LibraryExerciseInput, options?: RequestInit): Promise<LibraryExercise> => {
+
+  return customFetch<LibraryExercise>(getUpdateLibraryExerciseUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(libraryExerciseInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateLibraryExerciseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLibraryExercise>>, TError,{id: string;data: BodyType<LibraryExerciseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateLibraryExercise>>, TError,{id: string;data: BodyType<LibraryExerciseInput>}, TContext> => {
+
+const mutationKey = ['updateLibraryExercise'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateLibraryExercise>>, {id: string;data: BodyType<LibraryExerciseInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateLibraryExercise(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateLibraryExerciseMutationResult = NonNullable<Awaited<ReturnType<typeof updateLibraryExercise>>>
+    export type UpdateLibraryExerciseMutationBody = BodyType<LibraryExerciseInput>
+    export type UpdateLibraryExerciseMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a household exercise
+ */
+export const useUpdateLibraryExercise = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLibraryExercise>>, TError,{id: string;data: BodyType<LibraryExerciseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateLibraryExercise>>,
+        TError,
+        {id: string;data: BodyType<LibraryExerciseInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateLibraryExerciseMutationOptions(options));
+    }
+
+export const getDeleteLibraryExerciseUrl = (id: string,) => {
+
+
+
+
+  return `/api/exercise-library/${id}`
+}
+
+/**
+ * @summary Delete an unused household exercise
+ */
+export const deleteLibraryExercise = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteLibraryExerciseUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteLibraryExerciseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLibraryExercise>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLibraryExercise>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteLibraryExercise'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLibraryExercise>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteLibraryExercise(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteLibraryExerciseMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLibraryExercise>>>
+
+    export type DeleteLibraryExerciseMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete an unused household exercise
+ */
+export const useDeleteLibraryExercise = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLibraryExercise>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteLibraryExercise>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteLibraryExerciseMutationOptions(options));
+    }
+
+export const getDraftWorkoutUrl = () => {
+
+
+
+
+  return `/api/ai/workout-draft`
+}
+
+/**
+ * @summary Draft an editable workout without saving it
+ */
+export const draftWorkout = async (workoutDraftInput: WorkoutDraftInput, options?: RequestInit): Promise<WorkoutDraft> => {
+
+  return customFetch<WorkoutDraft>(getDraftWorkoutUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(workoutDraftInput)
+  }
+);}
+
+
+
+
+
+export const getDraftWorkoutMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof draftWorkout>>, TError,{data: BodyType<WorkoutDraftInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof draftWorkout>>, TError,{data: BodyType<WorkoutDraftInput>}, TContext> => {
+
+const mutationKey = ['draftWorkout'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof draftWorkout>>, {data: BodyType<WorkoutDraftInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  draftWorkout(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DraftWorkoutMutationResult = NonNullable<Awaited<ReturnType<typeof draftWorkout>>>
+    export type DraftWorkoutMutationBody = BodyType<WorkoutDraftInput>
+    export type DraftWorkoutMutationError = ErrorType<void>
+
+    /**
+ * @summary Draft an editable workout without saving it
+ */
+export const useDraftWorkout = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof draftWorkout>>, TError,{data: BodyType<WorkoutDraftInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof draftWorkout>>,
+        TError,
+        {data: BodyType<WorkoutDraftInput>},
+        TContext
+      > => {
+      return useMutation(getDraftWorkoutMutationOptions(options));
+    }
+
+export const getGetWorkoutPreferencesUrl = () => {
+
+
+
+
+  return `/api/workout-preferences`
+}
+
+/**
+ * @summary Get household workout preferences
+ */
+export const getWorkoutPreferences = async ( options?: RequestInit): Promise<WorkoutPreferences> => {
+
+  return customFetch<WorkoutPreferences>(getGetWorkoutPreferencesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWorkoutPreferencesQueryKey = () => {
+    return [
+    `/api/workout-preferences`
+    ] as const;
+    }
+
+
+export const getGetWorkoutPreferencesQueryOptions = <TData = Awaited<ReturnType<typeof getWorkoutPreferences>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutPreferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWorkoutPreferencesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorkoutPreferences>>> = ({ signal }) => getWorkoutPreferences({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWorkoutPreferences>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWorkoutPreferencesQueryResult = NonNullable<Awaited<ReturnType<typeof getWorkoutPreferences>>>
+export type GetWorkoutPreferencesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get household workout preferences
+ */
+
+export function useGetWorkoutPreferences<TData = Awaited<ReturnType<typeof getWorkoutPreferences>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutPreferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWorkoutPreferencesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateWorkoutPreferencesUrl = () => {
+
+
+
+
+  return `/api/workout-preferences`
+}
+
+/**
+ * @summary Save household workout preferences
+ */
+export const updateWorkoutPreferences = async (workoutPreferencesInput: WorkoutPreferencesInput, options?: RequestInit): Promise<WorkoutPreferences> => {
+
+  return customFetch<WorkoutPreferences>(getUpdateWorkoutPreferencesUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(workoutPreferencesInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateWorkoutPreferencesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWorkoutPreferences>>, TError,{data: BodyType<WorkoutPreferencesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateWorkoutPreferences>>, TError,{data: BodyType<WorkoutPreferencesInput>}, TContext> => {
+
+const mutationKey = ['updateWorkoutPreferences'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateWorkoutPreferences>>, {data: BodyType<WorkoutPreferencesInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateWorkoutPreferences(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateWorkoutPreferencesMutationResult = NonNullable<Awaited<ReturnType<typeof updateWorkoutPreferences>>>
+    export type UpdateWorkoutPreferencesMutationBody = BodyType<WorkoutPreferencesInput>
+    export type UpdateWorkoutPreferencesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Save household workout preferences
+ */
+export const useUpdateWorkoutPreferences = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWorkoutPreferences>>, TError,{data: BodyType<WorkoutPreferencesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateWorkoutPreferences>>,
+        TError,
+        {data: BodyType<WorkoutPreferencesInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateWorkoutPreferencesMutationOptions(options));
+    }
+
+export const getGenerateWorkoutWeekPlanUrl = () => {
+
+
+
+
+  return `/api/ai/workout-week-plan`
+}
+
+/**
+ * @summary Generate an editable date-only weekly workout plan
+ */
+export const generateWorkoutWeekPlan = async (workoutWeekPlanInput: WorkoutWeekPlanInput, options?: RequestInit): Promise<WorkoutWeekPlan> => {
+
+  return customFetch<WorkoutWeekPlan>(getGenerateWorkoutWeekPlanUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(workoutWeekPlanInput)
+  }
+);}
+
+
+
+
+
+export const getGenerateWorkoutWeekPlanMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateWorkoutWeekPlan>>, TError,{data: BodyType<WorkoutWeekPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateWorkoutWeekPlan>>, TError,{data: BodyType<WorkoutWeekPlanInput>}, TContext> => {
+
+const mutationKey = ['generateWorkoutWeekPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateWorkoutWeekPlan>>, {data: BodyType<WorkoutWeekPlanInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generateWorkoutWeekPlan(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateWorkoutWeekPlanMutationResult = NonNullable<Awaited<ReturnType<typeof generateWorkoutWeekPlan>>>
+    export type GenerateWorkoutWeekPlanMutationBody = BodyType<WorkoutWeekPlanInput>
+    export type GenerateWorkoutWeekPlanMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Generate an editable date-only weekly workout plan
+ */
+export const useGenerateWorkoutWeekPlan = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateWorkoutWeekPlan>>, TError,{data: BodyType<WorkoutWeekPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateWorkoutWeekPlan>>,
+        TError,
+        {data: BodyType<WorkoutWeekPlanInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateWorkoutWeekPlanMutationOptions(options));
+    }
+
+export const getSaveWorkoutWeekPlanUrl = () => {
+
+
+
+
+  return `/api/workout-week-plan/save`
+}
+
+/**
+ * @summary Atomically save reviewed scheduled workouts
+ */
+export const saveWorkoutWeekPlan = async (saveWorkoutWeekPlanInput: SaveWorkoutWeekPlanInput, options?: RequestInit): Promise<WorkoutDetail[]> => {
+
+  return customFetch<WorkoutDetail[]>(getSaveWorkoutWeekPlanUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(saveWorkoutWeekPlanInput)
+  }
+);}
+
+
+
+
+
+export const getSaveWorkoutWeekPlanMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWorkoutWeekPlan>>, TError,{data: BodyType<SaveWorkoutWeekPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveWorkoutWeekPlan>>, TError,{data: BodyType<SaveWorkoutWeekPlanInput>}, TContext> => {
+
+const mutationKey = ['saveWorkoutWeekPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveWorkoutWeekPlan>>, {data: BodyType<SaveWorkoutWeekPlanInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveWorkoutWeekPlan(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveWorkoutWeekPlanMutationResult = NonNullable<Awaited<ReturnType<typeof saveWorkoutWeekPlan>>>
+    export type SaveWorkoutWeekPlanMutationBody = BodyType<SaveWorkoutWeekPlanInput>
+    export type SaveWorkoutWeekPlanMutationError = ErrorType<void>
+
+    /**
+ * @summary Atomically save reviewed scheduled workouts
+ */
+export const useSaveWorkoutWeekPlan = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWorkoutWeekPlan>>, TError,{data: BodyType<SaveWorkoutWeekPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveWorkoutWeekPlan>>,
+        TError,
+        {data: BodyType<SaveWorkoutWeekPlanInput>},
+        TContext
+      > => {
+      return useMutation(getSaveWorkoutWeekPlanMutationOptions(options));
+    }
+
+export const getGetWorkoutCoachConversationUrl = () => {
+
+
+
+
+  return `/api/workout-coach/conversations`
+}
+
+/**
+ * @summary Get the household workout coach conversation
+ */
+export const getWorkoutCoachConversation = async ( options?: RequestInit): Promise<WorkoutCoachConversation> => {
+
+  return customFetch<WorkoutCoachConversation>(getGetWorkoutCoachConversationUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWorkoutCoachConversationQueryKey = () => {
+    return [
+    `/api/workout-coach/conversations`
+    ] as const;
+    }
+
+
+export const getGetWorkoutCoachConversationQueryOptions = <TData = Awaited<ReturnType<typeof getWorkoutCoachConversation>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutCoachConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWorkoutCoachConversationQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorkoutCoachConversation>>> = ({ signal }) => getWorkoutCoachConversation({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWorkoutCoachConversation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWorkoutCoachConversationQueryResult = NonNullable<Awaited<ReturnType<typeof getWorkoutCoachConversation>>>
+export type GetWorkoutCoachConversationQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the household workout coach conversation
+ */
+
+export function useGetWorkoutCoachConversation<TData = Awaited<ReturnType<typeof getWorkoutCoachConversation>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutCoachConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWorkoutCoachConversationQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendWorkoutCoachMessageUrl = () => {
+
+
+
+
+  return `/api/workout-coach/conversations`
+}
+
+/**
+ * @summary Persist a message and receive coaching with an optional editable draft
+ */
+export const sendWorkoutCoachMessage = async (workoutCoachMessageInput: WorkoutCoachMessageInput, options?: RequestInit): Promise<WorkoutCoachReply> => {
+
+  return customFetch<WorkoutCoachReply>(getSendWorkoutCoachMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(workoutCoachMessageInput)
+  }
+);}
+
+
+
+
+
+export const getSendWorkoutCoachMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendWorkoutCoachMessage>>, TError,{data: BodyType<WorkoutCoachMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendWorkoutCoachMessage>>, TError,{data: BodyType<WorkoutCoachMessageInput>}, TContext> => {
+
+const mutationKey = ['sendWorkoutCoachMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendWorkoutCoachMessage>>, {data: BodyType<WorkoutCoachMessageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendWorkoutCoachMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendWorkoutCoachMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendWorkoutCoachMessage>>>
+    export type SendWorkoutCoachMessageMutationBody = BodyType<WorkoutCoachMessageInput>
+    export type SendWorkoutCoachMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Persist a message and receive coaching with an optional editable draft
+ */
+export const useSendWorkoutCoachMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendWorkoutCoachMessage>>, TError,{data: BodyType<WorkoutCoachMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendWorkoutCoachMessage>>,
+        TError,
+        {data: BodyType<WorkoutCoachMessageInput>},
+        TContext
+      > => {
+      return useMutation(getSendWorkoutCoachMessageMutationOptions(options));
+    }
+
+export const getMergeDuplicateAdultUrl = () => {
+
+
+
+
+  return `/api/admin/family-members/merge-adults`
+}
+
+/**
+ * @summary Safely merge an unlinked legacy adult into an account-linked adult
+ */
+export const mergeDuplicateAdult = async (mergeDuplicateAdultInput: MergeDuplicateAdultInput, options?: RequestInit): Promise<MergeDuplicateAdultResult> => {
+
+  return customFetch<MergeDuplicateAdultResult>(getMergeDuplicateAdultUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mergeDuplicateAdultInput)
+  }
+);}
+
+
+
+
+
+export const getMergeDuplicateAdultMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeDuplicateAdult>>, TError,{data: BodyType<MergeDuplicateAdultInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof mergeDuplicateAdult>>, TError,{data: BodyType<MergeDuplicateAdultInput>}, TContext> => {
+
+const mutationKey = ['mergeDuplicateAdult'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof mergeDuplicateAdult>>, {data: BodyType<MergeDuplicateAdultInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  mergeDuplicateAdult(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MergeDuplicateAdultMutationResult = NonNullable<Awaited<ReturnType<typeof mergeDuplicateAdult>>>
+    export type MergeDuplicateAdultMutationBody = BodyType<MergeDuplicateAdultInput>
+    export type MergeDuplicateAdultMutationError = ErrorType<void>
+
+    /**
+ * @summary Safely merge an unlinked legacy adult into an account-linked adult
+ */
+export const useMergeDuplicateAdult = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeDuplicateAdult>>, TError,{data: BodyType<MergeDuplicateAdultInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof mergeDuplicateAdult>>,
+        TError,
+        {data: BodyType<MergeDuplicateAdultInput>},
+        TContext
+      > => {
+      return useMutation(getMergeDuplicateAdultMutationOptions(options));
     }
 
 export const getGetMaintenanceTasksUrl = (params?: GetMaintenanceTasksParams,) => {

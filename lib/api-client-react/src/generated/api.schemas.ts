@@ -26,7 +26,7 @@ export const MaintenanceRecommendationCategory = {
 export interface MaintenanceRecommendation {
   /**
      * @minLength 1
-     * @maxLength 120
+     * @maxLength 160
      */
   title: string;
   /**
@@ -55,26 +55,84 @@ export interface MaintenanceRecommendationResult {
   recommendations: MaintenanceRecommendation[];
 }
 
+export interface WorkoutParticipant {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface Workout {
   id: string;
   memberId: string;
   memberName: string;
+  participantIds: string[];
+  participants: WorkoutParticipant[];
   workoutDate: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
   title: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
   durationMinutes?: number | null;
+  /** @maxLength 4000 */
   notes?: string | null;
   exerciseCount: number;
   createdAt: string;
 }
 
+export type MuscleGroup = typeof MuscleGroup[keyof typeof MuscleGroup];
+
+
+export const MuscleGroup = {
+  full_body: 'full_body',
+  chest: 'chest',
+  back: 'back',
+  shoulders: 'shoulders',
+  arms: 'arms',
+  core: 'core',
+  glutes: 'glutes',
+  quadriceps: 'quadriceps',
+  hamstrings: 'hamstrings',
+  calves: 'calves',
+  cardio: 'cardio',
+  mobility: 'mobility',
+} as const;
+
 export interface Exercise {
   id: string;
   workoutId: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
   name: string;
+  libraryExerciseId?: string | null;
+  muscleGroups: MuscleGroup[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
   sets?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
   reps?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
   weightLbs?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 86400
+     */
   durationSeconds?: number | null;
+  /** @maxLength 500 */
   notes?: string | null;
 }
 
@@ -82,28 +140,102 @@ export interface WorkoutDetail {
   id: string;
   memberId: string;
   memberName: string;
+  participantIds: string[];
+  participants: WorkoutParticipant[];
   workoutDate: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
   title: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
   durationMinutes?: number | null;
+  /** @maxLength 4000 */
   notes?: string | null;
   exercises: Exercise[];
   createdAt: string;
 }
 
 export interface CreateWorkoutInput {
-  memberId: string;
+  /** @deprecated */
+  memberId?: string;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  participantIds?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
   title: string;
   workoutDate: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
   durationMinutes?: number | null;
+  /** @maxLength 4000 */
+  notes?: string | null;
+}
+
+export interface UpdateWorkoutInput {
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  participantIds?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  title?: string;
+  workoutDate?: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     * @nullable
+     */
+  durationMinutes?: number | null;
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
   notes?: string | null;
 }
 
 export interface CreateExerciseInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
   name: string;
+  /** @minItems 1 */
+  muscleGroups?: MuscleGroup[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
   sets?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
   reps?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
   weightLbs?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 86400
+     */
   durationSeconds?: number | null;
+  /** @maxLength 500 */
   notes?: string | null;
 }
 
@@ -125,6 +257,227 @@ export interface WorkoutRecommendation {
   title: string;
   rationale: string;
   exercises: RecommendedExercise[];
+}
+
+export interface LibraryExercise {
+  id: string;
+  name: string;
+  normalizedName: string;
+  muscleGroups: MuscleGroup[];
+  createdAt: string;
+}
+
+export interface LibraryExerciseInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /** @minItems 1 */
+  muscleGroups: MuscleGroup[];
+}
+
+export interface DraftExercise {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /** @minItems 1 */
+  muscleGroups: MuscleGroup[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     * @nullable
+     */
+  sets: number | null;
+  /**
+     * @minimum 1
+     * @maximum 1000
+     * @nullable
+     */
+  reps: number | null;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     * @nullable
+     */
+  weightLbs: number | null;
+  /**
+     * @minimum 1
+     * @maximum 86400
+     * @nullable
+     */
+  durationSeconds: number | null;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  notes: string | null;
+}
+
+export interface WorkoutDraft {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  title: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
+  durationMinutes: number;
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  notes: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  rationale: string;
+  /**
+     * @minItems 1
+     * @maxItems 30
+     */
+  exercises: DraftExercise[];
+}
+
+export interface WorkoutDraftInput {
+  /**
+     * @minLength 10
+     * @maxLength 2000
+     */
+  prompt: string;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  participantIds: string[];
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  preferences?: string | null;
+}
+
+export interface WorkoutPreferencesInput {
+  /**
+     * @maxItems 7
+     * @items.minimum 0
+     * @items.maximum 6
+     */
+  daysOfWeek: number[];
+  /** @maxLength 2000 */
+  goals: string;
+  /**
+     * @minimum 5
+     * @maximum 300
+     */
+  sessionDurationMinutes: number;
+  /** @maxLength 2000 */
+  equipment: string;
+  /** @maxLength 2000 */
+  limitations: string;
+  /** @maxLength 2000 */
+  notes: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  timezone: string;
+}
+
+export type WorkoutPreferences = WorkoutPreferencesInput & {
+  updatedAt: string;
+  currentWeekStart: string;
+  currentLocalDate: string;
+};
+
+export interface WorkoutWeekPlanInput {
+  weekStart: string;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  participantIds: string[];
+  preferences?: WorkoutPreferencesInput;
+}
+
+export interface WorkoutWeekPlanItem {
+  workoutDate: string;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  participantIds: string[];
+  workout: WorkoutDraft;
+}
+
+export interface WorkoutWeekPlan {
+  weekStart: string;
+  timezone: string;
+  /** @maxItems 7 */
+  items: WorkoutWeekPlanItem[];
+}
+
+export interface SaveWorkoutWeekPlanInput {
+  /**
+     * @minItems 1
+     * @maxItems 7
+     */
+  items: WorkoutWeekPlanItem[];
+}
+
+export type WorkoutCoachMessageRole = typeof WorkoutCoachMessageRole[keyof typeof WorkoutCoachMessageRole];
+
+
+export const WorkoutCoachMessageRole = {
+  user: 'user',
+  assistant: 'assistant',
+} as const;
+
+export interface WorkoutCoachMessage {
+  id: string;
+  role: WorkoutCoachMessageRole;
+  content: string;
+  draft: WorkoutDraft | null;
+  createdAt: string;
+}
+
+export interface WorkoutCoachConversation {
+  messages: WorkoutCoachMessage[];
+}
+
+export interface WorkoutCoachMessageInput {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  content: string;
+  /** @maxItems 20 */
+  participantIds?: string[];
+}
+
+export interface WorkoutCoachReply {
+  userMessage: WorkoutCoachMessage;
+  assistantMessage: WorkoutCoachMessage;
+  draft: WorkoutDraft | null;
+}
+
+export interface MergeDuplicateAdultInput {
+  keepMemberId: string;
+  legacyMemberId: string;
+}
+
+export type MergeDuplicateAdultResultTransferredReferences = {[key: string]: number};
+
+export interface MergeDuplicateAdultResult {
+  keepMemberId: string;
+  deletedLegacyMemberId: string;
+  transferredReferences: MergeDuplicateAdultResultTransferredReferences;
+  mealRatingCollisionsRemoved: number;
 }
 
 export interface CompleteMaintenanceTaskInput {
@@ -239,6 +592,73 @@ export interface FamilyMember {
   photoUrl?: string | null;
   hasLinkedAccount: boolean;
   linkedAccountDisplayName?: string | null;
+}
+
+export type SelfFamilyProfileColor = typeof SelfFamilyProfileColor[keyof typeof SelfFamilyProfileColor];
+
+
+export const SelfFamilyProfileColor = {
+  '#C1440E': '#C1440E',
+  '#2D6A4F': '#2D6A4F',
+  '#E07B39': '#E07B39',
+  '#4A90D9': '#4A90D9',
+  '#9B59B6': '#9B59B6',
+  '#E74C3C': '#E74C3C',
+  '#2ECC71': '#2ECC71',
+  '#F39C12': '#F39C12',
+  '#1ABC9C': '#1ABC9C',
+  '#E91E8C': '#E91E8C',
+  '#607D8B': '#607D8B',
+  '#795548': '#795548',
+} as const;
+
+export interface SelfFamilyProfile {
+  id: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name: string;
+  color: SelfFamilyProfileColor;
+  /**
+     * @maxLength 2048
+     * @nullable
+     * @pattern ^https?://
+     */
+  photoUrl: string | null;
+}
+
+export type SelfFamilyProfileUpdateColor = typeof SelfFamilyProfileUpdateColor[keyof typeof SelfFamilyProfileUpdateColor];
+
+
+export const SelfFamilyProfileUpdateColor = {
+  '#C1440E': '#C1440E',
+  '#2D6A4F': '#2D6A4F',
+  '#E07B39': '#E07B39',
+  '#4A90D9': '#4A90D9',
+  '#9B59B6': '#9B59B6',
+  '#E74C3C': '#E74C3C',
+  '#2ECC71': '#2ECC71',
+  '#F39C12': '#F39C12',
+  '#1ABC9C': '#1ABC9C',
+  '#E91E8C': '#E91E8C',
+  '#607D8B': '#607D8B',
+  '#795548': '#795548',
+} as const;
+
+export interface SelfFamilyProfileUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name?: string;
+  color?: SelfFamilyProfileUpdateColor;
+  /**
+     * @maxLength 2048
+     * @nullable
+     * @pattern ^https?://
+     */
+  photoUrl?: string | null;
 }
 
 export type CreateFamilyMemberInputRole = typeof CreateFamilyMemberInputRole[keyof typeof CreateFamilyMemberInputRole];

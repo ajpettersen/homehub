@@ -10,7 +10,7 @@ import type { MaintenanceRecommendationCategory } from './maintenanceRecommendat
 export interface MaintenanceRecommendation {
   /**
      * @minLength 1
-     * @maxLength 120
+     * @maxLength 160
      */
   title: string;
   /**

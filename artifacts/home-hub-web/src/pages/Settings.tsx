@@ -8,6 +8,7 @@ import {
   useGetMe, getGetMeQueryKey, useUpdateHouseholdTabVisibility,
    useListUsers, getListUsersQueryKey, useUpdateUserProfile,
    useListHouseholdJoinRequests, getListHouseholdJoinRequestsQueryKey, useDecideHouseholdJoinRequest,
+   useMergeDuplicateAdult,
   type HomeHubWebTab,
   type CreateMaintenanceTaskInputCategory,
   type UpdateMaintenanceTaskInputCategory,
@@ -18,7 +19,7 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
   ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
-   SlidersHorizontal, UserCog,
+   SlidersHorizontal, UserCog, Merge, AlertTriangle
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import {
@@ -28,6 +29,8 @@ import {
   isStandaloneWebApp,
   supportsWebPush,
 } from "@/lib/webPush";
+
+import { YourProfile } from "@/components/settings/YourProfile";
 
 // ── colour palette ───────────────────────────────────────────────────────────
 const COLORS = [
@@ -1248,6 +1251,188 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
   );
 }
 
+function MergeDuplicateAdultsSection({ familyMembers }: { familyMembers: any[] }) {
+  const queryClient = useQueryClient();
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const mergeDuplicate = useMergeDuplicateAdult();
+
+  const [keepMemberId, setKeepMemberId] = useState("");
+  const [legacyMemberId, setLegacyMemberId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (me?.role !== "family" || !me.isAdmin) return null;
+
+  const linkedAdults = familyMembers.filter(m => m.role === "parent" && m.hasLinkedAccount);
+  const unlinkedLegacyAdults = familyMembers.filter(m => m.role === "parent" && !m.hasLinkedAccount);
+
+  if (linkedAdults.length === 0 || unlinkedLegacyAdults.length === 0) return null;
+
+  const handleMergeRequest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!keepMemberId || !legacyMemberId) return;
+    setIsConfirmOpen(true);
+  };
+
+  const executeMerge = async () => {
+    if (!keepMemberId || !legacyMemberId || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      const result = await mergeDuplicate.mutateAsync({
+        data: {
+          keepMemberId,
+          legacyMemberId,
+        }
+      });
+      setSuccess(`Successfully merged! Moved ${Object.values(result.transferredReferences).reduce((a: any,b: any)=>a+b,0)} records.`);
+      setKeepMemberId("");
+      setLegacyMemberId("");
+      setIsConfirmOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetFamilyMembersQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() }),
+        // and other potential caches that hold member data
+        queryClient.invalidateQueries()
+      ]);
+    } catch (err) {
+      setError("Failed to merge duplicate adults. Please try again.");
+      setIsConfirmOpen(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const keepMember = linkedAdults.find(m => m.id === keepMemberId);
+  const legacyMember = unlinkedLegacyAdults.find(m => m.id === legacyMemberId);
+
+  return (
+    <>
+      <AccordionSection
+        icon={<Merge className="w-4 h-4" />}
+        title="Merge Duplicate Adult"
+        summary={<span className="text-xs text-muted-foreground">Combine a legacy unlinked profile into a linked account</span>}
+        defaultOpen={false}
+      >
+        <div className="space-y-4">
+          <div className="bg-destructive/10 border-l-2 border-destructive p-3 rounded-r-xl">
+            <div className="flex gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+              <div className="text-sm text-foreground">
+                <p className="font-bold text-destructive">Destructive Action</p>
+                <p className="mt-1">Merging moves all assignments, history, and records from an old unlinked profile to an active linked profile. The old profile is permanently deleted.</p>
+              </div>
+            </div>
+          </div>
+          
+          <form onSubmit={handleMergeRequest} className="space-y-4 bg-card border border-border p-4 rounded-xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-1">Keep (Active Linked Adult)</label>
+                <div className="relative">
+                  <select 
+                    required
+                    value={keepMemberId} 
+                    onChange={e => setKeepMemberId(e.target.value)}
+                    className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                  >
+                    <option value="">Select active adult to keep...</option>
+                    {linkedAdults.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-70" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-1">Merge & Delete (Legacy Adult)</label>
+                <div className="relative">
+                  <select 
+                    required
+                    value={legacyMemberId} 
+                    onChange={e => setLegacyMemberId(e.target.value)}
+                    className="w-full appearance-none rounded-lg border border-destructive/50 bg-background px-3 py-2 text-sm text-foreground focus:border-destructive focus:outline-none focus:ring-1 focus:ring-destructive shadow-sm"
+                  >
+                    <option value="">Select legacy adult to merge...</option>
+                    {unlinkedLegacyAdults.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-70" />
+                </div>
+              </div>
+            </div>
+
+            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            {success && <p className="text-sm font-medium text-green-700">{success}</p>}
+
+            <button
+              type="submit"
+              disabled={mergeDuplicate.isPending || isSubmitting || !keepMemberId || !legacyMemberId || keepMemberId === legacyMemberId}
+              className="w-full mt-4 rounded-lg bg-destructive px-3 py-2 text-sm font-bold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+            >
+              Merge and Delete Legacy Profile
+            </button>
+          </form>
+        </div>
+      </AccordionSection>
+
+      {isConfirmOpen && keepMember && legacyMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card w-full max-w-md rounded-2xl shadow-xl border border-destructive/30 animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-border bg-destructive/5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg text-foreground">Confirm Merge</h3>
+                <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
+              </div>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-foreground leading-relaxed">
+                You are about to merge the legacy profile <span className="font-bold">{legacyMember.name}</span> into the linked profile <span className="font-bold">{keepMember.name}</span>.
+              </p>
+              <ul className="text-sm space-y-2 text-muted-foreground list-disc pl-5">
+                <li>All history (workouts, meals, chores, etc.) will be transferred to <span className="font-bold text-foreground">{keepMember.name}</span>.</li>
+                <li>The legacy profile <span className="font-bold text-destructive">{legacyMember.name}</span> will be permanently deleted.</li>
+              </ul>
+            </div>
+            
+            <div className="p-4 border-t border-border bg-muted/20 flex gap-3">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => setIsConfirmOpen(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-bold hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={executeMerge}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-50 shadow-sm"
+              >
+                {isSubmitting ? "Merging..." : "Confirm Merge"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -1298,9 +1483,13 @@ export default function Settings() {
         <p className="text-muted-foreground mt-1 font-medium">Manage your household, properties, and AI preferences.</p>
       </div>
 
+      <YourProfile />
+
       <AppearanceAndTabsSection />
 
       <AccountsAndAccessSection familyMembers={familyMembers ?? []} />
+
+      <MergeDuplicateAdultsSection familyMembers={familyMembers ?? []} />
 
       {/* ── Family Members (person-first: leads the page) ───────────────────── */}
       <AccordionSection

@@ -2,15 +2,28 @@ import { Router } from "express";
 import { createHash } from "node:crypto";
 import { clerkClient, getAuth } from "@clerk/express";
 import {
+  choresTable,
   db,
   familyMembersTable,
   householdJoinRequestsTable,
   HOMEHUB_WEB_TABS,
   householdsTable,
   propertiesTable,
+  maintenanceTasksTable,
+  mealRatingsTable,
+  todoItemsTable,
+  todoListsTable,
   userProfilesTable,
+  workoutParticipantsTable,
+  workoutsTable,
 } from "@workspace/db";
-import { and, asc, eq, sql } from "drizzle-orm";
+import {
+  GetMyFamilyProfileResponse,
+  MergeDuplicateAdultBody,
+  UpdateMyFamilyProfileBody,
+  UpdateMyFamilyProfileResponse,
+} from "@workspace/api-zod";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { isConfiguredBootstrapIdentity } from "../lib/bootstrapIdentity";
 
 const router = Router();
@@ -61,6 +74,24 @@ function formatProfile(
 interface FamilyAdminScope {
   clerkId: string;
   householdId: number;
+}
+
+function selfFamilyProfileJson(member: typeof familyMembersTable.$inferSelect) {
+  return {
+    id: String(member.id),
+    name: member.name,
+    color: member.color,
+    photoUrl: member.photoUrl ?? null,
+  };
+}
+
+function isSafeProfilePhotoUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && value.length <= 2048;
+  } catch {
+    return false;
+  }
 }
 
 async function ensureBootstrapHousehold(tx: any): Promise<number> {
@@ -281,6 +312,165 @@ router.get("/me", async (req, res): Promise<void> => {
     ));
   } catch (err) {
     req.log.error({ err }, "Failed to get/create user profile");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** GET /api/me/family-profile — get only the signed-in family account's linked adult */
+router.get("/me/family-profile", async (req, res): Promise<void> => {
+  const clerkId = getAuth(req).userId;
+  if (!clerkId) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  try {
+    const [profile] = await db
+      .select({
+        role: userProfilesTable.role,
+        householdId: userProfilesTable.householdId,
+        linkedFamilyMemberId: userProfilesTable.linkedFamilyMemberId,
+      })
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.clerkId, clerkId))
+      .limit(1);
+
+    if (!profile || profile.role !== "family") {
+      res.status(403).json({ error: "An approved family account is required to view this profile" });
+      return;
+    }
+    if (!profile.householdId || !profile.linkedFamilyMemberId) {
+      res.status(409).json({ error: "Your family account is not linked to an adult profile; ask a household administrator to repair the link" });
+      return;
+    }
+
+    const [member] = await db
+      .select()
+      .from(familyMembersTable)
+      .where(and(
+        eq(familyMembersTable.id, profile.linkedFamilyMemberId),
+        eq(familyMembersTable.householdId, profile.householdId),
+      ))
+      .limit(1);
+    if (!member) {
+      res.status(404).json({ error: "Your linked family profile was not found in this household; ask a household administrator to relink it" });
+      return;
+    }
+    if (member.role !== "parent") {
+      res.status(409).json({ error: "Your linked family profile is not an adult profile; ask a household administrator to repair the link" });
+      return;
+    }
+    if (member.photoUrl !== null && !isSafeProfilePhotoUrl(member.photoUrl)) {
+      res.status(409).json({ error: "Your linked family profile has an invalid photo URL; update or remove it through a household administrator" });
+      return;
+    }
+
+    res.json(GetMyFamilyProfileResponse.parse(selfFamilyProfileJson(member)));
+  } catch (err) {
+    req.log.error({ err }, "Failed to get own family profile");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** PATCH /api/me/family-profile — update only the signed-in family account's linked adult */
+router.patch("/me/family-profile", async (req, res): Promise<void> => {
+  const clerkId = getAuth(req).userId;
+  if (!clerkId) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  const parsed = UpdateMyFamilyProfileBody.strict().safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: `Invalid family profile fields: ${parsed.error.message}` });
+    return;
+  }
+  if (!Object.keys(parsed.data).length) {
+    res.status(400).json({ error: "Provide at least one of name, color, or photoUrl" });
+    return;
+  }
+
+  const updates: { name?: string; avatarInitials?: string; color?: string; photoUrl?: string | null } = {};
+  if (parsed.data.name !== undefined) {
+    const name = parsed.data.name.trim();
+    if (!name || name.length > 100) {
+      res.status(400).json({ error: "name must contain 1 to 100 non-whitespace characters" });
+      return;
+    }
+    updates.name = name;
+    updates.avatarInitials = name.charAt(0).toUpperCase();
+  }
+  if (parsed.data.color !== undefined) updates.color = parsed.data.color;
+  if (parsed.data.photoUrl !== undefined) {
+    if (parsed.data.photoUrl !== null && !isSafeProfilePhotoUrl(parsed.data.photoUrl)) {
+      res.status(400).json({ error: "photoUrl must be a valid http or https URL no longer than 2048 characters" });
+      return;
+    }
+    updates.photoUrl = parsed.data.photoUrl;
+  }
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [profile] = await tx
+        .select()
+        .from(userProfilesTable)
+        .where(eq(userProfilesTable.clerkId, clerkId))
+        .for("update")
+        .limit(1);
+      if (!profile || profile.role !== "family") return { status: "forbidden" } as const;
+      if (!profile.householdId || !profile.linkedFamilyMemberId) return { status: "unlinked" } as const;
+
+      const householdId = profile.householdId;
+      const memberId = profile.linkedFamilyMemberId;
+      const [member] = await tx
+        .select()
+        .from(familyMembersTable)
+        .where(and(
+          eq(familyMembersTable.id, memberId),
+          eq(familyMembersTable.householdId, householdId),
+        ))
+        .for("update")
+        .limit(1);
+      if (!member) return { status: "missing" } as const;
+      if (member.role !== "parent") return { status: "invalid-link" } as const;
+
+      const [updated] = await tx
+        .update(familyMembersTable)
+        .set(updates)
+        .where(and(
+          eq(familyMembersTable.id, memberId),
+          eq(familyMembersTable.householdId, householdId),
+          eq(familyMembersTable.role, "parent"),
+        ))
+        .returning();
+      if (!updated) return { status: "relinked" } as const;
+      return { status: "ok", member: updated } as const;
+    });
+
+    if (result.status === "forbidden") {
+      res.status(403).json({ error: "An approved family account is required to update this profile" });
+      return;
+    }
+    if (result.status === "unlinked") {
+      res.status(409).json({ error: "Your family account is not linked to an adult profile; ask a household administrator to repair the link" });
+      return;
+    }
+    if (result.status === "missing") {
+      res.status(404).json({ error: "Your linked family profile was not found in this household; ask a household administrator to relink it" });
+      return;
+    }
+    if (result.status === "invalid-link") {
+      res.status(409).json({ error: "Your linked family profile is not an adult profile; ask a household administrator to repair the link" });
+      return;
+    }
+    if (result.status === "relinked") {
+      res.status(409).json({ error: "Your family profile link changed while it was being updated; refresh and try again" });
+      return;
+    }
+
+    res.json(UpdateMyFamilyProfileResponse.parse(selfFamilyProfileJson(result.member)));
+  } catch (err) {
+    req.log.error({ err }, "Failed to update own family profile");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -758,6 +948,145 @@ router.put("/admin/users/:targetClerkId", async (req, res) => {
     }
     req.log.error({ err }, "Failed to update user profile");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** POST /api/admin/family-members/merge-adults — transfer legacy history without touching the linked account. */
+router.post("/admin/family-members/merge-adults", async (req, res) => {
+  const parsed = MergeDuplicateAdultBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Valid keepMemberId and legacyMemberId are required", details: parsed.error.flatten() });
+    return;
+  }
+  const keepMemberId = Number(parsed.data.keepMemberId);
+  const legacyMemberId = Number(parsed.data.legacyMemberId);
+  if (!Number.isInteger(keepMemberId) || !Number.isInteger(legacyMemberId) || keepMemberId === legacyMemberId) {
+    res.status(400).json({ error: "The keep and legacy adults must be different valid IDs" });
+    return;
+  }
+  try {
+    const admin = await requireFamilyAdmin(req, res);
+    if (!admin) return;
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`merge-adults:${admin.householdId}`}))`);
+      const members = await tx.select().from(familyMembersTable).where(and(
+        inArray(familyMembersTable.id, [keepMemberId, legacyMemberId]),
+        eq(familyMembersTable.householdId, admin.householdId),
+      )).for("update");
+      if (members.length !== 2) return { status: "missing" as const };
+      if (members.some(member => member.role !== "parent")) return { status: "ineligible" as const };
+
+      const links = await tx.select({
+        clerkId: userProfilesTable.clerkId,
+        memberId: userProfilesTable.linkedFamilyMemberId,
+        role: userProfilesTable.role,
+        householdId: userProfilesTable.householdId,
+      }).from(userProfilesTable).where(inArray(userProfilesTable.linkedFamilyMemberId, [keepMemberId, legacyMemberId])).for("update");
+      const keepLinks = links.filter(link =>
+        link.memberId === keepMemberId
+        && link.role === "family"
+        && link.householdId === admin.householdId,
+      );
+      const legacyLinks = links.filter(link => link.memberId === legacyMemberId);
+      if (keepLinks.length !== 1 || legacyLinks.length !== 0 || links.length !== 1) {
+        return { status: "ineligible" as const };
+      }
+
+      const counts: Record<string, number> = {};
+      counts.chores = (await tx.update(choresTable).set({ assigneeId: keepMemberId })
+        .where(eq(choresTable.assigneeId, legacyMemberId)).returning({ id: choresTable.id })).length;
+      counts.todoLists = (await tx.update(todoListsTable).set({ assigneeId: keepMemberId })
+        .where(eq(todoListsTable.assigneeId, legacyMemberId)).returning({ id: todoListsTable.id })).length;
+      counts.todoItems = (await tx.update(todoItemsTable).set({ assigneeId: keepMemberId })
+        .where(eq(todoItemsTable.assigneeId, legacyMemberId)).returning({ id: todoItemsTable.id })).length;
+      counts.maintenanceTasks = (await tx.update(maintenanceTasksTable).set({ assigneeId: keepMemberId })
+        .where(eq(maintenanceTasksTable.assigneeId, legacyMemberId)).returning({ id: maintenanceTasksTable.id })).length;
+
+      const legacyWorkoutRows = await tx.select({ workoutId: workoutParticipantsTable.workoutId })
+        .from(workoutParticipantsTable).where(eq(workoutParticipantsTable.memberId, legacyMemberId));
+      let participantTransfers = 0;
+      for (const row of legacyWorkoutRows) {
+        const [collision] = await tx.select({ memberId: workoutParticipantsTable.memberId })
+          .from(workoutParticipantsTable).where(and(
+            eq(workoutParticipantsTable.workoutId, row.workoutId),
+            eq(workoutParticipantsTable.memberId, keepMemberId),
+          )).limit(1);
+        if (collision) {
+          await tx.delete(workoutParticipantsTable).where(and(
+            eq(workoutParticipantsTable.workoutId, row.workoutId),
+            eq(workoutParticipantsTable.memberId, legacyMemberId),
+          ));
+        } else {
+          await tx.update(workoutParticipantsTable).set({ memberId: keepMemberId }).where(and(
+            eq(workoutParticipantsTable.workoutId, row.workoutId),
+            eq(workoutParticipantsTable.memberId, legacyMemberId),
+          ));
+          participantTransfers++;
+        }
+      }
+      counts.workoutParticipants = participantTransfers;
+      const legacyWorkoutUpdates = await tx.update(workoutsTable).set({ memberId: keepMemberId })
+        .where(eq(workoutsTable.memberId, legacyMemberId)).returning({ id: workoutsTable.id });
+      counts.legacyWorkoutOwners = legacyWorkoutUpdates.length;
+
+      const legacyRatings = await tx.select({ id: mealRatingsTable.id, mealPlanId: mealRatingsTable.mealPlanId })
+        .from(mealRatingsTable).where(eq(mealRatingsTable.memberId, legacyMemberId)).orderBy(asc(mealRatingsTable.id));
+      let collisions = 0;
+      let ratingTransfers = 0;
+      for (const rating of legacyRatings) {
+        const [keepRating] = await tx.select({ id: mealRatingsTable.id }).from(mealRatingsTable).where(and(
+          eq(mealRatingsTable.mealPlanId, rating.mealPlanId),
+          eq(mealRatingsTable.memberId, keepMemberId),
+        )).limit(1);
+        if (keepRating) {
+          await tx.delete(mealRatingsTable).where(eq(mealRatingsTable.id, rating.id));
+          collisions++;
+        } else {
+          await tx.update(mealRatingsTable).set({ memberId: keepMemberId }).where(eq(mealRatingsTable.id, rating.id));
+          ratingTransfers++;
+        }
+      }
+      counts.mealRatings = ratingTransfers;
+
+      const referenceCheck = await tx.execute(sql`
+        SELECT
+          (SELECT count(*) FROM chores WHERE assignee_id = ${legacyMemberId}) +
+          (SELECT count(*) FROM todo_lists WHERE assignee_id = ${legacyMemberId}) +
+          (SELECT count(*) FROM todo_items WHERE assignee_id = ${legacyMemberId}) +
+          (SELECT count(*) FROM maintenance_tasks WHERE assignee_id = ${legacyMemberId}) +
+          (SELECT count(*) FROM workouts WHERE member_id = ${legacyMemberId}) +
+          (SELECT count(*) FROM workout_participants WHERE member_id = ${legacyMemberId}) +
+          (SELECT count(*) FROM meal_ratings WHERE member_id = ${legacyMemberId}) +
+          (SELECT count(*) FROM user_profiles WHERE linked_family_member_id = ${legacyMemberId})
+          AS remaining
+      `);
+      if (Number((referenceCheck.rows[0] as { remaining: unknown }).remaining) !== 0) {
+        throw new Error("LEGACY_REFERENCES_REMAIN");
+      }
+      const deleted = await tx.delete(familyMembersTable).where(and(
+        eq(familyMembersTable.id, legacyMemberId),
+        eq(familyMembersTable.householdId, admin.householdId),
+      )).returning({ id: familyMembersTable.id });
+      if (deleted.length !== 1) throw new Error("LEGACY_DELETE_FAILED");
+      return { status: "ok" as const, counts, collisions };
+    });
+    if (result.status === "missing") {
+      res.status(404).json({ error: "Both adults must exist in this household" });
+      return;
+    }
+    if (result.status === "ineligible") {
+      res.status(409).json({ error: "Keep must be linked to exactly one approved family account and legacy must be unlinked" });
+      return;
+    }
+    res.json({
+      keepMemberId: String(keepMemberId),
+      deletedLegacyMemberId: String(legacyMemberId),
+      transferredReferences: result.counts,
+      mealRatingCollisionsRemoved: result.collisions,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to merge duplicate adults");
+    res.status(409).json({ error: "Adult merge was rolled back because not all legacy references could be transferred" });
   }
 });
 

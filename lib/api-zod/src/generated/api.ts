@@ -96,7 +96,7 @@ export const RecommendMaintenanceBody = zod.object({
   "propertyId": zod.string().min(1)
 })
 
-export const recommendMaintenanceResponseRecommendationsItemTitleMax = 120;
+export const recommendMaintenanceResponseRecommendationsItemTitleMax = 160;
 
 export const recommendMaintenanceResponseRecommendationsItemDescriptionMax = 500;
 
@@ -872,6 +872,58 @@ export const GetMeResponse = zod.object({
 
 
 /**
+ * @summary Get the approved family account's linked adult profile
+ */
+export const getMyFamilyProfileResponseNameMax = 100;
+
+export const getMyFamilyProfileResponsePhotoUrlMax = 2048;
+
+
+export const getMyFamilyProfileResponsePhotoUrlRegExp = new RegExp('^https?:/');
+
+
+export const GetMyFamilyProfileResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string().min(1).max(getMyFamilyProfileResponseNameMax),
+  "color": zod.enum(['#C1440E', '#2D6A4F', '#E07B39', '#4A90D9', '#9B59B6', '#E74C3C', '#2ECC71', '#F39C12', '#1ABC9C', '#E91E8C', '#607D8B', '#795548']),
+  "photoUrl": zod.string().max(getMyFamilyProfileResponsePhotoUrlMax).regex(getMyFamilyProfileResponsePhotoUrlRegExp).nullable()
+})
+
+
+/**
+ * @summary Update the approved family account's own linked adult profile
+ */
+export const updateMyFamilyProfileBodyNameMax = 100;
+
+export const updateMyFamilyProfileBodyPhotoUrlMax = 2048;
+
+
+export const updateMyFamilyProfileBodyPhotoUrlRegExp = new RegExp('^https?:/');
+
+
+export const UpdateMyFamilyProfileBody = zod.object({
+  "name": zod.string().min(1).max(updateMyFamilyProfileBodyNameMax).optional(),
+  "color": zod.enum(['#C1440E', '#2D6A4F', '#E07B39', '#4A90D9', '#9B59B6', '#E74C3C', '#2ECC71', '#F39C12', '#1ABC9C', '#E91E8C', '#607D8B', '#795548']).optional(),
+  "photoUrl": zod.string().max(updateMyFamilyProfileBodyPhotoUrlMax).regex(updateMyFamilyProfileBodyPhotoUrlRegExp).nullish()
+})
+
+export const updateMyFamilyProfileResponseNameMax = 100;
+
+export const updateMyFamilyProfileResponsePhotoUrlMax = 2048;
+
+
+export const updateMyFamilyProfileResponsePhotoUrlRegExp = new RegExp('^https?:/');
+
+
+export const UpdateMyFamilyProfileResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string().min(1).max(updateMyFamilyProfileResponseNameMax),
+  "color": zod.enum(['#C1440E', '#2D6A4F', '#E07B39', '#4A90D9', '#9B59B6', '#E74C3C', '#2ECC71', '#F39C12', '#1ABC9C', '#E91E8C', '#607D8B', '#795548']),
+  "photoUrl": zod.string().max(updateMyFamilyProfileResponsePhotoUrlMax).regex(updateMyFamilyProfileResponsePhotoUrlRegExp).nullable()
+})
+
+
+/**
  * @summary Request access to an existing household using its administrator email
  */
 export const requestHouseholdJoinBodyAdministratorEmailMin = 3;
@@ -1101,14 +1153,28 @@ export const GetWorkoutsQueryParams = zod.object({
   "memberId": zod.coerce.string().optional()
 })
 
+export const getWorkoutsResponseTitleMax = 160;
+
+export const getWorkoutsResponseDurationMinutesMax = 1440;
+
+export const getWorkoutsResponseNotesMax = 4000;
+
+
+
 export const GetWorkoutsResponseItem = zod.object({
   "id": zod.string(),
   "memberId": zod.string(),
   "memberName": zod.string(),
+  "participantIds": zod.array(zod.string()),
+  "participants": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "color": zod.string()
+})),
   "workoutDate": zod.coerce.date(),
-  "title": zod.string(),
-  "durationMinutes": zod.number().nullish(),
-  "notes": zod.string().nullish(),
+  "title": zod.string().min(1).max(getWorkoutsResponseTitleMax),
+  "durationMinutes": zod.number().min(1).max(getWorkoutsResponseDurationMinutesMax).nullish(),
+  "notes": zod.string().max(getWorkoutsResponseNotesMax).nullish(),
   "exerciseCount": zod.number(),
   "createdAt": zod.coerce.date()
 })
@@ -1118,22 +1184,47 @@ export const GetWorkoutsResponse = zod.array(GetWorkoutsResponseItem)
 /**
  * @summary Log a new workout
  */
+export const createWorkoutBodyParticipantIdsMax = 20;
+
+export const createWorkoutBodyTitleMax = 160;
+
+export const createWorkoutBodyDurationMinutesMax = 1440;
+
+export const createWorkoutBodyNotesMax = 4000;
+
+
+
 export const CreateWorkoutBody = zod.object({
-  "memberId": zod.string(),
-  "title": zod.string(),
+  "memberId": zod.string().optional(),
+  "participantIds": zod.array(zod.string()).min(1).max(createWorkoutBodyParticipantIdsMax).optional(),
+  "title": zod.string().min(1).max(createWorkoutBodyTitleMax),
   "workoutDate": zod.coerce.date(),
-  "durationMinutes": zod.number().nullish(),
-  "notes": zod.string().nullish()
+  "durationMinutes": zod.number().min(1).max(createWorkoutBodyDurationMinutesMax).nullish(),
+  "notes": zod.string().max(createWorkoutBodyNotesMax).nullish()
 })
+
+export const createWorkoutResponseTitleMax = 160;
+
+export const createWorkoutResponseDurationMinutesMax = 1440;
+
+export const createWorkoutResponseNotesMax = 4000;
+
+
 
 export const CreateWorkoutResponse = zod.object({
   "id": zod.string(),
   "memberId": zod.string(),
   "memberName": zod.string(),
+  "participantIds": zod.array(zod.string()),
+  "participants": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "color": zod.string()
+})),
   "workoutDate": zod.coerce.date(),
-  "title": zod.string(),
-  "durationMinutes": zod.number().nullish(),
-  "notes": zod.string().nullish(),
+  "title": zod.string().min(1).max(createWorkoutResponseTitleMax),
+  "durationMinutes": zod.number().min(1).max(createWorkoutResponseDurationMinutesMax).nullish(),
+  "notes": zod.string().max(createWorkoutResponseNotesMax).nullish(),
   "exerciseCount": zod.number(),
   "createdAt": zod.coerce.date()
 })
@@ -1146,23 +1237,128 @@ export const GetWorkoutParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const getWorkoutResponseTitleMax = 160;
+
+export const getWorkoutResponseDurationMinutesMax = 1440;
+
+export const getWorkoutResponseNotesMax = 4000;
+
+export const getWorkoutResponseExercisesItemNameMax = 120;
+
+export const getWorkoutResponseExercisesItemSetsMax = 100;
+
+export const getWorkoutResponseExercisesItemRepsMax = 1000;
+
+export const getWorkoutResponseExercisesItemWeightLbsMin = 0;
+export const getWorkoutResponseExercisesItemWeightLbsMax = 5000;
+
+export const getWorkoutResponseExercisesItemDurationSecondsMax = 86400;
+
+export const getWorkoutResponseExercisesItemNotesMax = 500;
+
+
+
 export const GetWorkoutResponse = zod.object({
   "id": zod.string(),
   "memberId": zod.string(),
   "memberName": zod.string(),
+  "participantIds": zod.array(zod.string()),
+  "participants": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "color": zod.string()
+})),
   "workoutDate": zod.coerce.date(),
-  "title": zod.string(),
-  "durationMinutes": zod.number().nullish(),
-  "notes": zod.string().nullish(),
+  "title": zod.string().min(1).max(getWorkoutResponseTitleMax),
+  "durationMinutes": zod.number().min(1).max(getWorkoutResponseDurationMinutesMax).nullish(),
+  "notes": zod.string().max(getWorkoutResponseNotesMax).nullish(),
   "exercises": zod.array(zod.object({
   "id": zod.string(),
   "workoutId": zod.string(),
+  "name": zod.string().min(1).max(getWorkoutResponseExercisesItemNameMax),
+  "libraryExerciseId": zod.string().nullish(),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])),
+  "sets": zod.number().min(1).max(getWorkoutResponseExercisesItemSetsMax).nullish(),
+  "reps": zod.number().min(1).max(getWorkoutResponseExercisesItemRepsMax).nullish(),
+  "weightLbs": zod.number().min(getWorkoutResponseExercisesItemWeightLbsMin).max(getWorkoutResponseExercisesItemWeightLbsMax).nullish(),
+  "durationSeconds": zod.number().min(1).max(getWorkoutResponseExercisesItemDurationSecondsMax).nullish(),
+  "notes": zod.string().max(getWorkoutResponseExercisesItemNotesMax).nullish()
+})),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a workout and its participants
+ */
+export const UpdateWorkoutParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateWorkoutBodyParticipantIdsMax = 20;
+
+export const updateWorkoutBodyTitleMax = 160;
+
+export const updateWorkoutBodyDurationMinutesMax = 1440;
+
+export const updateWorkoutBodyNotesMax = 4000;
+
+
+
+export const UpdateWorkoutBody = zod.object({
+  "participantIds": zod.array(zod.string()).min(1).max(updateWorkoutBodyParticipantIdsMax).optional(),
+  "title": zod.string().min(1).max(updateWorkoutBodyTitleMax).optional(),
+  "workoutDate": zod.coerce.date().optional(),
+  "durationMinutes": zod.number().min(1).max(updateWorkoutBodyDurationMinutesMax).nullish(),
+  "notes": zod.string().max(updateWorkoutBodyNotesMax).nullish()
+})
+
+export const updateWorkoutResponseTitleMax = 160;
+
+export const updateWorkoutResponseDurationMinutesMax = 1440;
+
+export const updateWorkoutResponseNotesMax = 4000;
+
+export const updateWorkoutResponseExercisesItemNameMax = 120;
+
+export const updateWorkoutResponseExercisesItemSetsMax = 100;
+
+export const updateWorkoutResponseExercisesItemRepsMax = 1000;
+
+export const updateWorkoutResponseExercisesItemWeightLbsMin = 0;
+export const updateWorkoutResponseExercisesItemWeightLbsMax = 5000;
+
+export const updateWorkoutResponseExercisesItemDurationSecondsMax = 86400;
+
+export const updateWorkoutResponseExercisesItemNotesMax = 500;
+
+
+
+export const UpdateWorkoutResponse = zod.object({
+  "id": zod.string(),
+  "memberId": zod.string(),
+  "memberName": zod.string(),
+  "participantIds": zod.array(zod.string()),
+  "participants": zod.array(zod.object({
+  "id": zod.string(),
   "name": zod.string(),
-  "sets": zod.number().nullish(),
-  "reps": zod.number().nullish(),
-  "weightLbs": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish(),
-  "notes": zod.string().nullish()
+  "color": zod.string()
+})),
+  "workoutDate": zod.coerce.date(),
+  "title": zod.string().min(1).max(updateWorkoutResponseTitleMax),
+  "durationMinutes": zod.number().min(1).max(updateWorkoutResponseDurationMinutesMax).nullish(),
+  "notes": zod.string().max(updateWorkoutResponseNotesMax).nullish(),
+  "exercises": zod.array(zod.object({
+  "id": zod.string(),
+  "workoutId": zod.string(),
+  "name": zod.string().min(1).max(updateWorkoutResponseExercisesItemNameMax),
+  "libraryExerciseId": zod.string().nullish(),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])),
+  "sets": zod.number().min(1).max(updateWorkoutResponseExercisesItemSetsMax).nullish(),
+  "reps": zod.number().min(1).max(updateWorkoutResponseExercisesItemRepsMax).nullish(),
+  "weightLbs": zod.number().min(updateWorkoutResponseExercisesItemWeightLbsMin).max(updateWorkoutResponseExercisesItemWeightLbsMax).nullish(),
+  "durationSeconds": zod.number().min(1).max(updateWorkoutResponseExercisesItemDurationSecondsMax).nullish(),
+  "notes": zod.string().max(updateWorkoutResponseExercisesItemNotesMax).nullish()
 })),
   "createdAt": zod.coerce.date()
 })
@@ -1185,24 +1381,58 @@ export const AddExerciseParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const addExerciseBodyNameMax = 120;
+
+
+export const addExerciseBodySetsMax = 100;
+
+export const addExerciseBodyRepsMax = 1000;
+
+export const addExerciseBodyWeightLbsMin = 0;
+export const addExerciseBodyWeightLbsMax = 5000;
+
+export const addExerciseBodyDurationSecondsMax = 86400;
+
+export const addExerciseBodyNotesMax = 500;
+
+
+
 export const AddExerciseBody = zod.object({
-  "name": zod.string(),
-  "sets": zod.number().nullish(),
-  "reps": zod.number().nullish(),
-  "weightLbs": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish(),
-  "notes": zod.string().nullish()
+  "name": zod.string().min(1).max(addExerciseBodyNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1).optional(),
+  "sets": zod.number().min(1).max(addExerciseBodySetsMax).nullish(),
+  "reps": zod.number().min(1).max(addExerciseBodyRepsMax).nullish(),
+  "weightLbs": zod.number().min(addExerciseBodyWeightLbsMin).max(addExerciseBodyWeightLbsMax).nullish(),
+  "durationSeconds": zod.number().min(1).max(addExerciseBodyDurationSecondsMax).nullish(),
+  "notes": zod.string().max(addExerciseBodyNotesMax).nullish()
 })
+
+export const addExerciseResponseNameMax = 120;
+
+export const addExerciseResponseSetsMax = 100;
+
+export const addExerciseResponseRepsMax = 1000;
+
+export const addExerciseResponseWeightLbsMin = 0;
+export const addExerciseResponseWeightLbsMax = 5000;
+
+export const addExerciseResponseDurationSecondsMax = 86400;
+
+export const addExerciseResponseNotesMax = 500;
+
+
 
 export const AddExerciseResponse = zod.object({
   "id": zod.string(),
   "workoutId": zod.string(),
-  "name": zod.string(),
-  "sets": zod.number().nullish(),
-  "reps": zod.number().nullish(),
-  "weightLbs": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish(),
-  "notes": zod.string().nullish()
+  "name": zod.string().min(1).max(addExerciseResponseNameMax),
+  "libraryExerciseId": zod.string().nullish(),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])),
+  "sets": zod.number().min(1).max(addExerciseResponseSetsMax).nullish(),
+  "reps": zod.number().min(1).max(addExerciseResponseRepsMax).nullish(),
+  "weightLbs": zod.number().min(addExerciseResponseWeightLbsMin).max(addExerciseResponseWeightLbsMax).nullish(),
+  "durationSeconds": zod.number().min(1).max(addExerciseResponseDurationSecondsMax).nullish(),
+  "notes": zod.string().max(addExerciseResponseNotesMax).nullish()
 })
 
 
@@ -1214,6 +1444,664 @@ export const DeleteExerciseParams = zod.object({
 })
 
 export const DeleteExerciseResponse = zod.void()
+
+
+/**
+ * @summary List the household exercise library
+ */
+export const ListExerciseLibraryResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "normalizedName": zod.string(),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])),
+  "createdAt": zod.coerce.date()
+})
+export const ListExerciseLibraryResponse = zod.array(ListExerciseLibraryResponseItem)
+
+
+/**
+ * @summary Create a household exercise
+ */
+export const createLibraryExerciseBodyNameMax = 120;
+
+
+
+
+export const CreateLibraryExerciseBody = zod.object({
+  "name": zod.string().min(1).max(createLibraryExerciseBodyNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1)
+})
+
+export const CreateLibraryExerciseResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "normalizedName": zod.string(),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a household exercise
+ */
+export const UpdateLibraryExerciseParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateLibraryExerciseBodyNameMax = 120;
+
+
+
+
+export const UpdateLibraryExerciseBody = zod.object({
+  "name": zod.string().min(1).max(updateLibraryExerciseBodyNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1)
+})
+
+export const UpdateLibraryExerciseResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "normalizedName": zod.string(),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete an unused household exercise
+ */
+export const DeleteLibraryExerciseParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteLibraryExerciseResponse = zod.void()
+
+
+/**
+ * @summary Draft an editable workout without saving it
+ */
+export const draftWorkoutBodyPromptMin = 10;
+export const draftWorkoutBodyPromptMax = 2000;
+
+export const draftWorkoutBodyParticipantIdsMax = 20;
+
+export const draftWorkoutBodyPreferencesMax = 2000;
+
+
+
+export const DraftWorkoutBody = zod.object({
+  "prompt": zod.string().min(draftWorkoutBodyPromptMin).max(draftWorkoutBodyPromptMax),
+  "participantIds": zod.array(zod.string()).min(1).max(draftWorkoutBodyParticipantIdsMax),
+  "preferences": zod.string().max(draftWorkoutBodyPreferencesMax).nullish()
+})
+
+export const draftWorkoutResponseTitleMax = 160;
+
+export const draftWorkoutResponseDurationMinutesMax = 1440;
+
+export const draftWorkoutResponseNotesMax = 4000;
+
+export const draftWorkoutResponseRationaleMax = 2000;
+
+export const draftWorkoutResponseExercisesItemNameMax = 120;
+
+
+export const draftWorkoutResponseExercisesItemSetsMax = 100;
+
+export const draftWorkoutResponseExercisesItemRepsMax = 1000;
+
+export const draftWorkoutResponseExercisesItemWeightLbsMin = 0;
+export const draftWorkoutResponseExercisesItemWeightLbsMax = 5000;
+
+export const draftWorkoutResponseExercisesItemDurationSecondsMax = 86400;
+
+export const draftWorkoutResponseExercisesItemNotesMax = 500;
+
+export const draftWorkoutResponseExercisesMax = 30;
+
+
+
+export const DraftWorkoutResponse = zod.object({
+  "title": zod.string().min(1).max(draftWorkoutResponseTitleMax),
+  "durationMinutes": zod.number().min(1).max(draftWorkoutResponseDurationMinutesMax),
+  "notes": zod.string().max(draftWorkoutResponseNotesMax).nullable(),
+  "rationale": zod.string().min(1).max(draftWorkoutResponseRationaleMax),
+  "exercises": zod.array(zod.object({
+  "name": zod.string().min(1).max(draftWorkoutResponseExercisesItemNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1),
+  "sets": zod.number().min(1).max(draftWorkoutResponseExercisesItemSetsMax).nullable(),
+  "reps": zod.number().min(1).max(draftWorkoutResponseExercisesItemRepsMax).nullable(),
+  "weightLbs": zod.number().min(draftWorkoutResponseExercisesItemWeightLbsMin).max(draftWorkoutResponseExercisesItemWeightLbsMax).nullable(),
+  "durationSeconds": zod.number().min(1).max(draftWorkoutResponseExercisesItemDurationSecondsMax).nullable(),
+  "notes": zod.string().max(draftWorkoutResponseExercisesItemNotesMax).nullable()
+})).min(1).max(draftWorkoutResponseExercisesMax)
+})
+
+
+/**
+ * @summary Get household workout preferences
+ */
+export const getWorkoutPreferencesResponseOneDaysOfWeekItemMin = 0;
+export const getWorkoutPreferencesResponseOneDaysOfWeekItemMax = 6;
+
+export const getWorkoutPreferencesResponseOneDaysOfWeekMax = 7;
+
+export const getWorkoutPreferencesResponseOneGoalsMax = 2000;
+
+export const getWorkoutPreferencesResponseOneSessionDurationMinutesMin = 5;
+export const getWorkoutPreferencesResponseOneSessionDurationMinutesMax = 300;
+
+export const getWorkoutPreferencesResponseOneEquipmentMax = 2000;
+
+export const getWorkoutPreferencesResponseOneLimitationsMax = 2000;
+
+export const getWorkoutPreferencesResponseOneNotesMax = 2000;
+
+export const getWorkoutPreferencesResponseOneTimezoneMax = 100;
+
+
+
+export const GetWorkoutPreferencesResponse = zod.object({
+  "daysOfWeek": zod.array(zod.number().min(getWorkoutPreferencesResponseOneDaysOfWeekItemMin).max(getWorkoutPreferencesResponseOneDaysOfWeekItemMax)).max(getWorkoutPreferencesResponseOneDaysOfWeekMax),
+  "goals": zod.string().max(getWorkoutPreferencesResponseOneGoalsMax),
+  "sessionDurationMinutes": zod.number().min(getWorkoutPreferencesResponseOneSessionDurationMinutesMin).max(getWorkoutPreferencesResponseOneSessionDurationMinutesMax),
+  "equipment": zod.string().max(getWorkoutPreferencesResponseOneEquipmentMax),
+  "limitations": zod.string().max(getWorkoutPreferencesResponseOneLimitationsMax),
+  "notes": zod.string().max(getWorkoutPreferencesResponseOneNotesMax),
+  "timezone": zod.string().min(1).max(getWorkoutPreferencesResponseOneTimezoneMax)
+}).and(zod.object({
+  "updatedAt": zod.coerce.date(),
+  "currentWeekStart": zod.coerce.date(),
+  "currentLocalDate": zod.coerce.date()
+}))
+
+
+/**
+ * @summary Save household workout preferences
+ */
+export const updateWorkoutPreferencesBodyDaysOfWeekItemMin = 0;
+export const updateWorkoutPreferencesBodyDaysOfWeekItemMax = 6;
+
+export const updateWorkoutPreferencesBodyDaysOfWeekMax = 7;
+
+export const updateWorkoutPreferencesBodyGoalsMax = 2000;
+
+export const updateWorkoutPreferencesBodySessionDurationMinutesMin = 5;
+export const updateWorkoutPreferencesBodySessionDurationMinutesMax = 300;
+
+export const updateWorkoutPreferencesBodyEquipmentMax = 2000;
+
+export const updateWorkoutPreferencesBodyLimitationsMax = 2000;
+
+export const updateWorkoutPreferencesBodyNotesMax = 2000;
+
+export const updateWorkoutPreferencesBodyTimezoneMax = 100;
+
+
+
+export const UpdateWorkoutPreferencesBody = zod.object({
+  "daysOfWeek": zod.array(zod.number().min(updateWorkoutPreferencesBodyDaysOfWeekItemMin).max(updateWorkoutPreferencesBodyDaysOfWeekItemMax)).max(updateWorkoutPreferencesBodyDaysOfWeekMax),
+  "goals": zod.string().max(updateWorkoutPreferencesBodyGoalsMax),
+  "sessionDurationMinutes": zod.number().min(updateWorkoutPreferencesBodySessionDurationMinutesMin).max(updateWorkoutPreferencesBodySessionDurationMinutesMax),
+  "equipment": zod.string().max(updateWorkoutPreferencesBodyEquipmentMax),
+  "limitations": zod.string().max(updateWorkoutPreferencesBodyLimitationsMax),
+  "notes": zod.string().max(updateWorkoutPreferencesBodyNotesMax),
+  "timezone": zod.string().min(1).max(updateWorkoutPreferencesBodyTimezoneMax)
+})
+
+export const updateWorkoutPreferencesResponseOneDaysOfWeekItemMin = 0;
+export const updateWorkoutPreferencesResponseOneDaysOfWeekItemMax = 6;
+
+export const updateWorkoutPreferencesResponseOneDaysOfWeekMax = 7;
+
+export const updateWorkoutPreferencesResponseOneGoalsMax = 2000;
+
+export const updateWorkoutPreferencesResponseOneSessionDurationMinutesMin = 5;
+export const updateWorkoutPreferencesResponseOneSessionDurationMinutesMax = 300;
+
+export const updateWorkoutPreferencesResponseOneEquipmentMax = 2000;
+
+export const updateWorkoutPreferencesResponseOneLimitationsMax = 2000;
+
+export const updateWorkoutPreferencesResponseOneNotesMax = 2000;
+
+export const updateWorkoutPreferencesResponseOneTimezoneMax = 100;
+
+
+
+export const UpdateWorkoutPreferencesResponse = zod.object({
+  "daysOfWeek": zod.array(zod.number().min(updateWorkoutPreferencesResponseOneDaysOfWeekItemMin).max(updateWorkoutPreferencesResponseOneDaysOfWeekItemMax)).max(updateWorkoutPreferencesResponseOneDaysOfWeekMax),
+  "goals": zod.string().max(updateWorkoutPreferencesResponseOneGoalsMax),
+  "sessionDurationMinutes": zod.number().min(updateWorkoutPreferencesResponseOneSessionDurationMinutesMin).max(updateWorkoutPreferencesResponseOneSessionDurationMinutesMax),
+  "equipment": zod.string().max(updateWorkoutPreferencesResponseOneEquipmentMax),
+  "limitations": zod.string().max(updateWorkoutPreferencesResponseOneLimitationsMax),
+  "notes": zod.string().max(updateWorkoutPreferencesResponseOneNotesMax),
+  "timezone": zod.string().min(1).max(updateWorkoutPreferencesResponseOneTimezoneMax)
+}).and(zod.object({
+  "updatedAt": zod.coerce.date(),
+  "currentWeekStart": zod.coerce.date(),
+  "currentLocalDate": zod.coerce.date()
+}))
+
+
+/**
+ * @summary Generate an editable date-only weekly workout plan
+ */
+export const generateWorkoutWeekPlanBodyParticipantIdsMax = 20;
+
+export const generateWorkoutWeekPlanBodyPreferencesDaysOfWeekItemMin = 0;
+export const generateWorkoutWeekPlanBodyPreferencesDaysOfWeekItemMax = 6;
+
+export const generateWorkoutWeekPlanBodyPreferencesDaysOfWeekMax = 7;
+
+export const generateWorkoutWeekPlanBodyPreferencesGoalsMax = 2000;
+
+export const generateWorkoutWeekPlanBodyPreferencesSessionDurationMinutesMin = 5;
+export const generateWorkoutWeekPlanBodyPreferencesSessionDurationMinutesMax = 300;
+
+export const generateWorkoutWeekPlanBodyPreferencesEquipmentMax = 2000;
+
+export const generateWorkoutWeekPlanBodyPreferencesLimitationsMax = 2000;
+
+export const generateWorkoutWeekPlanBodyPreferencesNotesMax = 2000;
+
+export const generateWorkoutWeekPlanBodyPreferencesTimezoneMax = 100;
+
+
+
+export const GenerateWorkoutWeekPlanBody = zod.object({
+  "weekStart": zod.coerce.date(),
+  "participantIds": zod.array(zod.string()).min(1).max(generateWorkoutWeekPlanBodyParticipantIdsMax),
+  "preferences": zod.object({
+  "daysOfWeek": zod.array(zod.number().min(generateWorkoutWeekPlanBodyPreferencesDaysOfWeekItemMin).max(generateWorkoutWeekPlanBodyPreferencesDaysOfWeekItemMax)).max(generateWorkoutWeekPlanBodyPreferencesDaysOfWeekMax),
+  "goals": zod.string().max(generateWorkoutWeekPlanBodyPreferencesGoalsMax),
+  "sessionDurationMinutes": zod.number().min(generateWorkoutWeekPlanBodyPreferencesSessionDurationMinutesMin).max(generateWorkoutWeekPlanBodyPreferencesSessionDurationMinutesMax),
+  "equipment": zod.string().max(generateWorkoutWeekPlanBodyPreferencesEquipmentMax),
+  "limitations": zod.string().max(generateWorkoutWeekPlanBodyPreferencesLimitationsMax),
+  "notes": zod.string().max(generateWorkoutWeekPlanBodyPreferencesNotesMax),
+  "timezone": zod.string().min(1).max(generateWorkoutWeekPlanBodyPreferencesTimezoneMax)
+}).optional()
+})
+
+export const generateWorkoutWeekPlanResponseItemsItemParticipantIdsMax = 20;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutTitleMax = 160;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutDurationMinutesMax = 1440;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutNotesMax = 4000;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutRationaleMax = 2000;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemNameMax = 120;
+
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemSetsMax = 100;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemRepsMax = 1000;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemWeightLbsMin = 0;
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemWeightLbsMax = 5000;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemDurationSecondsMax = 86400;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemNotesMax = 500;
+
+export const generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesMax = 30;
+
+export const generateWorkoutWeekPlanResponseItemsMax = 7;
+
+
+
+export const GenerateWorkoutWeekPlanResponse = zod.object({
+  "weekStart": zod.coerce.date(),
+  "timezone": zod.string(),
+  "items": zod.array(zod.object({
+  "workoutDate": zod.coerce.date(),
+  "participantIds": zod.array(zod.string()).min(1).max(generateWorkoutWeekPlanResponseItemsItemParticipantIdsMax),
+  "workout": zod.object({
+  "title": zod.string().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutTitleMax),
+  "durationMinutes": zod.number().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutDurationMinutesMax),
+  "notes": zod.string().max(generateWorkoutWeekPlanResponseItemsItemWorkoutNotesMax).nullable(),
+  "rationale": zod.string().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutRationaleMax),
+  "exercises": zod.array(zod.object({
+  "name": zod.string().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1),
+  "sets": zod.number().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemSetsMax).nullable(),
+  "reps": zod.number().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemRepsMax).nullable(),
+  "weightLbs": zod.number().min(generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemWeightLbsMin).max(generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemWeightLbsMax).nullable(),
+  "durationSeconds": zod.number().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemDurationSecondsMax).nullable(),
+  "notes": zod.string().max(generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesItemNotesMax).nullable()
+})).min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutExercisesMax)
+})
+})).max(generateWorkoutWeekPlanResponseItemsMax)
+})
+
+
+/**
+ * @summary Atomically save reviewed scheduled workouts
+ */
+export const saveWorkoutWeekPlanBodyItemsItemParticipantIdsMax = 20;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutTitleMax = 160;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutDurationMinutesMax = 1440;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutNotesMax = 4000;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutRationaleMax = 2000;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemNameMax = 120;
+
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemSetsMax = 100;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemRepsMax = 1000;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemWeightLbsMin = 0;
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemWeightLbsMax = 5000;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemDurationSecondsMax = 86400;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemNotesMax = 500;
+
+export const saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesMax = 30;
+
+export const saveWorkoutWeekPlanBodyItemsMax = 7;
+
+
+
+export const SaveWorkoutWeekPlanBody = zod.object({
+  "items": zod.array(zod.object({
+  "workoutDate": zod.coerce.date(),
+  "participantIds": zod.array(zod.string()).min(1).max(saveWorkoutWeekPlanBodyItemsItemParticipantIdsMax),
+  "workout": zod.object({
+  "title": zod.string().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutTitleMax),
+  "durationMinutes": zod.number().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutDurationMinutesMax),
+  "notes": zod.string().max(saveWorkoutWeekPlanBodyItemsItemWorkoutNotesMax).nullable(),
+  "rationale": zod.string().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutRationaleMax),
+  "exercises": zod.array(zod.object({
+  "name": zod.string().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1),
+  "sets": zod.number().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemSetsMax).nullable(),
+  "reps": zod.number().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemRepsMax).nullable(),
+  "weightLbs": zod.number().min(saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemWeightLbsMin).max(saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemWeightLbsMax).nullable(),
+  "durationSeconds": zod.number().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemDurationSecondsMax).nullable(),
+  "notes": zod.string().max(saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesItemNotesMax).nullable()
+})).min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutExercisesMax)
+})
+})).min(1).max(saveWorkoutWeekPlanBodyItemsMax)
+})
+
+export const saveWorkoutWeekPlanResponseTitleMax = 160;
+
+export const saveWorkoutWeekPlanResponseDurationMinutesMax = 1440;
+
+export const saveWorkoutWeekPlanResponseNotesMax = 4000;
+
+export const saveWorkoutWeekPlanResponseExercisesItemNameMax = 120;
+
+export const saveWorkoutWeekPlanResponseExercisesItemSetsMax = 100;
+
+export const saveWorkoutWeekPlanResponseExercisesItemRepsMax = 1000;
+
+export const saveWorkoutWeekPlanResponseExercisesItemWeightLbsMin = 0;
+export const saveWorkoutWeekPlanResponseExercisesItemWeightLbsMax = 5000;
+
+export const saveWorkoutWeekPlanResponseExercisesItemDurationSecondsMax = 86400;
+
+export const saveWorkoutWeekPlanResponseExercisesItemNotesMax = 500;
+
+
+
+export const SaveWorkoutWeekPlanResponseItem = zod.object({
+  "id": zod.string(),
+  "memberId": zod.string(),
+  "memberName": zod.string(),
+  "participantIds": zod.array(zod.string()),
+  "participants": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "color": zod.string()
+})),
+  "workoutDate": zod.coerce.date(),
+  "title": zod.string().min(1).max(saveWorkoutWeekPlanResponseTitleMax),
+  "durationMinutes": zod.number().min(1).max(saveWorkoutWeekPlanResponseDurationMinutesMax).nullish(),
+  "notes": zod.string().max(saveWorkoutWeekPlanResponseNotesMax).nullish(),
+  "exercises": zod.array(zod.object({
+  "id": zod.string(),
+  "workoutId": zod.string(),
+  "name": zod.string().min(1).max(saveWorkoutWeekPlanResponseExercisesItemNameMax),
+  "libraryExerciseId": zod.string().nullish(),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])),
+  "sets": zod.number().min(1).max(saveWorkoutWeekPlanResponseExercisesItemSetsMax).nullish(),
+  "reps": zod.number().min(1).max(saveWorkoutWeekPlanResponseExercisesItemRepsMax).nullish(),
+  "weightLbs": zod.number().min(saveWorkoutWeekPlanResponseExercisesItemWeightLbsMin).max(saveWorkoutWeekPlanResponseExercisesItemWeightLbsMax).nullish(),
+  "durationSeconds": zod.number().min(1).max(saveWorkoutWeekPlanResponseExercisesItemDurationSecondsMax).nullish(),
+  "notes": zod.string().max(saveWorkoutWeekPlanResponseExercisesItemNotesMax).nullish()
+})),
+  "createdAt": zod.coerce.date()
+})
+export const SaveWorkoutWeekPlanResponse = zod.array(SaveWorkoutWeekPlanResponseItem)
+
+
+/**
+ * @summary Get the household workout coach conversation
+ */
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneTitleMax = 160;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneDurationMinutesMax = 1440;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneNotesMax = 4000;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneRationaleMax = 2000;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemNameMax = 120;
+
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemSetsMax = 100;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemRepsMax = 1000;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemWeightLbsMin = 0;
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemWeightLbsMax = 5000;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemDurationSecondsMax = 86400;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemNotesMax = 500;
+
+export const getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesMax = 30;
+
+
+
+export const GetWorkoutCoachConversationResponse = zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.string(),
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string(),
+  "draft": zod.union([zod.object({
+  "title": zod.string().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneTitleMax),
+  "durationMinutes": zod.number().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneDurationMinutesMax),
+  "notes": zod.string().max(getWorkoutCoachConversationResponseMessagesItemDraftOneNotesMax).nullable(),
+  "rationale": zod.string().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneRationaleMax),
+  "exercises": zod.array(zod.object({
+  "name": zod.string().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1),
+  "sets": zod.number().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemSetsMax).nullable(),
+  "reps": zod.number().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemRepsMax).nullable(),
+  "weightLbs": zod.number().min(getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemWeightLbsMin).max(getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemWeightLbsMax).nullable(),
+  "durationSeconds": zod.number().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemDurationSecondsMax).nullable(),
+  "notes": zod.string().max(getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesItemNotesMax).nullable()
+})).min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneExercisesMax)
+}),zod.null()]),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Persist a message and receive coaching with an optional editable draft
+ */
+export const sendWorkoutCoachMessageBodyContentMax = 4000;
+
+export const sendWorkoutCoachMessageBodyParticipantIdsMax = 20;
+
+
+
+export const SendWorkoutCoachMessageBody = zod.object({
+  "content": zod.string().min(1).max(sendWorkoutCoachMessageBodyContentMax),
+  "participantIds": zod.array(zod.string()).max(sendWorkoutCoachMessageBodyParticipantIdsMax).optional()
+})
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneTitleMax = 160;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneDurationMinutesMax = 1440;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneNotesMax = 4000;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneRationaleMax = 2000;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemNameMax = 120;
+
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemSetsMax = 100;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemRepsMax = 1000;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemWeightLbsMin = 0;
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemWeightLbsMax = 5000;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemDurationSecondsMax = 86400;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemNotesMax = 500;
+
+export const sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesMax = 30;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneTitleMax = 160;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneDurationMinutesMax = 1440;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneNotesMax = 4000;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneRationaleMax = 2000;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemNameMax = 120;
+
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemSetsMax = 100;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemRepsMax = 1000;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemWeightLbsMin = 0;
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemWeightLbsMax = 5000;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemDurationSecondsMax = 86400;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemNotesMax = 500;
+
+export const sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesMax = 30;
+
+export const sendWorkoutCoachMessageResponseDraftOneTitleMax = 160;
+
+export const sendWorkoutCoachMessageResponseDraftOneDurationMinutesMax = 1440;
+
+export const sendWorkoutCoachMessageResponseDraftOneNotesMax = 4000;
+
+export const sendWorkoutCoachMessageResponseDraftOneRationaleMax = 2000;
+
+export const sendWorkoutCoachMessageResponseDraftOneExercisesItemNameMax = 120;
+
+
+export const sendWorkoutCoachMessageResponseDraftOneExercisesItemSetsMax = 100;
+
+export const sendWorkoutCoachMessageResponseDraftOneExercisesItemRepsMax = 1000;
+
+export const sendWorkoutCoachMessageResponseDraftOneExercisesItemWeightLbsMin = 0;
+export const sendWorkoutCoachMessageResponseDraftOneExercisesItemWeightLbsMax = 5000;
+
+export const sendWorkoutCoachMessageResponseDraftOneExercisesItemDurationSecondsMax = 86400;
+
+export const sendWorkoutCoachMessageResponseDraftOneExercisesItemNotesMax = 500;
+
+export const sendWorkoutCoachMessageResponseDraftOneExercisesMax = 30;
+
+
+
+export const SendWorkoutCoachMessageResponse = zod.object({
+  "userMessage": zod.object({
+  "id": zod.string(),
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string(),
+  "draft": zod.union([zod.object({
+  "title": zod.string().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneTitleMax),
+  "durationMinutes": zod.number().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneDurationMinutesMax),
+  "notes": zod.string().max(sendWorkoutCoachMessageResponseUserMessageDraftOneNotesMax).nullable(),
+  "rationale": zod.string().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneRationaleMax),
+  "exercises": zod.array(zod.object({
+  "name": zod.string().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1),
+  "sets": zod.number().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemSetsMax).nullable(),
+  "reps": zod.number().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemRepsMax).nullable(),
+  "weightLbs": zod.number().min(sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemWeightLbsMin).max(sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemWeightLbsMax).nullable(),
+  "durationSeconds": zod.number().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemDurationSecondsMax).nullable(),
+  "notes": zod.string().max(sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesItemNotesMax).nullable()
+})).min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneExercisesMax)
+}),zod.null()]),
+  "createdAt": zod.coerce.date()
+}),
+  "assistantMessage": zod.object({
+  "id": zod.string(),
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string(),
+  "draft": zod.union([zod.object({
+  "title": zod.string().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneTitleMax),
+  "durationMinutes": zod.number().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneDurationMinutesMax),
+  "notes": zod.string().max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneNotesMax).nullable(),
+  "rationale": zod.string().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneRationaleMax),
+  "exercises": zod.array(zod.object({
+  "name": zod.string().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1),
+  "sets": zod.number().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemSetsMax).nullable(),
+  "reps": zod.number().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemRepsMax).nullable(),
+  "weightLbs": zod.number().min(sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemWeightLbsMin).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemWeightLbsMax).nullable(),
+  "durationSeconds": zod.number().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemDurationSecondsMax).nullable(),
+  "notes": zod.string().max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesItemNotesMax).nullable()
+})).min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneExercisesMax)
+}),zod.null()]),
+  "createdAt": zod.coerce.date()
+}),
+  "draft": zod.union([zod.object({
+  "title": zod.string().min(1).max(sendWorkoutCoachMessageResponseDraftOneTitleMax),
+  "durationMinutes": zod.number().min(1).max(sendWorkoutCoachMessageResponseDraftOneDurationMinutesMax),
+  "notes": zod.string().max(sendWorkoutCoachMessageResponseDraftOneNotesMax).nullable(),
+  "rationale": zod.string().min(1).max(sendWorkoutCoachMessageResponseDraftOneRationaleMax),
+  "exercises": zod.array(zod.object({
+  "name": zod.string().min(1).max(sendWorkoutCoachMessageResponseDraftOneExercisesItemNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1),
+  "sets": zod.number().min(1).max(sendWorkoutCoachMessageResponseDraftOneExercisesItemSetsMax).nullable(),
+  "reps": zod.number().min(1).max(sendWorkoutCoachMessageResponseDraftOneExercisesItemRepsMax).nullable(),
+  "weightLbs": zod.number().min(sendWorkoutCoachMessageResponseDraftOneExercisesItemWeightLbsMin).max(sendWorkoutCoachMessageResponseDraftOneExercisesItemWeightLbsMax).nullable(),
+  "durationSeconds": zod.number().min(1).max(sendWorkoutCoachMessageResponseDraftOneExercisesItemDurationSecondsMax).nullable(),
+  "notes": zod.string().max(sendWorkoutCoachMessageResponseDraftOneExercisesItemNotesMax).nullable()
+})).min(1).max(sendWorkoutCoachMessageResponseDraftOneExercisesMax)
+}),zod.null()])
+})
+
+
+/**
+ * @summary Safely merge an unlinked legacy adult into an account-linked adult
+ */
+export const MergeDuplicateAdultBody = zod.object({
+  "keepMemberId": zod.string(),
+  "legacyMemberId": zod.string()
+})
+
+export const MergeDuplicateAdultResponse = zod.object({
+  "keepMemberId": zod.string(),
+  "deletedLegacyMemberId": zod.string(),
+  "transferredReferences": zod.record(zod.string(), zod.number()),
+  "mealRatingCollisionsRemoved": zod.number()
+})
 
 
 /**

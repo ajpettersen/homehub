@@ -5,12 +5,36 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
+import type { MuscleGroup } from './muscleGroup';
 
 export interface CreateExerciseInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
   name: string;
+  /** @minItems 1 */
+  muscleGroups?: MuscleGroup[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
   sets?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
   reps?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
   weightLbs?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 86400
+     */
   durationSeconds?: number | null;
+  /** @maxLength 500 */
   notes?: string | null;
 }

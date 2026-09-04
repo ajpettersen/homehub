@@ -9,3 +9,4 @@
 - [SSRF DNS pinning](ssrf-dns-pinning.md) — outbound URL fetches must connect to the exact public DNS answers they validated, not resolve again.
 - [Expo destructive confirmations](expo-destructive-confirmations.md) — use an in-app sheet instead of Alert.alert when confirmation must work on native and Expo web.
 - [List ordering allocation](list-ordering-allocation.md) — sort_order max+1 must be allocated under a per-household advisory lock or concurrent moves collide.
+- [Shared workout planning](shared-workout-planning.md) — workouts may belong to multiple adults; AI produces editable drafts and household-timezone weekly plans, never implicit saves.

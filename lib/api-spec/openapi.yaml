@@ -853,6 +853,54 @@ paths:
         "401":
           description: Unauthorized
 
+  /me/family-profile:
+    get:
+      operationId: getMyFamilyProfile
+      tags: [users]
+      summary: Get the approved family account's linked adult profile
+      responses:
+        "200":
+          description: The exact family member linked to the signed-in account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelfFamilyProfile"
+        "401":
+          description: Authentication required
+        "403":
+          description: Approved family account access required
+        "404":
+          description: The linked family member no longer exists in the account's household
+        "409":
+          description: The approved family account has missing or invalid member linkage
+    patch:
+      operationId: updateMyFamilyProfile
+      tags: [users]
+      summary: Update the approved family account's own linked adult profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SelfFamilyProfileUpdate"
+      responses:
+        "200":
+          description: Updated linked family profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelfFamilyProfile"
+        "400":
+          description: Invalid profile fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Approved family account access required
+        "404":
+          description: The linked family member no longer exists in the account's household
+        "409":
+          description: The account linkage changed or is invalid
+
   /me/join-request:
     post:
       operationId: requestHouseholdJoin
@@ -1159,6 +1207,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkoutDetail"
+    put:
+      operationId: updateWorkout
+      tags: [workouts]
+      summary: Update a workout and its participants
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkoutInput"
+      responses:
+        "200":
+          description: Updated workout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutDetail"
     delete:
       operationId: deleteWorkout
       tags: [workouts]
@@ -1212,6 +1283,222 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  /exercise-library:
+    get:
+      operationId: listExerciseLibrary
+      tags: [workouts]
+      summary: List the household exercise library
+      responses:
+        "200":
+          description: Exercises
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LibraryExercise"
+    post:
+      operationId: createLibraryExercise
+      tags: [workouts]
+      summary: Create a household exercise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryExerciseInput"
+      responses:
+        "201":
+          description: Created exercise
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryExercise"
+
+  /exercise-library/{id}:
+    put:
+      operationId: updateLibraryExercise
+      tags: [workouts]
+      summary: Update a household exercise
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryExerciseInput"
+      responses:
+        "200":
+          description: Updated exercise
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryExercise"
+        "409":
+          description: Normalized exercise name already exists
+    delete:
+      operationId: deleteLibraryExercise
+      tags: [workouts]
+      summary: Delete an unused household exercise
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          description: Exercise is referenced by a workout
+
+  /ai/workout-draft:
+    post:
+      operationId: draftWorkout
+      tags: [ai, workouts]
+      summary: Draft an editable workout without saving it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutDraftInput"
+      responses:
+        "200":
+          description: Editable workout draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutDraft"
+        "502":
+          description: AI returned malformed structured output
+
+  /workout-preferences:
+    get:
+      operationId: getWorkoutPreferences
+      tags: [workouts]
+      summary: Get household workout preferences
+      responses:
+        "200":
+          description: Preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutPreferences"
+    put:
+      operationId: updateWorkoutPreferences
+      tags: [workouts]
+      summary: Save household workout preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutPreferencesInput"
+      responses:
+        "200":
+          description: Saved preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutPreferences"
+
+  /ai/workout-week-plan:
+    post:
+      operationId: generateWorkoutWeekPlan
+      tags: [ai, workouts]
+      summary: Generate an editable date-only weekly workout plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutWeekPlanInput"
+      responses:
+        "200":
+          description: Editable week plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutWeekPlan"
+
+  /workout-week-plan/save:
+    post:
+      operationId: saveWorkoutWeekPlan
+      tags: [workouts]
+      summary: Atomically save reviewed scheduled workouts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveWorkoutWeekPlanInput"
+      responses:
+        "201":
+          description: Saved workouts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkoutDetail"
+        "409":
+          description: One or more obvious duplicate workouts exist
+
+  /workout-coach/conversations:
+    get:
+      operationId: getWorkoutCoachConversation
+      tags: [workouts]
+      summary: Get the household workout coach conversation
+      responses:
+        "200":
+          description: Conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutCoachConversation"
+    post:
+      operationId: sendWorkoutCoachMessage
+      tags: [workouts]
+      summary: Persist a message and receive coaching with an optional editable draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutCoachMessageInput"
+      responses:
+        "201":
+          description: Persisted exchange
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutCoachReply"
+
+  /admin/family-members/merge-adults:
+    post:
+      operationId: mergeDuplicateAdult
+      tags: [family]
+      summary: Safely merge an unlinked legacy adult into an account-linked adult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeDuplicateAdultInput"
+      responses:
+        "200":
+          description: Merge completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MergeDuplicateAdultResult"
+        "409":
+          description: Adults are not safely mergeable
 
   /maintenance-tasks:
     get:
@@ -1494,7 +1781,7 @@ components:
         title:
           type: string
           minLength: 1
-          maxLength: 120
+          maxLength: 160
         description:
           type: [string, "null"]
           maxLength: 500
@@ -1530,17 +1817,29 @@ components:
           type: string
         memberName:
           type: string
+        participantIds:
+          type: array
+          items: { type: string }
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutParticipant"
         workoutDate:
           type: string
           format: date
         title:
           type: string
+          minLength: 1
+          maxLength: 160
         durationMinutes:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 1440
         notes:
           type: string
           nullable: true
+          maxLength: 4000
         exerciseCount:
           type: integer
         createdAt:
@@ -1550,6 +1849,8 @@ components:
         - id
         - memberId
         - memberName
+        - participantIds
+        - participants
         - workoutDate
         - title
         - exerciseCount
@@ -1564,25 +1865,44 @@ components:
           type: string
         name:
           type: string
+          minLength: 1
+          maxLength: 120
+        libraryExerciseId:
+          type: string
+          nullable: true
+        muscleGroups:
+          type: array
+          items:
+            $ref: "#/components/schemas/MuscleGroup"
         sets:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 100
         reps:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 1000
         weightLbs:
           type: integer
           nullable: true
+          minimum: 0
+          maximum: 5000
         durationSeconds:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 86400
         notes:
           type: string
           nullable: true
+          maxLength: 500
       required:
         - id
         - workoutId
         - name
+        - muscleGroups
 
     WorkoutDetail:
       type: object
@@ -1593,17 +1913,29 @@ components:
           type: string
         memberName:
           type: string
+        participantIds:
+          type: array
+          items: { type: string }
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutParticipant"
         workoutDate:
           type: string
           format: date
         title:
           type: string
+          minLength: 1
+          maxLength: 160
         durationMinutes:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 1440
         notes:
           type: string
           nullable: true
+          maxLength: 4000
         exercises:
           type: array
           items:
@@ -1615,6 +1947,8 @@ components:
         - id
         - memberId
         - memberName
+        - participantIds
+        - participants
         - workoutDate
         - title
         - exercises
@@ -1625,42 +1959,84 @@ components:
       properties:
         memberId:
           type: string
+          deprecated: true
+        participantIds:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string }
         title:
           type: string
+          minLength: 1
+          maxLength: 160
         workoutDate:
           type: string
           format: date
         durationMinutes:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 1440
         notes:
           type: string
           nullable: true
+          maxLength: 4000
       required:
-        - memberId
         - title
         - workoutDate
+
+    UpdateWorkoutInput:
+      type: object
+      properties:
+        participantIds:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        workoutDate: { type: string, format: date }
+        durationMinutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
+        notes: { type: [string, "null"], maxLength: 4000 }
 
     CreateExerciseInput:
       type: object
       properties:
         name:
           type: string
+          minLength: 1
+          maxLength: 120
+        muscleGroups:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/MuscleGroup"
         sets:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 100
         reps:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 1000
         weightLbs:
           type: integer
           nullable: true
+          minimum: 0
+          maximum: 5000
         durationSeconds:
           type: integer
           nullable: true
+          minimum: 1
+          maximum: 86400
         notes:
           type: string
           nullable: true
+          maxLength: 500
       required:
         - name
 
@@ -1708,6 +2084,239 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RecommendedExercise"
+
+    MuscleGroup:
+      type: string
+      enum: [full_body, chest, back, shoulders, arms, core, glutes, quadriceps, hamstrings, calves, cardio, mobility]
+
+    WorkoutParticipant:
+      type: object
+      required: [id, name, color]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        color: { type: string }
+
+    LibraryExercise:
+      type: object
+      required: [id, name, normalizedName, muscleGroups, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        normalizedName: { type: string }
+        muscleGroups:
+          type: array
+          items:
+            $ref: "#/components/schemas/MuscleGroup"
+        createdAt: { type: string, format: date-time }
+
+    LibraryExerciseInput:
+      type: object
+      required: [name, muscleGroups]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        muscleGroups:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/MuscleGroup"
+
+    DraftExercise:
+      type: object
+      required: [name, muscleGroups, sets, reps, weightLbs, durationSeconds, notes]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        muscleGroups:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/MuscleGroup"
+        sets: { type: [integer, "null"], minimum: 1, maximum: 100 }
+        reps: { type: [integer, "null"], minimum: 1, maximum: 1000 }
+        weightLbs: { type: [integer, "null"], minimum: 0, maximum: 5000 }
+        durationSeconds: { type: [integer, "null"], minimum: 1, maximum: 86400 }
+        notes: { type: [string, "null"], maxLength: 500 }
+
+    WorkoutDraft:
+      type: object
+      additionalProperties: false
+      required: [title, durationMinutes, notes, rationale, exercises]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        durationMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        notes: { type: [string, "null"], maxLength: 4000 }
+        rationale: { type: string, minLength: 1, maxLength: 2000 }
+        exercises:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/DraftExercise"
+
+    WorkoutDraftInput:
+      type: object
+      additionalProperties: false
+      required: [prompt, participantIds]
+      properties:
+        prompt: { type: string, minLength: 10, maxLength: 2000 }
+        participantIds:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string }
+        preferences: { type: [string, "null"], maxLength: 2000 }
+
+    WorkoutPreferencesInput:
+      type: object
+      additionalProperties: false
+      required: [daysOfWeek, goals, sessionDurationMinutes, equipment, limitations, notes, timezone]
+      properties:
+        daysOfWeek:
+          type: array
+          maxItems: 7
+          uniqueItems: true
+          items: { type: integer, minimum: 0, maximum: 6 }
+        goals: { type: string, maxLength: 2000 }
+        sessionDurationMinutes: { type: integer, minimum: 5, maximum: 300 }
+        equipment: { type: string, maxLength: 2000 }
+        limitations: { type: string, maxLength: 2000 }
+        notes: { type: string, maxLength: 2000 }
+        timezone: { type: string, minLength: 1, maxLength: 100 }
+
+    WorkoutPreferences:
+      allOf:
+        - $ref: "#/components/schemas/WorkoutPreferencesInput"
+        - type: object
+          required: [updatedAt, currentWeekStart, currentLocalDate]
+          properties:
+            updatedAt: { type: string, format: date-time }
+            currentWeekStart: { type: string, format: date }
+            currentLocalDate: { type: string, format: date }
+
+    WorkoutWeekPlanInput:
+      type: object
+      additionalProperties: false
+      required: [weekStart, participantIds]
+      properties:
+        weekStart: { type: string, format: date }
+        participantIds:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string }
+        preferences:
+          $ref: "#/components/schemas/WorkoutPreferencesInput"
+
+    WorkoutWeekPlanItem:
+      type: object
+      additionalProperties: false
+      required: [workoutDate, participantIds, workout]
+      properties:
+        workoutDate: { type: string, format: date }
+        participantIds:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string }
+        workout:
+          $ref: "#/components/schemas/WorkoutDraft"
+
+    WorkoutWeekPlan:
+      type: object
+      additionalProperties: false
+      required: [weekStart, timezone, items]
+      properties:
+        weekStart: { type: string, format: date }
+        timezone: { type: string }
+        items:
+          type: array
+          maxItems: 7
+          items:
+            $ref: "#/components/schemas/WorkoutWeekPlanItem"
+
+    SaveWorkoutWeekPlanInput:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 7
+          items:
+            $ref: "#/components/schemas/WorkoutWeekPlanItem"
+
+    WorkoutCoachMessage:
+      type: object
+      required: [id, role, content, draft, createdAt]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        draft:
+          anyOf:
+            - $ref: "#/components/schemas/WorkoutDraft"
+            - type: "null"
+        createdAt: { type: string, format: date-time }
+
+    WorkoutCoachConversation:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutCoachMessage"
+
+    WorkoutCoachMessageInput:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1, maxLength: 4000 }
+        participantIds:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string }
+
+    WorkoutCoachReply:
+      type: object
+      required: [userMessage, assistantMessage, draft]
+      properties:
+        userMessage:
+          $ref: "#/components/schemas/WorkoutCoachMessage"
+        assistantMessage:
+          $ref: "#/components/schemas/WorkoutCoachMessage"
+        draft:
+          anyOf:
+            - $ref: "#/components/schemas/WorkoutDraft"
+            - type: "null"
+
+    MergeDuplicateAdultInput:
+      type: object
+      additionalProperties: false
+      required: [keepMemberId, legacyMemberId]
+      properties:
+        keepMemberId: { type: string }
+        legacyMemberId: { type: string }
+
+    MergeDuplicateAdultResult:
+      type: object
+      required: [keepMemberId, deletedLegacyMemberId, transferredReferences, mealRatingCollisionsRemoved]
+      properties:
+        keepMemberId: { type: string }
+        deletedLegacyMemberId: { type: string }
+        transferredReferences:
+          type: object
+          additionalProperties: { type: integer }
+        mealRatingCollisionsRemoved: { type: integer }
 
     CompleteMaintenanceTaskInput:
       type: object
@@ -1780,6 +2389,66 @@ components:
         - role
         - color
         - hasLinkedAccount
+
+    SelfFamilyProfile:
+      type: object
+      additionalProperties: false
+      required: [id, name, color, photoUrl]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          enum:
+            - "#C1440E"
+            - "#2D6A4F"
+            - "#E07B39"
+            - "#4A90D9"
+            - "#9B59B6"
+            - "#E74C3C"
+            - "#2ECC71"
+            - "#F39C12"
+            - "#1ABC9C"
+            - "#E91E8C"
+            - "#607D8B"
+            - "#795548"
+        photoUrl:
+          type: [string, "null"]
+          maxLength: 2048
+          pattern: "^https?://"
+
+    SelfFamilyProfileUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          enum:
+            - "#C1440E"
+            - "#2D6A4F"
+            - "#E07B39"
+            - "#4A90D9"
+            - "#9B59B6"
+            - "#E74C3C"
+            - "#2ECC71"
+            - "#F39C12"
+            - "#1ABC9C"
+            - "#E91E8C"
+            - "#607D8B"
+            - "#795548"
+        photoUrl:
+          type: [string, "null"]
+          maxLength: 2048
+          pattern: "^https?://"
 
     CreateFamilyMemberInput:
       type: object

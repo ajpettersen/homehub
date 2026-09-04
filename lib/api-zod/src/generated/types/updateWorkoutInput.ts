@@ -6,9 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface CreateWorkoutInput {
-  /** @deprecated */
-  memberId?: string;
+export interface UpdateWorkoutInput {
   /**
      * @minItems 1
      * @maxItems 20
@@ -18,13 +16,17 @@ export interface CreateWorkoutInput {
      * @minLength 1
      * @maxLength 160
      */
-  title: string;
-  workoutDate: Date;
+  title?: string;
+  workoutDate?: Date;
   /**
      * @minimum 1
      * @maximum 1440
+     * @nullable
      */
   durationMinutes?: number | null;
-  /** @maxLength 4000 */
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
   notes?: string | null;
 }

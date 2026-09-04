@@ -6,14 +6,26 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Exercise } from './exercise';
+import type { WorkoutParticipant } from './workoutParticipant';
 
 export interface WorkoutDetail {
   id: string;
   memberId: string;
   memberName: string;
+  participantIds: string[];
+  participants: WorkoutParticipant[];
   workoutDate: Date;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
   title: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
   durationMinutes?: number | null;
+  /** @maxLength 4000 */
   notes?: string | null;
   exercises: Exercise[];
   createdAt: Date;

@@ -1,215 +1,370 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { workoutsTable, workoutExercisesTable, familyMembersTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import {
+  db,
+  exerciseLibraryTable,
+  familyMembersTable,
+  MUSCLE_GROUPS,
+  workoutCoachMessagesTable,
+  workoutExercisesTable,
+  workoutParticipantsTable,
+  workoutPreferencesTable,
+  workoutsTable,
+} from "@workspace/db";
+import {
+  AddExerciseBody,
+  CreateLibraryExerciseBody,
+  CreateWorkoutBody,
+  DraftWorkoutBody,
+  DraftWorkoutResponse,
+  GenerateWorkoutWeekPlanBody,
+  GenerateWorkoutWeekPlanResponse,
+  SaveWorkoutWeekPlanBody,
+  SendWorkoutCoachMessageBody,
+  UpdateLibraryExerciseBody,
+  UpdateWorkoutBody,
+  UpdateWorkoutPreferencesBody,
+} from "@workspace/api-zod";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
+const muscleGroups = new Set<string>(MUSCLE_GROUPS);
 
-// Resolves a workout within the scope's household in SQL. Returns null for both
-// missing and cross-household workouts so IDs never reveal existence.
-async function resolveAuthorizedWorkout(
-  workoutId: number,
+function id(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function dateOnly(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) return value.toISOString().slice(0, 10);
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (!match || Number.isNaN(Date.parse(`${match[1]}T00:00:00Z`))) return null;
+  return match[1];
+}
+
+function normalizeName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
+}
+
+function badRequest(res: any, message: string, details?: unknown) {
+  res.status(400).json({ error: message, ...(details ? { details } : {}) });
+}
+
+async function validateAdultIds(
+  database: any,
+  values: unknown[],
   householdId: number,
-): Promise<{ workout: typeof workoutsTable.$inferSelect; memberName: string } | null> {
-  const [row] = await db
-    .select({ workout: workoutsTable, memberName: familyMembersTable.name })
+): Promise<Array<typeof familyMembersTable.$inferSelect> | null> {
+  const ids = [...new Set(values.map(id).filter((value): value is number => value !== null))];
+  if (ids.length !== values.length || ids.length === 0) return null;
+  const members: Array<typeof familyMembersTable.$inferSelect> = await database.select().from(familyMembersTable).where(and(
+    inArray(familyMembersTable.id, ids),
+    eq(familyMembersTable.householdId, householdId),
+    eq(familyMembersTable.role, "parent"),
+  ));
+  if (members.length !== ids.length) return null;
+  return ids.map(memberId => members.find(member => member.id === memberId)!);
+}
+
+async function participantsFor(workoutIds: number[]) {
+  if (!workoutIds.length) return new Map<number, Array<{ id: string; name: string; color: string }>>();
+  const rows = await db.select({
+    workoutId: workoutParticipantsTable.workoutId,
+    id: familyMembersTable.id,
+    name: familyMembersTable.name,
+    color: familyMembersTable.color,
+  }).from(workoutParticipantsTable)
+    .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
+    .where(inArray(workoutParticipantsTable.workoutId, workoutIds))
+    .orderBy(asc(workoutParticipantsTable.createdAt));
+  const result = new Map<number, Array<{ id: string; name: string; color: string }>>();
+  for (const row of rows) {
+    const list = result.get(row.workoutId) ?? [];
+    list.push({ id: String(row.id), name: row.name, color: row.color });
+    result.set(row.workoutId, list);
+  }
+  return result;
+}
+
+async function authorizedWorkout(workoutId: number, householdId: number) {
+  const [row] = await db.select({ workout: workoutsTable })
     .from(workoutsTable)
-    .innerJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
+    .innerJoin(workoutParticipantsTable, eq(workoutsTable.id, workoutParticipantsTable.workoutId))
+    .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
     .where(and(eq(workoutsTable.id, workoutId), eq(familyMembersTable.householdId, householdId)))
     .limit(1);
-  if (!row) return null;
-  return { workout: row.workout, memberName: row.memberName };
+  return row?.workout ?? null;
 }
 
-// Requires a family member to belong to the scope's household.
-async function resolveHouseholdMember(memberId: number, householdId: number) {
-  const [member] = await db
-    .select()
-    .from(familyMembersTable)
-    .where(and(eq(familyMembersTable.id, memberId), eq(familyMembersTable.householdId, householdId)))
-    .limit(1);
-  return member ?? null;
+async function exerciseRows(workoutId: number) {
+  return db.select().from(workoutExercisesTable)
+    .where(eq(workoutExercisesTable.workoutId, workoutId))
+    .orderBy(asc(workoutExercisesTable.id));
 }
 
-// GET /workouts
+function formatExercise(exercise: typeof workoutExercisesTable.$inferSelect) {
+  return {
+    id: String(exercise.id),
+    workoutId: String(exercise.workoutId),
+    libraryExerciseId: exercise.libraryExerciseId ? String(exercise.libraryExerciseId) : null,
+    name: exercise.name,
+    muscleGroups: exercise.muscleGroups,
+    sets: exercise.sets,
+    reps: exercise.reps,
+    weightLbs: exercise.weightLbs,
+    durationSeconds: exercise.durationSeconds,
+    notes: exercise.notes,
+  };
+}
+
+async function formatWorkout(workout: typeof workoutsTable.$inferSelect, includeExercises = false) {
+  const participantMap = await participantsFor([workout.id]);
+  const participants = participantMap.get(workout.id) ?? [];
+  const exercises = await exerciseRows(workout.id);
+  return {
+    id: String(workout.id),
+    memberId: participants[0]?.id ?? String(workout.memberId),
+    memberName: participants[0]?.name ?? "",
+    participantIds: participants.map(participant => participant.id),
+    participants,
+    workoutDate: workout.workoutDate,
+    title: workout.title,
+    durationMinutes: workout.durationMinutes,
+    notes: workout.notes,
+    ...(includeExercises
+      ? { exercises: exercises.map(formatExercise) }
+      : { exerciseCount: exercises.length }),
+    createdAt: workout.createdAt.toISOString(),
+  };
+}
+
+async function ensureLibraryExercise(
+  tx: any,
+  householdId: number,
+  name: string,
+  groups: string[],
+) {
+  const normalizedName = normalizeName(name);
+  const [item] = await tx.insert(exerciseLibraryTable).values({
+    householdId,
+    name: name.trim(),
+    normalizedName,
+    muscleGroups: groups,
+  }).onConflictDoUpdate({
+    target: [exerciseLibraryTable.householdId, exerciseLibraryTable.normalizedName],
+    set: { name: name.trim(), muscleGroups: groups, updatedAt: new Date() },
+  }).returning();
+  return item;
+}
+
+async function insertExercises(tx: any, workoutId: number, householdId: number, exercises: any[]) {
+  for (const exercise of exercises) {
+    const library = await ensureLibraryExercise(tx, householdId, exercise.name, exercise.muscleGroups);
+    await tx.insert(workoutExercisesTable).values({
+      workoutId,
+      libraryExerciseId: library.id,
+      name: library.name,
+      muscleGroups: library.muscleGroups,
+      sets: exercise.sets ?? null,
+      reps: exercise.reps ?? null,
+      weightLbs: exercise.weightLbs ?? null,
+      durationSeconds: exercise.durationSeconds ?? null,
+      notes: exercise.notes ?? null,
+    });
+  }
+}
+
+// An obvious duplicate is the same household, date-only value, normalized title,
+// and complete participant set. The lock serializes that identity without
+// preventing distinct same-day sessions for different participants or titles.
+async function lockWorkoutDate(tx: any, householdId: number, workoutDate: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`workout-date:${householdId}:${workoutDate}`}))`);
+}
+
+async function assertNoWorkoutDuplicate(
+  tx: any,
+  householdId: number,
+  workoutDate: string,
+  title: string,
+  participantIds: number[],
+  excludeWorkoutId?: number,
+) {
+  const rows = await tx.execute(sql`
+    SELECT w.id, array_agg(wp.member_id ORDER BY wp.member_id)::text AS participant_ids
+    FROM workouts w
+    JOIN workout_participants wp ON wp.workout_id = w.id
+    JOIN family_members fm ON fm.id = wp.member_id
+    WHERE fm.household_id = ${householdId}
+      AND w.workout_date = ${workoutDate}
+      AND lower(trim(w.title)) = lower(trim(${title}))
+      AND (${excludeWorkoutId ?? 0} = 0 OR w.id <> ${excludeWorkoutId ?? 0})
+    GROUP BY w.id
+  `);
+  const expected = [...participantIds].sort((a, b) => a - b).join(",");
+  if (rows.rows.some((row: any) => String(row.participant_ids).replace(/[{}]/g, "") === expected)) {
+    throw new Error("DUPLICATE");
+  }
+}
+
 router.get("/workouts", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
-    const { memberId } = req.query;
-
-    let requestedMemberId: number | undefined;
-    if (memberId !== undefined) {
-      requestedMemberId = Number(memberId);
-      if (isNaN(requestedMemberId)) {
-        res.status(400).json({ error: "Invalid memberId" });
-        return;
-      }
-      const member = await resolveHouseholdMember(requestedMemberId, scope.householdId);
-      if (!member) {
-        res.status(403).json({ error: "Member not authorized" });
-        return;
-      }
+    const requested = req.query.memberId === undefined ? null : id(req.query.memberId);
+    if (req.query.memberId !== undefined && !requested) return badRequest(res, "Invalid memberId");
+    if (requested && !(await validateAdultIds(db, [requested], scope.householdId))) {
+      res.status(404).json({ error: "Adult participant not found" });
+      return;
     }
-
-    const rows = await db
-      .select({
-        workout: workoutsTable,
-        memberName: familyMembersTable.name,
-      })
+    const rows = await db.selectDistinct({ workout: workoutsTable })
       .from(workoutsTable)
-      .innerJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
-      .where(eq(familyMembersTable.householdId, scope.householdId))
+      .innerJoin(workoutParticipantsTable, eq(workoutsTable.id, workoutParticipantsTable.workoutId))
+      .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
+      .where(and(
+        eq(familyMembersTable.householdId, scope.householdId),
+        ...(requested ? [eq(workoutParticipantsTable.memberId, requested)] : []),
+      ))
       .orderBy(desc(workoutsTable.workoutDate), desc(workoutsTable.createdAt));
-
-    let filtered = rows;
-    if (requestedMemberId !== undefined) {
-      filtered = filtered.filter((r) => r.workout.memberId === requestedMemberId);
-    }
-
-    // Get exercise counts
-    const exerciseCounts: Record<number, number> = {};
-    for (const row of filtered) {
-      const exs = await db
-        .select()
-        .from(workoutExercisesTable)
-        .where(eq(workoutExercisesTable.workoutId, row.workout.id));
-      exerciseCounts[row.workout.id] = exs.length;
-    }
-
-    res.json(
-      filtered.map((r) => ({
-        id: String(r.workout.id),
-        memberId: String(r.workout.memberId),
-        memberName: r.memberName ?? "",
-        workoutDate: r.workout.workoutDate,
-        title: r.workout.title,
-        durationMinutes: r.workout.durationMinutes ?? null,
-        notes: r.workout.notes ?? null,
-        exerciseCount: exerciseCounts[r.workout.id] ?? 0,
-        createdAt: r.workout.createdAt.toISOString(),
-      })),
-    );
+    res.json(await Promise.all(rows.map(row => formatWorkout(row.workout))));
   } catch (err) {
-    req.log.error({ err }, "Failed to get workouts");
+    req.log.error({ err }, "Failed to list workouts");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// POST /workouts
 router.post("/workouts", async (req, res) => {
+  const parsed = CreateWorkoutBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid workout", parsed.error.flatten());
+  const participantIds = parsed.data.participantIds?.length
+    ? parsed.data.participantIds
+    : parsed.data.memberId ? [parsed.data.memberId] : [];
+  const workoutDate = dateOnly(parsed.data.workoutDate);
+  if (!workoutDate || !participantIds.length) return badRequest(res, "participantIds are required");
   try {
     const scope = getApprovedHouseholdScope(res);
-    const { memberId, title, workoutDate, durationMinutes, notes } = req.body;
-    if (!memberId || !title || !workoutDate) {
-      res.status(400).json({ error: "memberId, title, workoutDate required" });
-      return;
-    }
-    const memberIdNum = Number(memberId);
-    if (isNaN(memberIdNum)) {
-      res.status(400).json({ error: "Invalid memberId" });
-      return;
-    }
-
-    const member = await resolveHouseholdMember(memberIdNum, scope.householdId);
-    if (!member) {
-      res.status(403).json({ error: "Member not authorized" });
-      return;
-    }
-
-    const [workout] = await db
-      .insert(workoutsTable)
-      .values({
-        memberId: memberIdNum,
-        title,
+    const members = await validateAdultIds(db, participantIds, scope.householdId);
+    if (!members) return badRequest(res, "Every participant must be a unique active adult in this household");
+    const workout = await db.transaction(async tx => {
+      await lockWorkoutDate(tx, scope.householdId, workoutDate);
+      await assertNoWorkoutDuplicate(tx, scope.householdId, workoutDate, parsed.data.title, members.map(member => member.id));
+      const [created] = await tx.insert(workoutsTable).values({
+        memberId: members[0].id,
+        title: parsed.data.title.trim(),
         workoutDate,
-        durationMinutes: durationMinutes ? Number(durationMinutes) : null,
-        notes: notes ?? null,
-      })
-      .returning();
-
-    res.status(201).json({
-      id: String(workout.id),
-      memberId: String(workout.memberId),
-      memberName: member.name ?? "",
-      workoutDate: workout.workoutDate,
-      title: workout.title,
-      durationMinutes: workout.durationMinutes ?? null,
-      notes: workout.notes ?? null,
-      exerciseCount: 0,
-      createdAt: workout.createdAt.toISOString(),
+        durationMinutes: parsed.data.durationMinutes ?? null,
+        notes: parsed.data.notes ?? null,
+      }).returning();
+      await tx.insert(workoutParticipantsTable).values(members.map(member => ({
+        workoutId: created.id,
+        memberId: member.id,
+      })));
+      return created;
     });
+    res.status(201).json(await formatWorkout(workout));
   } catch (err) {
+    if ((err as Error).message === "DUPLICATE") return res.status(409).json({ error: "An identical workout is already logged for these participants and date" });
     req.log.error({ err }, "Failed to create workout");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// GET /workouts/:id
 router.get("/workouts/:id", async (req, res) => {
+  const workoutId = id(req.params.id);
+  if (!workoutId) return badRequest(res, "Invalid workout id");
   try {
-    const scope = getApprovedHouseholdScope(res);
-    const id = Number(req.params.id);
-    if (isNaN(id)) {
-      res.status(400).json({ error: "Invalid id" });
-      return;
-    }
-
-    const resolved = await resolveAuthorizedWorkout(id, scope.householdId);
-    if (!resolved) {
-      res.status(404).json({ error: "Not found" });
-      return;
-    }
-
-    const exercises = await db
-      .select()
-      .from(workoutExercisesTable)
-      .where(eq(workoutExercisesTable.workoutId, id));
-
-    res.json({
-      id: String(resolved.workout.id),
-      memberId: String(resolved.workout.memberId),
-      memberName: resolved.memberName,
-      workoutDate: resolved.workout.workoutDate,
-      title: resolved.workout.title,
-      durationMinutes: resolved.workout.durationMinutes ?? null,
-      notes: resolved.workout.notes ?? null,
-      createdAt: resolved.workout.createdAt.toISOString(),
-      exercises: exercises.map((e) => ({
-        id: String(e.id),
-        workoutId: String(e.workoutId),
-        name: e.name,
-        sets: e.sets ?? null,
-        reps: e.reps ?? null,
-        weightLbs: e.weightLbs ?? null,
-        durationSeconds: e.durationSeconds ?? null,
-        notes: e.notes ?? null,
-      })),
-    });
+    const workout = await authorizedWorkout(workoutId, getApprovedHouseholdScope(res).householdId);
+    if (!workout) return res.status(404).json({ error: "Workout not found" });
+    res.json(await formatWorkout(workout, true));
   } catch (err) {
     req.log.error({ err }, "Failed to get workout");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// DELETE /workouts/:id
-router.delete("/workouts/:id", async (req, res) => {
+router.put("/workouts/:id", async (req, res) => {
+  const workoutId = id(req.params.id);
+  if (!workoutId) return badRequest(res, "Invalid workout id");
+  const parsed = UpdateWorkoutBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid workout update", parsed.error.flatten());
   try {
     const scope = getApprovedHouseholdScope(res);
-    const id = Number(req.params.id);
-    if (isNaN(id)) {
-      res.status(400).json({ error: "Invalid id" });
-      return;
+    const existing = await authorizedWorkout(workoutId, scope.householdId);
+    if (!existing) return res.status(404).json({ error: "Workout not found" });
+    const replacementMembers = parsed.data.participantIds
+      ? await validateAdultIds(db, parsed.data.participantIds, scope.householdId)
+      : null;
+    if (parsed.data.participantIds && !replacementMembers) {
+      return badRequest(res, "Every participant must be a unique active adult in this household");
     }
+    const workoutDate = parsed.data.workoutDate ? dateOnly(parsed.data.workoutDate) : undefined;
+    const updated = await db.transaction(async tx => {
+      const [locked] = await tx.select({ workout: workoutsTable }).from(workoutsTable)
+        .innerJoin(workoutParticipantsTable, eq(workoutsTable.id, workoutParticipantsTable.workoutId))
+        .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
+        .where(and(eq(workoutsTable.id, workoutId), eq(familyMembersTable.householdId, scope.householdId)))
+        .for("update").limit(1);
+      if (!locked) throw new Error("MISSING");
+      const resultingDate = workoutDate ?? locked.workout.workoutDate;
+      const resultingTitle = parsed.data.title?.trim() ?? locked.workout.title;
+      const currentParticipants = await tx.select({ memberId: workoutParticipantsTable.memberId })
+        .from(workoutParticipantsTable)
+        .where(eq(workoutParticipantsTable.workoutId, workoutId))
+        .for("update");
+      const members = replacementMembers ?? await validateAdultIds(
+        tx,
+        currentParticipants.map(participant => participant.memberId),
+        scope.householdId,
+      );
+      if (!members) throw new Error("INVALID_PARTICIPANTS");
+      // Lock dates in a stable order, so two edits that move workouts across
+      // dates cannot deadlock and duplicate detection sees a serialized view.
+      for (const date of [...new Set([locked.workout.workoutDate, resultingDate])].sort()) {
+        await lockWorkoutDate(tx, scope.householdId, date);
+      }
+      await assertNoWorkoutDuplicate(
+        tx,
+        scope.householdId,
+        resultingDate,
+        resultingTitle,
+        members.map(member => member.id),
+        workoutId,
+      );
+      if (replacementMembers) {
+        await tx.delete(workoutParticipantsTable).where(eq(workoutParticipantsTable.workoutId, workoutId));
+        await tx.insert(workoutParticipantsTable).values(members.map(member => ({
+          workoutId,
+          memberId: member.id,
+        })));
+      }
+      const [row] = await tx.update(workoutsTable).set({
+        ...(parsed.data.title !== undefined ? { title: parsed.data.title.trim() } : {}),
+        ...(workoutDate ? { workoutDate } : {}),
+        ...(parsed.data.durationMinutes !== undefined ? { durationMinutes: parsed.data.durationMinutes } : {}),
+        ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+        ...(replacementMembers ? { memberId: members[0].id } : {}),
+      }).where(eq(workoutsTable.id, workoutId)).returning();
+      return row;
+    });
+    res.json(await formatWorkout(updated, true));
+  } catch (err) {
+    if ((err as Error).message === "DUPLICATE") return res.status(409).json({ error: "An identical workout is already logged for these participants and date" });
+    if ((err as Error).message === "MISSING") return res.status(404).json({ error: "Workout not found" });
+    if ((err as Error).message === "INVALID_PARTICIPANTS") return badRequest(res, "Every participant must be a unique active adult in this household");
+    req.log.error({ err }, "Failed to update workout");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
-    const resolved = await resolveAuthorizedWorkout(id, scope.householdId);
-    if (!resolved) {
-      res.status(404).json({ error: "Not found" });
-      return;
+router.delete("/workouts/:id", async (req, res) => {
+  const workoutId = id(req.params.id);
+  if (!workoutId) return badRequest(res, "Invalid workout id");
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    if (!(await authorizedWorkout(workoutId, scope.householdId))) {
+      return res.status(404).json({ error: "Workout not found" });
     }
-
-    await db.delete(workoutsTable).where(eq(workoutsTable.id, id));
+    await db.delete(workoutsTable).where(eq(workoutsTable.id, workoutId));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete workout");
@@ -217,191 +372,504 @@ router.delete("/workouts/:id", async (req, res) => {
   }
 });
 
-// POST /workouts/:id/exercises
 router.post("/workouts/:id/exercises", async (req, res) => {
+  const workoutId = id(req.params.id);
+  const parsed = AddExerciseBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid workout exercise", parsed.error.flatten());
+  const name = parsed.data.name.trim();
+  const groups = parsed.data.muscleGroups?.length ? parsed.data.muscleGroups : ["full_body"];
+  if (!workoutId || !name || !groups.length || groups.some((group: unknown) => !muscleGroups.has(String(group)))) {
+    return badRequest(res, "A valid name and muscleGroups are required");
+  }
   try {
     const scope = getApprovedHouseholdScope(res);
-    const workoutId = Number(req.params.id);
-    if (isNaN(workoutId)) {
-      res.status(400).json({ error: "Invalid id" });
-      return;
+    if (!(await authorizedWorkout(workoutId, scope.householdId))) {
+      return res.status(404).json({ error: "Workout not found" });
     }
-    const { name, sets, reps, weightLbs, durationSeconds, notes } = req.body;
-    if (!name) {
-      res.status(400).json({ error: "name required" });
-      return;
-    }
-
-    const resolved = await resolveAuthorizedWorkout(workoutId, scope.householdId);
-    if (!resolved) {
-      res.status(404).json({ error: "Not found" });
-      return;
-    }
-
-    const [exercise] = await db
-      .insert(workoutExercisesTable)
-      .values({
+    const exercise = await db.transaction(async tx => {
+      const library = await ensureLibraryExercise(tx, scope.householdId, name, groups);
+      const [created] = await tx.insert(workoutExercisesTable).values({
         workoutId,
-        name,
-        sets: sets ? Number(sets) : null,
-        reps: reps ? Number(reps) : null,
-        weightLbs: weightLbs ? Number(weightLbs) : null,
-        durationSeconds: durationSeconds ? Number(durationSeconds) : null,
-        notes: notes ?? null,
-      })
-      .returning();
-
-    res.status(201).json({
-      id: String(exercise.id),
-      workoutId: String(exercise.workoutId),
-      name: exercise.name,
-      sets: exercise.sets ?? null,
-      reps: exercise.reps ?? null,
-      weightLbs: exercise.weightLbs ?? null,
-      durationSeconds: exercise.durationSeconds ?? null,
-      notes: exercise.notes ?? null,
+        libraryExerciseId: library.id,
+        name: library.name,
+        muscleGroups: library.muscleGroups,
+        sets: parsed.data.sets ?? null,
+        reps: parsed.data.reps ?? null,
+        weightLbs: parsed.data.weightLbs ?? null,
+        durationSeconds: parsed.data.durationSeconds ?? null,
+        notes: parsed.data.notes ?? null,
+      }).returning();
+      return created;
     });
+    res.status(201).json(formatExercise(exercise));
   } catch (err) {
-    req.log.error({ err }, "Failed to add exercise");
+    req.log.error({ err }, "Failed to add workout exercise");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// DELETE /workout-exercises/:id
 router.delete("/workout-exercises/:id", async (req, res) => {
+  const exerciseId = id(req.params.id);
+  if (!exerciseId) return badRequest(res, "Invalid exercise id");
   try {
     const scope = getApprovedHouseholdScope(res);
-    const id = Number(req.params.id);
-    if (isNaN(id)) {
-      res.status(400).json({ error: "Invalid id" });
-      return;
-    }
-
-    const [row] = await db
-      .select({ id: workoutExercisesTable.id })
+    const [row] = await db.select({ workoutId: workoutExercisesTable.workoutId })
       .from(workoutExercisesTable)
-      .innerJoin(workoutsTable, eq(workoutExercisesTable.workoutId, workoutsTable.id))
-      .innerJoin(familyMembersTable, eq(workoutsTable.memberId, familyMembersTable.id))
-      .where(and(eq(workoutExercisesTable.id, id), eq(familyMembersTable.householdId, scope.householdId)))
-      .limit(1);
-    if (!row) {
-      res.status(404).json({ error: "Not found" });
-      return;
+      .where(eq(workoutExercisesTable.id, exerciseId)).limit(1);
+    if (!row || !(await authorizedWorkout(row.workoutId, scope.householdId))) {
+      return res.status(404).json({ error: "Exercise not found" });
     }
-
-    await db
-      .delete(workoutExercisesTable)
-      .where(eq(workoutExercisesTable.id, id));
+    await db.delete(workoutExercisesTable).where(eq(workoutExercisesTable.id, exerciseId));
     res.status(204).send();
   } catch (err) {
-    req.log.error({ err }, "Failed to delete exercise");
+    req.log.error({ err }, "Failed to delete workout exercise");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// POST /ai/recommend-workout
-router.post("/ai/recommend-workout", async (req, res) => {
-  try {
-    const scope = getApprovedHouseholdScope(res);
-    const { memberId } = req.body;
-    if (!memberId) {
-      res.status(400).json({ error: "memberId and memberName required" });
-      return;
-    }
-    const memberIdNum = Number(memberId);
-    if (isNaN(memberIdNum)) {
-      res.status(400).json({ error: "Invalid memberId" });
-      return;
-    }
-
-    const member = await resolveHouseholdMember(memberIdNum, scope.householdId);
-    if (!member) {
-      res.status(403).json({ error: "Member not authorized" });
-      return;
-    }
-    const memberName = member.name;
-
-    // Pull last 10 workouts for this member
-    const recentWorkouts = await db
-      .select({ workout: workoutsTable })
-      .from(workoutsTable)
-      .where(eq(workoutsTable.memberId, memberIdNum))
-      .orderBy(desc(workoutsTable.workoutDate))
-      .limit(10);
-
-    // Get exercises for each recent workout
-    const workoutHistory: string[] = [];
-    for (const { workout } of recentWorkouts) {
-      const exercises = await db
-        .select()
-        .from(workoutExercisesTable)
-        .where(eq(workoutExercisesTable.workoutId, workout.id));
-
-      const exList = exercises
-        .map((e) => {
-          const parts = [e.name];
-          if (e.sets && e.reps) parts.push(`${e.sets}x${e.reps}`);
-          if (e.weightLbs) parts.push(`@ ${e.weightLbs}lbs`);
-          if (e.durationSeconds) parts.push(`${e.durationSeconds}s`);
-          return parts.join(" ");
-        })
-        .join(", ");
-
-      workoutHistory.push(
-        `${workout.workoutDate} — ${workout.title}${exList ? `: ${exList}` : ""}`,
-      );
-    }
-
-    const historyText =
-      workoutHistory.length > 0
-        ? workoutHistory.join("\n")
-        : "No workout history yet — this is their first workout.";
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: `You are a personal fitness coach. Based on ${memberName}'s recent workout history, recommend a well-balanced workout for today.
-
-Recent workout history:
-${historyText}
-
-Consider muscle group balance, rest days, and progression. If there's no history, suggest a good beginner full-body routine.
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "title": "Workout name (e.g. 'Upper Body Push', 'Full Body Circuit', 'Active Recovery Run')",
-  "rationale": "1-2 sentences explaining why this workout makes sense today given their history",
-  "exercises": [
-    {
-      "name": "Exercise name",
-      "sets": 3,
-      "reps": 10,
-      "durationSeconds": null,
-      "weightLbs": null,
-      "notes": "Form tip or modification"
-    }
-  ]
+function formatLibrary(item: typeof exerciseLibraryTable.$inferSelect) {
+  return {
+    id: String(item.id),
+    name: item.name,
+    normalizedName: item.normalizedName,
+    muscleGroups: item.muscleGroups,
+    createdAt: item.createdAt.toISOString(),
+  };
 }
 
-Include 4-6 exercises. Use null for fields that don't apply (e.g. cardio has durationSeconds but not sets/reps).`,
+router.get("/exercise-library", async (_req, res) => {
+  const scope = getApprovedHouseholdScope(res);
+  const rows = await db.select().from(exerciseLibraryTable)
+    .where(eq(exerciseLibraryTable.householdId, scope.householdId))
+    .orderBy(asc(exerciseLibraryTable.name));
+  res.json(rows.map(formatLibrary));
+});
+
+router.post("/exercise-library", async (req, res) => {
+  const parsed = CreateLibraryExerciseBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid exercise", parsed.error.flatten());
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const normalizedName = normalizeName(parsed.data.name);
+    const [existing] = await db.select({ id: exerciseLibraryTable.id }).from(exerciseLibraryTable)
+      .where(and(eq(exerciseLibraryTable.householdId, scope.householdId), eq(exerciseLibraryTable.normalizedName, normalizedName)))
+      .limit(1);
+    if (existing) return res.status(409).json({ error: "An exercise with this normalized name already exists" });
+    const [created] = await db.insert(exerciseLibraryTable).values({
+      householdId: scope.householdId,
+      name: parsed.data.name.trim(),
+      normalizedName,
+      muscleGroups: parsed.data.muscleGroups,
+    }).returning();
+    res.status(201).json(formatLibrary(created));
+  } catch (err) {
+    if ((err as { code?: string }).code === "23505") return res.status(409).json({ error: "Exercise already exists" });
+    req.log.error({ err }, "Failed to create library exercise");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/exercise-library/:id", async (req, res) => {
+  const exerciseId = id(req.params.id);
+  const parsed = UpdateLibraryExerciseBody.safeParse(req.body);
+  if (!exerciseId || !parsed.success) return badRequest(res, "Invalid exercise update");
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const [updated] = await db.update(exerciseLibraryTable).set({
+      name: parsed.data.name.trim(),
+      normalizedName: normalizeName(parsed.data.name),
+      muscleGroups: parsed.data.muscleGroups,
+      updatedAt: new Date(),
+    }).where(and(eq(exerciseLibraryTable.id, exerciseId), eq(exerciseLibraryTable.householdId, scope.householdId))).returning();
+    if (!updated) return res.status(404).json({ error: "Exercise not found" });
+    await db.update(workoutExercisesTable).set({
+      name: updated.name,
+      muscleGroups: updated.muscleGroups,
+    }).where(eq(workoutExercisesTable.libraryExerciseId, updated.id));
+    res.json(formatLibrary(updated));
+  } catch (err) {
+    if ((err as { code?: string }).code === "23505") return res.status(409).json({ error: "Exercise already exists" });
+    req.log.error({ err }, "Failed to update library exercise");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/exercise-library/:id", async (req, res) => {
+  const exerciseId = id(req.params.id);
+  if (!exerciseId) return badRequest(res, "Invalid exercise id");
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const [item] = await db.select().from(exerciseLibraryTable).where(and(
+      eq(exerciseLibraryTable.id, exerciseId),
+      eq(exerciseLibraryTable.householdId, scope.householdId),
+    )).limit(1);
+    if (!item) return res.status(404).json({ error: "Exercise not found" });
+    const [reference] = await db.select({ id: workoutExercisesTable.id }).from(workoutExercisesTable)
+      .where(eq(workoutExercisesTable.libraryExerciseId, exerciseId)).limit(1);
+    if (reference) return res.status(409).json({ error: "Exercise is used by workout history and cannot be deleted" });
+    await db.delete(exerciseLibraryTable).where(eq(exerciseLibraryTable.id, exerciseId));
+    res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete library exercise");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+const draftJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "durationMinutes", "notes", "rationale", "exercises"],
+  properties: {
+    title: { type: "string", minLength: 1, maxLength: 160 },
+    durationMinutes: { type: "integer", minimum: 1, maximum: 1440 },
+    notes: { type: ["string", "null"], maxLength: 4000 },
+    rationale: { type: "string", minLength: 1, maxLength: 2000 },
+    exercises: {
+      type: "array", minItems: 1, maxItems: 30,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "muscleGroups", "sets", "reps", "weightLbs", "durationSeconds", "notes"],
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          muscleGroups: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", enum: MUSCLE_GROUPS } },
+          sets: { type: ["integer", "null"], minimum: 1, maximum: 100 },
+          reps: { type: ["integer", "null"], minimum: 1, maximum: 1000 },
+          weightLbs: { type: ["integer", "null"], minimum: 0, maximum: 5000 },
+          durationSeconds: { type: ["integer", "null"], minimum: 1, maximum: 86400 },
+          notes: { type: ["string", "null"], maxLength: 500 },
         },
-      ],
-    });
+      },
+    },
+  },
+} as const;
 
-    const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      res.status(500).json({ error: "Failed to parse AI response" });
-      return;
+async function aiJson(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>, schema: any, name: string) {
+  const response = await openai.chat.completions.create({
+    model: "gpt-5.6-luna",
+    max_completion_tokens: 8192,
+    response_format: { type: "json_schema", json_schema: { name, strict: true, schema } },
+    messages,
+  });
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error("AI returned no structured content");
+  return JSON.parse(content);
+}
+
+async function householdContext(householdId: number) {
+  const [history, library, preferences] = await Promise.all([
+    db.select({ title: workoutsTable.title, workoutDate: workoutsTable.workoutDate })
+      .from(workoutsTable)
+      .innerJoin(workoutParticipantsTable, eq(workoutsTable.id, workoutParticipantsTable.workoutId))
+      .innerJoin(familyMembersTable, eq(workoutParticipantsTable.memberId, familyMembersTable.id))
+      .where(eq(familyMembersTable.householdId, householdId))
+      .orderBy(desc(workoutsTable.workoutDate)).limit(20),
+    db.select({ name: exerciseLibraryTable.name, muscleGroups: exerciseLibraryTable.muscleGroups })
+      .from(exerciseLibraryTable).where(eq(exerciseLibraryTable.householdId, householdId)).limit(100),
+    db.select().from(workoutPreferencesTable).where(eq(workoutPreferencesTable.householdId, householdId)).limit(1),
+  ]);
+  // Keep prompts bounded even if historical free text or exercise names grow.
+  return {
+    history: history.map(row => ({ title: row.title.slice(0, 160), workoutDate: row.workoutDate })).slice(0, 20),
+    library: library.map(row => ({ name: row.name.slice(0, 120), muscleGroups: row.muscleGroups.slice(0, 12) })).slice(0, 100),
+    preferences: preferences[0] ? {
+      ...preferences[0],
+      goals: preferences[0].goals.slice(0, 2000),
+      equipment: preferences[0].equipment.slice(0, 2000),
+      limitations: preferences[0].limitations.slice(0, 2000),
+      notes: preferences[0].notes.slice(0, 2000),
+    } : null,
+  };
+}
+
+router.post("/ai/workout-draft", async (req, res) => {
+  const parsed = DraftWorkoutBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid workout draft request", parsed.error.flatten());
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const members = await validateAdultIds(db, parsed.data.participantIds, scope.householdId);
+    if (!members) return badRequest(res, "Every participant must be an active adult in this household");
+    const context = await householdContext(scope.householdId);
+    const raw = await aiJson([
+      { role: "system", content: "You are a careful family fitness coach. Produce an editable workout draft only. Account for stated limitations; never claim medical certainty." },
+      { role: "user", content: JSON.stringify({ request: parsed.data.prompt, requestedPreferences: parsed.data.preferences, participants: members.map(m => m.name), context }) },
+    ], draftJsonSchema, "workout_draft");
+    const draft = DraftWorkoutResponse.safeParse(raw);
+    if (!draft.success) {
+      req.log.warn({ issues: draft.error.issues }, "OpenAI returned invalid workout draft");
+      return res.status(502).json({ error: "AI returned a malformed workout draft", details: draft.error.flatten() });
     }
+    res.json(draft.data);
+  } catch (err) {
+    req.log.error({ err }, "Failed to draft workout");
+    res.status(502).json({ error: "Unable to generate a valid workout draft" });
+  }
+});
 
-    res.json(JSON.parse(jsonMatch[0]));
+router.post("/ai/recommend-workout", async (req, res) => {
+  const participantId = id(req.body?.memberId);
+  if (!participantId) return badRequest(res, "Invalid memberId");
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const members = await validateAdultIds(db, [participantId], scope.householdId);
+    if (!members) return res.status(404).json({ error: "Adult participant not found" });
+    const context = await householdContext(scope.householdId);
+    const raw = await aiJson([
+      { role: "system", content: "Recommend a balanced editable workout based on household workout history." },
+      { role: "user", content: JSON.stringify({ participant: members[0].name, context }) },
+    ], draftJsonSchema, "workout_recommendation");
+    const draft = DraftWorkoutResponse.safeParse(raw);
+    if (!draft.success) return res.status(502).json({ error: "AI returned a malformed workout recommendation" });
+    res.json({ title: draft.data.title, rationale: draft.data.rationale, exercises: draft.data.exercises });
   } catch (err) {
     req.log.error({ err }, "Failed to recommend workout");
+    res.status(502).json({ error: "Unable to generate a workout recommendation" });
+  }
+});
+
+function defaultPreferences() {
+  return {
+    daysOfWeek: [] as number[],
+    goals: "",
+    sessionDurationMinutes: 30,
+    equipment: "",
+    limitations: "",
+    notes: "",
+    timezone: "UTC",
+  };
+}
+
+function householdDates(timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find(part => part.type === type)?.value;
+  const currentLocalDate = `${value("year")}-${value("month")}-${value("day")}`;
+  const weekday = value("weekday");
+  const offset = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(weekday ?? "");
+  const date = new Date(`${currentLocalDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - (offset < 0 ? 0 : offset));
+  return { currentLocalDate, currentWeekStart: date.toISOString().slice(0, 10) };
+}
+
+router.get("/workout-preferences", async (_req, res) => {
+  const scope = getApprovedHouseholdScope(res);
+  const [preferences] = await db.select().from(workoutPreferencesTable)
+    .where(eq(workoutPreferencesTable.householdId, scope.householdId)).limit(1);
+  const value = preferences ?? { ...defaultPreferences(), updatedAt: new Date(0) };
+  res.json({ ...value, updatedAt: value.updatedAt.toISOString(), ...householdDates(value.timezone) });
+});
+
+router.put("/workout-preferences", async (req, res) => {
+  const parsed = UpdateWorkoutPreferencesBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid workout preferences", parsed.error.flatten());
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: parsed.data.timezone });
+  } catch {
+    return badRequest(res, "timezone must be a valid IANA timezone");
+  }
+  const scope = getApprovedHouseholdScope(res);
+  const [saved] = await db.insert(workoutPreferencesTable).values({
+    householdId: scope.householdId,
+    ...parsed.data,
+    updatedAt: new Date(),
+  }).onConflictDoUpdate({
+    target: workoutPreferencesTable.householdId,
+    set: { ...parsed.data, updatedAt: new Date() },
+  }).returning();
+  res.json({ ...saved, updatedAt: saved.updatedAt.toISOString(), ...householdDates(saved.timezone) });
+});
+
+router.post("/ai/workout-week-plan", async (req, res) => {
+  const parsed = GenerateWorkoutWeekPlanBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid week plan request", parsed.error.flatten());
+  const weekStart = dateOnly(parsed.data.weekStart);
+  if (!weekStart) return badRequest(res, "weekStart must be a date-only value");
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const members = await validateAdultIds(db, parsed.data.participantIds, scope.householdId);
+    if (!members) return badRequest(res, "Every participant must be an active adult in this household");
+    const context = await householdContext(scope.householdId);
+    const preferences = parsed.data.preferences ?? context.preferences ?? defaultPreferences();
+    let dates: { currentWeekStart: string; currentLocalDate: string };
+    try {
+      dates = householdDates(preferences.timezone);
+    } catch {
+      return badRequest(res, "preferences.timezone must be a valid IANA timezone");
+    }
+    const requestTimestamp = Date.parse(`${weekStart}T00:00:00Z`);
+    const currentTimestamp = Date.parse(`${dates.currentWeekStart}T00:00:00Z`);
+    if (requestTimestamp % (7 * 86400000) !== (Date.parse("1970-01-05T00:00:00Z") % (7 * 86400000))) {
+      return badRequest(res, "weekStart must be a Monday in the household timezone");
+    }
+    if (requestTimestamp < currentTimestamp - 7 * 86400000 || requestTimestamp > currentTimestamp + 26 * 7 * 86400000) {
+      return badRequest(res, "weekStart must be between last week and 26 weeks ahead");
+    }
+    const weekSchema = {
+      type: "object", additionalProperties: false, required: ["weekStart", "timezone", "items"],
+      properties: {
+        weekStart: { type: "string" }, timezone: { type: "string" },
+        items: { type: "array", items: {
+          type: "object", additionalProperties: false, required: ["workoutDate", "participantIds", "workout"],
+          properties: {
+            workoutDate: { type: "string" },
+            participantIds: {
+              type: "array",
+              minItems: 1,
+              maxItems: 20,
+              uniqueItems: true,
+              items: { type: "string", enum: parsed.data.participantIds },
+            },
+            workout: draftJsonSchema,
+          },
+        } },
+      },
+    };
+    const raw = await aiJson([
+      { role: "system", content: "Create a balanced seven-day-or-shorter plan. Use only dates in the requested seven-day window and only supplied participant IDs." },
+      { role: "user", content: JSON.stringify({ weekStart, participants: members.map(m => ({ id: String(m.id), name: m.name })), preferences, context }) },
+    ], weekSchema, "workout_week_plan");
+    const result = GenerateWorkoutWeekPlanResponse.safeParse(raw);
+    if (!result.success) return res.status(502).json({ error: "AI returned a malformed week plan", details: result.error.flatten() });
+    for (const item of result.data.items) {
+      if (new Set(item.participantIds).size !== item.participantIds.length) {
+        return res.status(502).json({ error: "AI returned duplicate workout participants" });
+      }
+      const itemMembers = await validateAdultIds(db, item.participantIds, scope.householdId);
+      if (!itemMembers) {
+        return res.status(502).json({ error: "AI returned an unauthorized or invalid workout participant" });
+      }
+    }
+    const start = Date.parse(`${weekStart}T00:00:00Z`);
+    const badDate = result.data.items.some(item => {
+      const timestamp = Date.parse(`${dateOnly(item.workoutDate)}T00:00:00Z`);
+      return !Number.isFinite(timestamp) || timestamp < start || timestamp >= start + 7 * 86400000;
+    });
+    if (badDate) return res.status(502).json({ error: "AI returned dates outside the requested week" });
+    res.json({
+      ...result.data,
+      weekStart,
+      timezone: preferences.timezone,
+      items: result.data.items.map(item => ({ ...item, workoutDate: dateOnly(item.workoutDate) })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to generate workout week plan");
+    res.status(502).json({ error: "Unable to generate a valid week plan" });
+  }
+});
+
+router.post("/workout-week-plan/save", async (req, res) => {
+  const parsed = SaveWorkoutWeekPlanBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid reviewed week plan", parsed.error.flatten());
+  if (parsed.data.items.some(item => new Set(item.participantIds).size !== item.participantIds.length)) {
+    return badRequest(res, "Each planned workout must have unique participantIds");
+  }
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const allParticipantIds = [...new Set(parsed.data.items.flatMap(item => item.participantIds))];
+    const members = await validateAdultIds(db, allParticipantIds, scope.householdId);
+    if (!members) return badRequest(res, "Every participant must be an active adult in this household");
+    const created = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`workout-plan:${scope.householdId}`}))`);
+      const results: Array<typeof workoutsTable.$inferSelect> = [];
+      for (const item of parsed.data.items) {
+        const workoutDate = dateOnly(item.workoutDate);
+        if (!workoutDate) throw new Error("INVALID_DATE");
+        const participantNumbers = item.participantIds.map(value => id(value)!);
+        await lockWorkoutDate(tx, scope.householdId, workoutDate);
+        await assertNoWorkoutDuplicate(tx, scope.householdId, workoutDate, item.workout.title, participantNumbers);
+        const [workout] = await tx.insert(workoutsTable).values({
+          memberId: participantNumbers[0],
+          title: item.workout.title.trim(),
+          workoutDate,
+          durationMinutes: item.workout.durationMinutes,
+          notes: item.workout.notes ?? item.workout.rationale,
+        }).returning();
+        await tx.insert(workoutParticipantsTable).values(participantNumbers.map(memberId => ({ workoutId: workout.id, memberId })));
+        await insertExercises(tx, workout.id, scope.householdId, item.workout.exercises);
+        results.push(workout);
+      }
+      return results;
+    });
+    res.status(201).json(await Promise.all(created.map(workout => formatWorkout(workout, true))));
+  } catch (err) {
+    if ((err as Error).message === "DUPLICATE") return res.status(409).json({ error: "A workout with the same date and title already exists" });
+    if ((err as Error).message === "INVALID_DATE") return badRequest(res, "All workout dates must be date-only values");
+    req.log.error({ err }, "Failed to save workout week plan");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+function formatCoachMessage(message: typeof workoutCoachMessagesTable.$inferSelect) {
+  let draft: unknown = null;
+  if (message.draftJson !== null) {
+    try {
+      const parsed = DraftWorkoutResponse.safeParse(JSON.parse(message.draftJson));
+      if (!parsed.success) throw new Error("Stored coach draft violates contract");
+      draft = parsed.data;
+    } catch (err) {
+      throw new Error(`Stored coach draft is malformed: ${err instanceof Error ? err.message : "unknown error"}`);
+    }
+  }
+  return { id: String(message.id), role: message.role, content: message.content, draft, createdAt: message.createdAt.toISOString() };
+}
+
+router.get("/workout-coach/conversations", async (_req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const rows = await db.select().from(workoutCoachMessagesTable)
+      .where(eq(workoutCoachMessagesTable.householdId, scope.householdId))
+      .orderBy(asc(workoutCoachMessagesTable.createdAt)).limit(100);
+    res.json({ messages: rows.map(formatCoachMessage) });
+  } catch (err) {
+    _req.log.error({ err }, "Failed to retrieve workout coach conversation");
+    res.status(500).json({ error: "Stored workout coach history could not be validated" });
+  }
+});
+
+router.post("/workout-coach/conversations", async (req, res) => {
+  const parsed = SendWorkoutCoachMessageBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Invalid coach message", parsed.error.flatten());
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    if (parsed.data.participantIds?.length && !(await validateAdultIds(db, parsed.data.participantIds, scope.householdId))) {
+      return badRequest(res, "Every participant must be an active adult in this household");
+    }
+    const [prior, context] = await Promise.all([
+      db.select().from(workoutCoachMessagesTable).where(eq(workoutCoachMessagesTable.householdId, scope.householdId))
+        .orderBy(desc(workoutCoachMessagesTable.createdAt)).limit(20),
+      householdContext(scope.householdId),
+    ]);
+    const replySchema = {
+      type: "object", additionalProperties: false, required: ["message", "draft"],
+      properties: { message: { type: "string" }, draft: { anyOf: [draftJsonSchema, { type: "null" }] } },
+    };
+    const raw = await aiJson([
+      { role: "system", content: `You are a family workout coach. Answer conversationally. You may offer an editable draft, but never claim to save or mutate workouts. Context: ${JSON.stringify(context)}` },
+      ...prior.reverse().map(message => ({ role: message.role as "user" | "assistant", content: message.content })),
+      { role: "user", content: parsed.data.content },
+    ], replySchema, "workout_coach_reply");
+    if (typeof raw?.message !== "string" || (raw.draft !== null && !DraftWorkoutResponse.safeParse(raw.draft).success)) {
+      return res.status(502).json({ error: "AI returned a malformed coaching response" });
+    }
+    const [userMessage, assistantMessage] = await db.transaction(async tx => {
+      const [user] = await tx.insert(workoutCoachMessagesTable).values({
+        householdId: scope.householdId, role: "user", content: parsed.data.content,
+      }).returning();
+      const [assistant] = await tx.insert(workoutCoachMessagesTable).values({
+        householdId: scope.householdId, role: "assistant", content: raw.message,
+        draftJson: raw.draft ? JSON.stringify(raw.draft) : null,
+      }).returning();
+      return [user, assistant];
+    });
+    res.status(201).json({
+      userMessage: formatCoachMessage(userMessage),
+      assistantMessage: formatCoachMessage(assistantMessage),
+      draft: raw.draft,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to send workout coach message");
+    res.status(502).json({ error: "Unable to generate a valid coaching response" });
   }
 });
 

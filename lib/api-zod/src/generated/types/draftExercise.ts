@@ -7,36 +7,41 @@
  */
 import type { MuscleGroup } from './muscleGroup';
 
-export interface Exercise {
-  id: string;
-  workoutId: string;
+export interface DraftExercise {
   /**
      * @minLength 1
      * @maxLength 120
      */
   name: string;
-  libraryExerciseId?: string | null;
+  /** @minItems 1 */
   muscleGroups: MuscleGroup[];
   /**
      * @minimum 1
      * @maximum 100
+     * @nullable
      */
-  sets?: number | null;
+  sets: number | null;
   /**
      * @minimum 1
      * @maximum 1000
+     * @nullable
      */
-  reps?: number | null;
+  reps: number | null;
   /**
      * @minimum 0
      * @maximum 5000
+     * @nullable
      */
-  weightLbs?: number | null;
+  weightLbs: number | null;
   /**
      * @minimum 1
      * @maximum 86400
+     * @nullable
      */
-  durationSeconds?: number | null;
-  /** @maxLength 500 */
-  notes?: string | null;
+  durationSeconds: number | null;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  notes: string | null;
 }
