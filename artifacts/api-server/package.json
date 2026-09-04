@@ -14,7 +14,8 @@
     "test:memory-authorization": "node ./test/run-test.mjs memory-authorization.integration.ts",
     "test:household-migration": "node ./test/run-test.mjs household-migration.integration.ts",
     "test:ssrf-guard": "node ./test/run-test.mjs ipAddress.test.ts",
-    "test:invite-token-logging": "node ./test/run-test.mjs invite-token-logging.test.ts"
+    "test:invite-token-logging": "node ./test/run-test.mjs invite-token-logging.test.ts",
+    "test:property-management": "node ./test/run-test.mjs property-management.test.ts"
   },
   "dependencies": {
     "@clerk/express": "^2.1.40",

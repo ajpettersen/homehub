@@ -219,10 +219,14 @@ export const GetFamilyMembersResponse = zod.array(GetFamilyMembersResponseItem)
 
 
 /**
- * @summary Create a new family member
+ * Available to any approved family account linked to a parent in the same household. Adult profiles are created through account approval or invites.
+ * @summary Create a child or pet family member
  */
+
+
+
 export const CreateFamilyMemberBody = zod.object({
-  "name": zod.string(),
+  "name": zod.string().min(1),
   "role": zod.enum(['child', 'pet']),
   "color": zod.string(),
   "photoUrl": zod.string().nullish()
@@ -240,18 +244,21 @@ export const CreateFamilyMemberResponse = zod.object({
 
 
 /**
+ * Available to any approved family account linked to a parent in the same household. Account-linked adults cannot be role-demoted.
  * @summary Update a family member
  */
 export const UpdateFamilyMemberParams = zod.object({
   "id": zod.coerce.string()
 })
 
+
+
+
 export const UpdateFamilyMemberBody = zod.object({
-  "name": zod.string().optional(),
+  "name": zod.string().min(1).optional(),
   "role": zod.enum(['parent', 'child', 'pet']).optional(),
   "color": zod.string().optional(),
-  "photoUrl": zod.string().nullish(),
-  "linkedAccountClerkId": zod.string().optional().describe('Required when promoting a child or pet to parent; must identify an eligible approved unlinked family account in the same household.')
+  "photoUrl": zod.string().nullish()
 })
 
 export const UpdateFamilyMemberResponse = zod.object({
@@ -266,6 +273,7 @@ export const UpdateFamilyMemberResponse = zod.object({
 
 
 /**
+ * Available to any approved family account linked to a parent in the same household. Linked or referenced members cannot be deleted.
  * @summary Delete a family member
  */
 export const DeleteFamilyMemberParams = zod.object({
@@ -289,6 +297,7 @@ export const GetPropertiesResponse = zod.array(GetPropertiesResponseItem)
 
 
 /**
+ * Available to any approved family account linked to a parent in the same household.
  * @summary Create a property
  */
 export const CreatePropertyBody = zod.object({
@@ -371,6 +380,7 @@ export const CompleteOnboardingResponse = zod.object({
 
 
 /**
+ * Available to any approved family account linked to a parent in the same household.
  * @summary Update a property
  */
 export const UpdatePropertyParams = zod.object({
@@ -391,6 +401,17 @@ export const UpdatePropertyResponse = zod.object({
   "icon": zod.string(),
   "address": zod.string().nullish()
 })
+
+
+/**
+ * Available to any approved family account linked to a parent in the same household. Household records must be reassigned or cleared first.
+ * @summary Delete a reference-free, non-final property
+ */
+export const DeletePropertyParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeletePropertyResponse = zod.void()
 
 
 /**
@@ -2744,6 +2765,7 @@ export const SendWorkoutCoachMessageResponse = zod.object({
 
 
 /**
+ * Available to any approved family account linked to a parent in the same household.
  * @summary Safely merge an unlinked legacy adult into an account-linked adult
  */
 export const MergeDuplicateAdultBody = zod.object({

@@ -38,22 +38,8 @@ export default function Landing() {
               HomeHub
             </span>
           </div>
-          <div className="hidden md:flex items-center gap-6">
-            <Link href="/sign-in" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Log in
-            </Link>
-            <Link 
-              href="/sign-up" 
-              className={cn(buttonVariants({ variant: "default" }), "rounded-full px-6 h-11 text-base shadow-sm")}
-            >
-              Get Started
-            </Link>
-          </div>
-          <Link
-            href="/sign-up"
-            className={cn(buttonVariants({ variant: "default", size: "sm" }), "md:hidden rounded-full px-4")}
-          >
-            Get started
+          <Link href="/sign-in" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+            Log in
           </Link>
         </div>
       </nav>
@@ -99,7 +85,7 @@ export default function Landing() {
               href="/sign-up" 
               className={cn(buttonVariants({ variant: "default", size: "lg" }), "rounded-full h-14 px-8 text-lg w-full sm:w-auto shadow-lg shadow-primary/20")}
             >
-              Start your household
+              Get started
               <ArrowRight className="w-5 h-5 ml-2" />
             </Link>
           </motion.div>

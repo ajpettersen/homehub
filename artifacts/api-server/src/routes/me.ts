@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { clerkClient, getAuth } from "@clerk/express";
 import {
   choresTable,
+  aiMemoriesTable,
   db,
   familyMembersTable,
   householdInvitesTable,
@@ -1296,13 +1297,13 @@ router.post("/admin/family-members/merge-adults", async (req, res) => {
     return;
   }
   try {
-    const admin = await requireFamilyAdmin(req, res);
-    if (!admin) return;
+    const adult = await requireApprovedAdult(req, res);
+    if (!adult) return;
     const result = await db.transaction(async tx => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`merge-adults:${admin.householdId}`}))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`merge-adults:${adult.householdId}`}))`);
       const members = await tx.select().from(familyMembersTable).where(and(
         inArray(familyMembersTable.id, [keepMemberId, legacyMemberId]),
-        eq(familyMembersTable.householdId, admin.householdId),
+        eq(familyMembersTable.householdId, adult.householdId),
       )).for("update");
       if (members.length !== 2) return { status: "missing" as const };
       if (members.some(member => member.role !== "parent")) return { status: "ineligible" as const };
@@ -1316,7 +1317,7 @@ router.post("/admin/family-members/merge-adults", async (req, res) => {
       const keepLinks = links.filter(link =>
         link.memberId === keepMemberId
         && link.role === "family"
-        && link.householdId === admin.householdId,
+        && link.householdId === adult.householdId,
       );
       const legacyLinks = links.filter(link => link.memberId === legacyMemberId);
       if (keepLinks.length !== 1 || legacyLinks.length !== 0 || links.length !== 1) {
@@ -1379,6 +1380,14 @@ router.post("/admin/family-members/merge-adults", async (req, res) => {
       }
       counts.mealRatings = ratingTransfers;
 
+      counts.personalMemories = (await tx.update(aiMemoriesTable)
+        .set({ subjectFamilyMemberId: keepMemberId })
+        .where(and(
+          eq(aiMemoriesTable.householdId, adult.householdId),
+          eq(aiMemoriesTable.subjectFamilyMemberId, legacyMemberId),
+        ))
+        .returning({ id: aiMemoriesTable.id })).length;
+
       const referenceCheck = await tx.execute(sql`
         SELECT
           (SELECT count(*) FROM chores WHERE assignee_id = ${legacyMemberId}) +
@@ -1388,6 +1397,7 @@ router.post("/admin/family-members/merge-adults", async (req, res) => {
           (SELECT count(*) FROM workouts WHERE member_id = ${legacyMemberId}) +
           (SELECT count(*) FROM workout_participants WHERE member_id = ${legacyMemberId}) +
           (SELECT count(*) FROM meal_ratings WHERE member_id = ${legacyMemberId}) +
+          (SELECT count(*) FROM ai_memories WHERE subject_family_member_id = ${legacyMemberId}) +
           (SELECT count(*) FROM user_profiles WHERE linked_family_member_id = ${legacyMemberId})
           AS remaining
       `);
@@ -1396,7 +1406,7 @@ router.post("/admin/family-members/merge-adults", async (req, res) => {
       }
       const deleted = await tx.delete(familyMembersTable).where(and(
         eq(familyMembersTable.id, legacyMemberId),
-        eq(familyMembersTable.householdId, admin.householdId),
+        eq(familyMembersTable.householdId, adult.householdId),
       )).returning({ id: familyMembersTable.id });
       if (deleted.length !== 1) throw new Error("LEGACY_DELETE_FAILED");
       return { status: "ok" as const, counts, collisions };

@@ -37,3 +37,25 @@ export function getApprovedHouseholdScope(res: Response): PropertyAuthorizationS
   if (!scope) throw new Error("Approved household scope middleware was not applied");
   return scope;
 }
+
+/**
+ * Restricts household mutations to an approved family account that is linked
+ * to a parent record in the same household. This deliberately does not use
+ * the legacy administrator flag.
+ */
+export function requireApprovedLinkedAdult(
+  res: Response,
+): PropertyAuthorizationScope | null {
+  const scope = getApprovedHouseholdScope(res);
+  if (!isApprovedLinkedAdultScope(scope)) {
+    res.status(403).json({ error: "An approved adult family account is required" });
+    return null;
+  }
+  return scope;
+}
+
+export function isApprovedLinkedAdultScope(
+  scope: PropertyAuthorizationScope,
+): boolean {
+  return scope.role === "family" && scope.linkedFamilyMemberId !== null;
+}

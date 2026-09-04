@@ -43,6 +43,7 @@ import type {
   CreatedHouseholdInvite,
   DashboardSummary,
   DecideHouseholdJoinRequest200,
+  DeletePropertyConflict,
   Exercise,
   FamilyMember,
   GetChoresParams,
@@ -902,7 +903,8 @@ export const getCreateFamilyMemberUrl = () => {
 }
 
 /**
- * @summary Create a new family member
+ * Available to any approved family account linked to a parent in the same household. Adult profiles are created through account approval or invites.
+ * @summary Create a child or pet family member
  */
 export const createFamilyMember = async (createFamilyMemberInput: CreateFamilyMemberInput, options?: RequestInit): Promise<FamilyMember> => {
 
@@ -951,7 +953,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateFamilyMemberMutationError = ErrorType<unknown>
 
     /**
- * @summary Create a new family member
+ * @summary Create a child or pet family member
  */
 export const useCreateFamilyMember = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFamilyMember>>, TError,{data: BodyType<CreateFamilyMemberInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -973,6 +975,7 @@ export const getUpdateFamilyMemberUrl = (id: string,) => {
 }
 
 /**
+ * Available to any approved family account linked to a parent in the same household. Account-linked adults cannot be role-demoted.
  * @summary Update a family member
  */
 export const updateFamilyMember = async (id: string,
@@ -1045,6 +1048,7 @@ export const getDeleteFamilyMemberUrl = (id: string,) => {
 }
 
 /**
+ * Available to any approved family account linked to a parent in the same household. Linked or referenced members cannot be deleted.
  * @summary Delete a family member
  */
 export const deleteFamilyMember = async (id: string, options?: RequestInit): Promise<void> => {
@@ -1062,7 +1066,7 @@ export const deleteFamilyMember = async (id: string, options?: RequestInit): Pro
 
 
 
-export const getDeleteFamilyMemberMutationOptions = <TError = ErrorType<unknown>,
+export const getDeleteFamilyMemberMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteFamilyMember>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteFamilyMember>>, TError,{id: string}, TContext> => {
 
@@ -1091,12 +1095,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DeleteFamilyMemberMutationResult = NonNullable<Awaited<ReturnType<typeof deleteFamilyMember>>>
 
-    export type DeleteFamilyMemberMutationError = ErrorType<unknown>
+    export type DeleteFamilyMemberMutationError = ErrorType<void>
 
     /**
  * @summary Delete a family member
  */
-export const useDeleteFamilyMember = <TError = ErrorType<unknown>,
+export const useDeleteFamilyMember = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteFamilyMember>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteFamilyMember>>,
@@ -1193,6 +1197,7 @@ export const getCreatePropertyUrl = () => {
 }
 
 /**
+ * Available to any approved family account linked to a parent in the same household.
  * @summary Create a property
  */
 export const createProperty = async (createPropertyInput: CreatePropertyInput, options?: RequestInit): Promise<Property> => {
@@ -1477,6 +1482,7 @@ export const getUpdatePropertyUrl = (id: string,) => {
 }
 
 /**
+ * Available to any approved family account linked to a parent in the same household.
  * @summary Update a property
  */
 export const updateProperty = async (id: string,
@@ -1538,6 +1544,78 @@ export const useUpdateProperty = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdatePropertyMutationOptions(options));
+    }
+
+export const getDeletePropertyUrl = (id: string,) => {
+
+
+
+
+  return `/api/properties/${id}`
+}
+
+/**
+ * Available to any approved family account linked to a parent in the same household. Household records must be reassigned or cleared first.
+ * @summary Delete a reference-free, non-final property
+ */
+export const deleteProperty = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeletePropertyUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePropertyMutationOptions = <TError = ErrorType<void | DeletePropertyConflict>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProperty>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteProperty>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteProperty'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteProperty>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteProperty(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePropertyMutationResult = NonNullable<Awaited<ReturnType<typeof deleteProperty>>>
+
+    export type DeletePropertyMutationError = ErrorType<void | DeletePropertyConflict>
+
+    /**
+ * @summary Delete a reference-free, non-final property
+ */
+export const useDeleteProperty = <TError = ErrorType<void | DeletePropertyConflict>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProperty>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteProperty>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeletePropertyMutationOptions(options));
     }
 
 export const getGetPropertyStreetviewUrl = (id: string,) => {
@@ -6780,6 +6858,7 @@ export const getMergeDuplicateAdultUrl = () => {
 }
 
 /**
+ * Available to any approved family account linked to a parent in the same household.
  * @summary Safely merge an unlinked legacy adult into an account-linked adult
  */
 export const mergeDuplicateAdult = async (mergeDuplicateAdultInput: MergeDuplicateAdultInput, options?: RequestInit): Promise<MergeDuplicateAdultResult> => {

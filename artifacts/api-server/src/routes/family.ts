@@ -1,9 +1,21 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
-import { familyMembersTable, userProfilesTable } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import {
+  aiMemoriesTable,
+  choresTable,
+  familyMembersTable,
+  maintenanceTasksTable,
+  mealRatingsTable,
+  todoItemsTable,
+  todoListsTable,
+  userProfilesTable,
+  workoutParticipantsTable,
+  workoutsTable,
+} from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { getPropertyAuthorizationScope, type PropertyAuthorizationScope } from "../lib/propertyAuthorization";
+import { requireApprovedLinkedAdult as requireApprovedLinkedAdultScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
@@ -25,6 +37,16 @@ async function requireHouseholdScope(
     return null;
   }
   return scope;
+}
+
+async function requireApprovedLinkedAdult(
+  req: any,
+  res: any,
+): Promise<PropertyAuthorizationScope | null> {
+  const scope = await requireHouseholdScope(req, res);
+  if (!scope) return null;
+  res.locals.homeHubScope = scope;
+  return requireApprovedLinkedAdultScope(res);
 }
 
 function memberToJson(m: any, linkedAccount: { clerkId: string } | null = null) {
@@ -61,7 +83,7 @@ router.get("/family-members", async (req, res) => {
 
 router.post("/family-members", async (req, res) => {
   try {
-    const scope = await requireHouseholdScope(req, res, true);
+    const scope = await requireApprovedLinkedAdult(req, res);
     if (!scope) return;
     const { name, role, color, photoUrl } = req.body ?? {};
     if (!name || typeof name !== "string" || !name.trim()) {
@@ -98,7 +120,7 @@ router.post("/family-members", async (req, res) => {
 
 router.put("/family-members/:id", async (req, res) => {
   try {
-    const scope = await requireHouseholdScope(req, res, true);
+    const scope = await requireApprovedLinkedAdult(req, res);
     if (!scope) return;
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -106,7 +128,7 @@ router.put("/family-members/:id", async (req, res) => {
       return;
     }
 
-    const { name, role, color, photoUrl, linkedAccountClerkId } = req.body ?? {};
+    const { name, role, color, photoUrl } = req.body ?? {};
     if (role !== undefined && !VALID_ROLES.includes(role)) {
       res.status(400).json({ error: "role must be parent | child | pet" });
       return;
@@ -114,8 +136,12 @@ router.put("/family-members/:id", async (req, res) => {
 
     const updates: Record<string, unknown> = {};
     if (name !== undefined) {
-      updates.name = String(name).trim();
-      updates.avatarInitials = String(name).trim().charAt(0).toUpperCase();
+      if (typeof name !== "string" || !name.trim()) {
+        res.status(400).json({ error: "name must not be empty" });
+        return;
+      }
+      updates.name = name.trim();
+      updates.avatarInitials = name.trim().charAt(0).toUpperCase();
     }
     if (role !== undefined) updates.role = role;
     if (color !== undefined) updates.color = color;
@@ -128,46 +154,30 @@ router.put("/family-members/:id", async (req, res) => {
       )).for("update").limit(1);
       if (!current) return null;
 
-      const [linked] = await tx.select({ clerkId: userProfilesTable.clerkId })
+      const links = await tx.select({
+        clerkId: userProfilesTable.clerkId,
+        householdId: userProfilesTable.householdId,
+        role: userProfilesTable.role,
+      })
         .from(userProfilesTable)
-        .where(and(
-          eq(userProfilesTable.householdId, scope.householdId),
-          eq(userProfilesTable.linkedFamilyMemberId, id),
-          eq(userProfilesTable.role, "family"),
-        ))
-        .for("update")
-        .limit(1);
+        .where(eq(userProfilesTable.linkedFamilyMemberId, id))
+        .for("update");
+      const linked = links.find(link =>
+        link.householdId === scope.householdId && link.role === "family",
+      ) ?? null;
 
-      if (current.role === "parent" && role !== undefined && role !== "parent" && linked) {
+      if (role !== undefined && role !== "parent" && links.length > 0) {
         throw Object.assign(new Error("A linked adult cannot be changed to a child or pet"), { status: 409 });
       }
       if (current.role !== "parent" && role === "parent") {
-        if (typeof linkedAccountClerkId !== "string" || !linkedAccountClerkId) {
-          throw Object.assign(new Error("Promoting an adult requires an approved unlinked family account"), { status: 400 });
-        }
-        const [eligible] = await tx.select({ clerkId: userProfilesTable.clerkId })
-          .from(userProfilesTable)
-          .where(and(
-            eq(userProfilesTable.clerkId, linkedAccountClerkId),
-            eq(userProfilesTable.householdId, scope.householdId),
-            eq(userProfilesTable.role, "family"),
-            sql`${userProfilesTable.linkedFamilyMemberId} IS NULL`,
-          ))
-          .for("update")
-          .limit(1);
-        if (!eligible) {
-          throw Object.assign(new Error("That account is not eligible to link"), { status: 409 });
-        }
-        await tx.update(userProfilesTable)
-          .set({ linkedFamilyMemberId: id })
-          .where(eq(userProfilesTable.clerkId, eligible.clerkId));
+        throw Object.assign(new Error("Adult profiles must be created through account approval or an invite"), { status: 400 });
       }
 
       const [updated] = await tx.update(familyMembersTable).set(updates).where(and(
         eq(familyMembersTable.id, id),
         eq(familyMembersTable.householdId, scope.householdId),
       )).returning();
-      return { member: updated, linkedAccount: linked ?? (role === "parent" ? { clerkId: linkedAccountClerkId } : null) };
+      return { member: updated, linkedAccount: linked };
     });
 
     if (!result) {
@@ -187,7 +197,7 @@ router.put("/family-members/:id", async (req, res) => {
 
 router.delete("/family-members/:id", async (req, res) => {
   try {
-    const scope = await requireHouseholdScope(req, res, true);
+    const scope = await requireApprovedLinkedAdult(req, res);
     if (!scope) return;
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -200,17 +210,28 @@ router.delete("/family-members/:id", async (req, res) => {
         .for("update").limit(1);
       if (!member) return "missing";
       const [linked] = await tx.select({ id: userProfilesTable.id }).from(userProfilesTable)
-        .where(and(
-          eq(userProfilesTable.householdId, scope.householdId),
-          eq(userProfilesTable.linkedFamilyMemberId, id),
-          eq(userProfilesTable.role, "family"),
-        )).limit(1);
+        .where(eq(userProfilesTable.linkedFamilyMemberId, id)).limit(1);
       if (linked) return "linked";
+      const references = await Promise.all([
+        tx.select({ id: choresTable.id }).from(choresTable).where(eq(choresTable.assigneeId, id)).limit(1),
+        tx.select({ id: todoListsTable.id }).from(todoListsTable).where(eq(todoListsTable.assigneeId, id)).limit(1),
+        tx.select({ id: todoItemsTable.id }).from(todoItemsTable).where(eq(todoItemsTable.assigneeId, id)).limit(1),
+        tx.select({ id: maintenanceTasksTable.id }).from(maintenanceTasksTable).where(eq(maintenanceTasksTable.assigneeId, id)).limit(1),
+        tx.select({ id: workoutsTable.id }).from(workoutsTable).where(eq(workoutsTable.memberId, id)).limit(1),
+        tx.select({ memberId: workoutParticipantsTable.memberId }).from(workoutParticipantsTable).where(eq(workoutParticipantsTable.memberId, id)).limit(1),
+        tx.select({ id: mealRatingsTable.id }).from(mealRatingsTable).where(eq(mealRatingsTable.memberId, id)).limit(1),
+        tx.select({ id: aiMemoriesTable.id }).from(aiMemoriesTable).where(eq(aiMemoriesTable.subjectFamilyMemberId, id)).limit(1),
+      ]);
+      if (references.some(rows => rows.length > 0)) return "referenced";
       await tx.delete(familyMembersTable).where(eq(familyMembersTable.id, id));
       return "deleted";
     });
     if (deleted === "linked") {
       res.status(409).json({ error: "A linked adult cannot be deleted while its approved account is active" });
+      return;
+    }
+    if (deleted === "referenced") {
+      res.status(409).json({ error: "This family member has household history. Merge or reassign it before deleting." });
       return;
     }
     if (deleted === "missing") {

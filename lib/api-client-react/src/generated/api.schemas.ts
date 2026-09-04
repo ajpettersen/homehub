@@ -878,6 +878,7 @@ export const CreateFamilyMemberInputRole = {
 } as const;
 
 export interface CreateFamilyMemberInput {
+  /** @minLength 1 */
   name: string;
   role: CreateFamilyMemberInputRole;
   color: string;
@@ -894,12 +895,11 @@ export const UpdateFamilyMemberInputRole = {
 } as const;
 
 export interface UpdateFamilyMemberInput {
+  /** @minLength 1 */
   name?: string;
   role?: UpdateFamilyMemberInputRole;
   color?: string;
   photoUrl?: string | null;
-  /** Required when promoting a child or pet to parent; must identify an eligible approved unlinked family account in the same household. */
-  linkedAccountClerkId?: string;
 }
 
 export type PropertyType = typeof PropertyType[keyof typeof PropertyType];
@@ -931,6 +931,43 @@ export interface CreatePropertyInput {
   type?: CreatePropertyInputType;
   icon?: string;
   address?: string | null;
+}
+
+export interface PropertyDependencyCounts {
+  /** @minimum 0 */
+  chores: number;
+  /** @minimum 0 */
+  maintenanceTasks: number;
+  /** @minimum 0 */
+  groceryLists: number;
+  /** @minimum 0 */
+  mealPlans: number;
+  /** @minimum 0 */
+  recipes: number;
+  /** @minimum 0 */
+  todoLists: number;
+  /** @minimum 0 */
+  people: number;
+  /** @minimum 0 */
+  contractors: number;
+  /** @minimum 0 */
+  allowedUserProfiles: number;
+}
+
+export type DeletePropertyConflictCode = typeof DeletePropertyConflictCode[keyof typeof DeletePropertyConflictCode];
+
+
+export const DeletePropertyConflictCode = {
+  LAST_PROPERTY: 'LAST_PROPERTY',
+  PROPERTY_HAS_DEPENDENCIES: 'PROPERTY_HAS_DEPENDENCIES',
+} as const;
+
+export interface DeletePropertyConflict {
+  error: string;
+  code: DeletePropertyConflictCode;
+  /** @minimum 1 */
+  total?: number;
+  dependencies?: PropertyDependencyCounts;
 }
 
 export interface Household {

@@ -1,7 +1,15 @@
 import { Router } from "express";
 import { db, propertiesTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
+import {
+  getApprovedHouseholdScope,
+  requireApprovedLinkedAdult,
+} from "../middlewares/requireApprovedHousehold";
+import {
+  classifyLockedPropertySet,
+  getPropertyDependencyCounts,
+  totalPropertyDependencies,
+} from "../lib/propertyDeletion";
 
 const router = Router();
 
@@ -37,12 +45,8 @@ router.get("/properties", async (req, res) => {
 
 router.post("/properties", async (req, res) => {
   try {
-    const scope = getApprovedHouseholdScope(res);
-
-    if (scope.role !== "family" || !scope.isAdmin) {
-      res.status(403).json({ error: "Household administrator access required" });
-      return;
-    }
+    const scope = requireApprovedLinkedAdult(res);
+    if (!scope) return;
 
     const { name, type, icon, address } = req.body as {
       name?: string;
@@ -87,16 +91,12 @@ router.post("/properties", async (req, res) => {
 
 router.put("/properties/:id", async (req, res) => {
   try {
-    const scope = getApprovedHouseholdScope(res);
+    const scope = requireApprovedLinkedAdult(res);
+    if (!scope) return;
 
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
-      return;
-    }
-
-    if (scope.role !== "family" || !scope.isAdmin) {
-      res.status(403).json({ error: "Household administrator access required" });
       return;
     }
 
@@ -149,6 +149,68 @@ router.put("/properties/:id", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to update property");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/properties/:id", async (req, res) => {
+  try {
+    const scope = requireApprovedLinkedAdult(res);
+    if (!scope) return;
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const result = await db.transaction(async tx => {
+      const householdProperties = await tx
+        .select({ id: propertiesTable.id })
+        .from(propertiesTable)
+        .where(eq(propertiesTable.householdId, scope.householdId))
+        .orderBy(propertiesTable.id)
+        .for("update");
+      const targetFound = householdProperties.some(property => property.id === id);
+      const propertyState = classifyLockedPropertySet(targetFound, householdProperties.length);
+      if (propertyState === "missing") return { status: "missing" } as const;
+      if (propertyState === "last") return { status: "last" } as const;
+
+      const dependencies = await getPropertyDependencyCounts(tx, id);
+      const total = totalPropertyDependencies(dependencies);
+      if (total > 0) {
+        return { status: "referenced", dependencies, total } as const;
+      }
+
+      const deleted = await tx.delete(propertiesTable).where(and(
+        eq(propertiesTable.id, id),
+        eq(propertiesTable.householdId, scope.householdId),
+      )).returning({ id: propertiesTable.id });
+      return deleted.length === 1 ? { status: "deleted" } as const : { status: "missing" } as const;
+    });
+
+    if (result.status === "missing") {
+      res.status(404).json({ error: "Property not found" });
+      return;
+    }
+    if (result.status === "last") {
+      res.status(409).json({
+        error: "A household must keep at least one property",
+        code: "LAST_PROPERTY",
+      });
+      return;
+    }
+    if (result.status === "referenced") {
+      res.status(409).json({
+        error: "This property has household records. Reassign or clear them before deleting.",
+        code: "PROPERTY_HAS_DEPENDENCIES",
+        total: result.total,
+        dependencies: result.dependencies,
+      });
+      return;
+    }
+    res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete property");
     res.status(500).json({ error: "Internal server error" });
   }
 });

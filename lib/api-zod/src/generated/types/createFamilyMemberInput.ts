@@ -8,6 +8,7 @@
 import type { CreateFamilyMemberInputRole } from './createFamilyMemberInputRole';
 
 export interface CreateFamilyMemberInput {
+  /** @minLength 1 */
   name: string;
   role: CreateFamilyMemberInputRole;
   color: string;

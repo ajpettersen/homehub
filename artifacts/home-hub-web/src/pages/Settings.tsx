@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   useGetFamilyMembers, useCreateFamilyMember, useUpdateFamilyMember, useDeleteFamilyMember,
-  useGetProperties, useCreateProperty, useUpdateProperty,
+  useGetProperties, useCreateProperty, useUpdateProperty, useDeleteProperty,
   useGetMaintenanceTasks, getGetMaintenanceTasksQueryKey,
   useCreateMaintenanceTask, useUpdateMaintenanceTask, useDeleteMaintenanceTask,
   getGetFamilyMembersQueryKey, getGetPropertiesQueryKey,
@@ -16,6 +16,16 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
@@ -57,8 +67,8 @@ function getCat(key: string) {
 }
 
 interface MemberFormState { name: string; role: Role; color: string; photoUrl: string; }
-interface PropertyFormState { name: string; address: string; }
-interface NewPropertyFormState extends PropertyFormState { type: "house" | "cabin"; }
+interface PropertyFormState { name: string; address: string; type: "house" | "cabin"; }
+type NewPropertyFormState = PropertyFormState;
 interface TaskFormState {
   title: string;
   category: string;
@@ -673,23 +683,75 @@ function NewPropertyForm({ onSave, onCancel, saving }: {
   );
 }
 
-function PropertyRow({ property, onSaveInfo, saving, canAdminister, isDefault }: {
-  property: any; onSaveInfo: (data: PropertyFormState) => void; saving: boolean; canAdminister: boolean; isDefault: boolean;
+function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canManage, isDefault }: {
+  property: any;
+  onSaveInfo: (data: PropertyFormState) => void;
+  onDelete: () => Promise<void>;
+  saving: boolean;
+  deleting: boolean;
+  canManage: boolean;
+  isDefault: boolean;
 }) {
   const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
   const streetViewSrc = `${baseUrl}/api/properties/${property.id}/streetview`;
   const [imgError, setImgError] = useState(false);
   const isCabin = property.type === "cabin";
   const [editingInfo, setEditingInfo] = useState(false);
-  const [infoForm, setInfoForm] = useState<PropertyFormState>({ name: property.name, address: property.address ?? "" });
+  const [infoForm, setInfoForm] = useState<PropertyFormState>({
+    name: property.name,
+    address: property.address ?? "",
+    type: property.type === "cabin" ? "cabin" : "house",
+  });
   const [tasksOpen, setTasksOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleSave = (e: React.FormEvent) => { e.preventDefault(); onSaveInfo(infoForm); setEditingInfo(false); };
+  const handleDelete = async () => {
+    setDeleteError(null);
+    try {
+      await onDelete();
+      setConfirmDelete(false);
+    } catch (error) {
+      const apiError = error as {
+        status?: number;
+        data?: {
+          error?: string;
+          code?: string;
+          total?: number;
+          dependencies?: Record<string, number>;
+        };
+      };
+      const data = apiError.data;
+      if (apiError.status === 409 && data?.code === "PROPERTY_HAS_DEPENDENCIES") {
+        const labels: Record<string, string> = {
+          chores: "chores",
+          maintenanceTasks: "maintenance tasks",
+          groceryLists: "grocery lists",
+          mealPlans: "meal plans",
+          recipes: "recipes",
+          todoLists: "to-do lists",
+          people: "people",
+          contractors: "contractors",
+          allowedUserProfiles: "property access assignments",
+        };
+        const details = Object.entries(data.dependencies ?? {})
+          .filter(([, count]) => count > 0)
+          .map(([key, count]) => `${count} ${labels[key] ?? key}`)
+          .join(", ");
+        setDeleteError(`This property still has ${data.total ?? "some"} household record${data.total === 1 ? "" : "s"}${details ? `: ${details}` : ""}. Reassign or clear them first.`);
+      } else if (apiError.status === 409 && data?.code === "LAST_PROPERTY") {
+        setDeleteError("This is the household's last property, so it cannot be deleted.");
+      } else {
+        setDeleteError(data?.error ?? "Unable to delete this property. Please try again.");
+      }
+    }
+  };
 
   return (
     <div className="border border-border rounded-xl overflow-hidden">
       {/* Property header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-muted/20">
+      <div className="flex flex-wrap items-center gap-3 px-3 py-3 sm:px-4 bg-muted/20">
         {/* Thumbnail */}
         <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-muted">
           {property.address && !imgError ? (
@@ -701,9 +763,29 @@ function PropertyRow({ property, onSaveInfo, saving, canAdminister, isDefault }:
           )}
         </div>
 
-        {editingInfo && canAdminister ? (
+        {editingInfo && canManage ? (
           <form onSubmit={handleSave} className="flex-1 flex flex-col gap-2">
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { type: "house" as const, label: "House", Icon: Home },
+                { type: "cabin" as const, label: "Cabin", Icon: Mountain },
+              ]).map(({ type, label, Icon }) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setInfoForm(form => ({ ...form, type }))}
+                  className={`flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+                    infoForm.type === type
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input autoFocus required value={infoForm.name}
                 onChange={e => setInfoForm(f => ({ ...f, name: e.target.value }))}
                 className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 font-bold text-sm focus:outline-none focus:border-primary"
@@ -733,7 +815,7 @@ function PropertyRow({ property, onSaveInfo, saving, canAdminister, isDefault }:
               <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
                 <MapPin className="w-3 h-3 shrink-0" />{property.address}
               </p>
-            ) : canAdminister ? (
+            ) : canManage ? (
               <button onClick={() => setEditingInfo(true)} className="text-xs text-primary/60 hover:text-primary mt-0.5 flex items-center gap-1 transition-colors">
                 <MapPin className="w-3 h-3 shrink-0" /> Add address…
               </button>
@@ -743,14 +825,26 @@ function PropertyRow({ property, onSaveInfo, saving, canAdminister, isDefault }:
           </div>
         )}
 
-        {!editingInfo && canAdminister && (
-          <button onClick={() => setEditingInfo(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-bold text-foreground hover:border-primary/50 hover:text-primary transition-colors shrink-0">
-            <Pencil className="w-3.5 h-3.5" />
-            Edit settings
-          </button>
+        {!editingInfo && canManage && (
+          <div className="ml-auto flex w-full gap-2 sm:w-auto">
+            <button onClick={() => setEditingInfo(true)}
+              className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold text-foreground transition-colors hover:border-primary/50 hover:text-primary sm:min-h-0 sm:flex-none sm:py-1.5">
+              <Pencil className="w-3.5 h-3.5" />
+              Edit
+            </button>
+            <button onClick={() => { setDeleteError(null); setConfirmDelete(true); }}
+              className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-destructive/30 bg-background px-3 py-2 text-xs font-bold text-destructive transition-colors hover:bg-destructive/10 sm:min-h-0 sm:flex-none sm:py-1.5">
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete
+            </button>
+          </div>
         )}
       </div>
+      {deleteError && (
+        <div role="alert" className="border-t border-destructive/20 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive">
+          {deleteError}
+        </div>
+      )}
 
       {/* Tasks accordion */}
       <button type="button" onClick={() => setTasksOpen(v => !v)}
@@ -767,6 +861,31 @@ function PropertyRow({ property, onSaveInfo, saving, canAdminister, isDefault }:
           <PropertyTasksSection propertyId={property.id} />
         </div>
       )}
+      <AlertDialog open={confirmDelete} onOpenChange={open => { if (!deleting) setConfirmDelete(open); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {property.name}?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">This permanently deletes the property and cannot be undone.</span>
+              <span className="block">Properties with household records cannot be deleted. Reassign or clear chores, plans, lists, people, and other records first.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm font-medium text-destructive">{deleteError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Keep property</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={event => {
+                event.preventDefault();
+                void handleDelete();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting…" : "Delete permanently"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -839,7 +958,7 @@ function MemberForm({ initial, onSave, onCancel, saving, lockAdultRole = false }
 }
 
 // ── MemberCard ────────────────────────────────────────────────────────────────
-function MemberCard({ member, onEdit, onDelete, canAdminister }: { member: any; onEdit: () => void; onDelete: () => void; canAdminister: boolean }) {
+function MemberCard({ member, onEdit, onDelete, canManage }: { member: any; onEdit: () => void; onDelete: () => void; canManage: boolean }) {
   return (
     <Card className="group relative overflow-hidden hover:shadow-md transition-shadow">
       <CardContent className="p-4 flex items-center gap-3.5">
@@ -862,13 +981,15 @@ function MemberCard({ member, onEdit, onDelete, canAdminister }: { member: any; 
             </p>
           )}
         </div>
-        {canAdminister && <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+        {canManage && <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
           <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Edit">
             <Pencil className="w-3.5 h-3.5" />
           </button>
-          <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors" title="Delete">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          {!member.hasLinkedAccount && (
+            <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors" title="Delete">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>}
       </CardContent>
     </Card>
@@ -1073,7 +1194,7 @@ function FamilyLinkingSection({ familyMembers }: { familyMembers: any[] }) {
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  if (me?.role !== "family") return null;
+  if (me?.role !== "family" || !me.linkedFamilyMemberId) return null;
 
   const pendingRequests = joinRequests ?? [];
   const activeInvites = (invites ?? []).filter(inv => {
@@ -1413,7 +1534,7 @@ function MergeDuplicateAdultsSection({ familyMembers }: { familyMembers: any[] }
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (me?.role !== "family" || !me.isAdmin) return null;
+  if (me?.role !== "family" || !me.linkedFamilyMemberId) return null;
 
   const linkedAdults = familyMembers.filter(m => m.role === "parent" && m.hasLinkedAccount);
   const unlinkedLegacyAdults = familyMembers.filter(m => m.role === "parent" && !m.hasLinkedAccount);
@@ -1587,7 +1708,8 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const { preferences, setTabPreference } = usePreferences();
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
-  const canAdministerHousehold = me?.role === "family" && me.isAdmin;
+  const canManageProperties = me?.role === "family" && !!me.linkedFamilyMemberId;
+  const canManageMembers = me?.role === "family" && !!me.linkedFamilyMemberId;
 
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
@@ -1597,6 +1719,7 @@ export default function Settings() {
   const deleteMember = useDeleteFamilyMember();
   const createProperty = useCreateProperty();
   const updateProperty = useUpdateProperty();
+  const deleteProperty = useDeleteProperty();
 
   const [addingMember, setAddingMember] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
@@ -1649,7 +1772,7 @@ export default function Settings() {
         summary={memberSummary}
         defaultOpen={preferences.tabs.settings.startSection === "members"}
         action={
-          canAdministerHousehold && !addingMember ? (
+          canManageMembers && !addingMember ? (
             <button onClick={() => { setAddingMember(true); setEditingMemberId(null); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs hover:bg-primary/90 transition-colors">
               <Plus className="w-3.5 h-3.5" /> Add
@@ -1657,7 +1780,7 @@ export default function Settings() {
           ) : undefined
         }
       >
-        {canAdministerHousehold && addingMember && (
+        {canManageMembers && addingMember && (
           <div className="mb-5">
             <MemberForm initial={{ name: "", role: "child", color: COLORS[0], photoUrl: "" }}
               onSave={data => createMember.mutate({ data: { name: data.name, role: data.role as "child" | "pet", color: data.color, photoUrl: data.photoUrl || null } },
@@ -1668,7 +1791,7 @@ export default function Settings() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {familyMembers?.map(member =>
-            canAdministerHousehold && editingMemberId === member.id ? (
+            canManageMembers && editingMemberId === member.id ? (
               <div key={member.id} className="sm:col-span-2 md:col-span-3">
                 <MemberForm
                   initial={{ name: member.name, role: member.role as Role, color: member.color, photoUrl: member.photoUrl ?? "" }}
@@ -1679,14 +1802,28 @@ export default function Settings() {
               </div>
             ) : (
               <MemberCard key={member.id} member={member}
-                canAdminister={canAdministerHousehold}
+                canManage={canManageMembers}
                 onEdit={() => { setEditingMemberId(member.id); setAddingMember(false); }}
-                onDelete={() => { if (confirm(`Remove ${member.name}?`)) deleteMember.mutate({ id: member.id }, { onSuccess: invalidateMembers }); }} />
+                onDelete={() => {
+                  if (confirm(`Remove ${member.name}? This only works when they have no linked account or household history.`)) {
+                    deleteMember.mutate(
+                      { id: member.id },
+                      {
+                        onSuccess: invalidateMembers,
+                        onError: () => alert(
+                          member.role === "parent"
+                            ? "This legacy adult still has household history. Use Merge Duplicate Adult so their history is transferred safely."
+                            : "This family member still has household history and cannot be removed until it is reassigned.",
+                        ),
+                      },
+                    );
+                  }
+                }} />
             )
           )}
         </div>
 
-        {canAdministerHousehold && !addingMember && (
+        {canManageMembers && !addingMember && (
           <button onClick={() => { setAddingMember(true); setEditingMemberId(null); }}
             className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 text-muted-foreground text-sm font-medium transition-all">
             <Plus className="w-4 h-4 text-primary/60" /> Add family member
@@ -1701,7 +1838,7 @@ export default function Settings() {
         summary={<span className="text-xs text-muted-foreground">{properties?.length ?? 0} propert{properties?.length === 1 ? "y" : "ies"}</span>}
         defaultOpen={preferences.tabs.settings.startSection === "properties"}
         action={
-          canAdministerHousehold && !addingProperty ? (
+          canManageProperties && !addingProperty ? (
             <button
               onClick={() => setAddingProperty(true)}
               className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90"
@@ -1726,7 +1863,7 @@ export default function Settings() {
               </select>
             </div>
           )}
-          {canAdministerHousehold && addingProperty && (
+          {canManageProperties && addingProperty && (
             <NewPropertyForm
               onSave={data => createProperty.mutate(
                 {
@@ -1753,12 +1890,31 @@ export default function Settings() {
               key={property.id}
               property={property}
               isDefault={property.id === defaultPropertyId}
-              canAdminister={canAdministerHousehold}
-              onSaveInfo={data => updateProperty.mutate({ id: property.id, data: { name: data.name, address: data.address || null } }, { onSuccess: invalidateProps })}
+              canManage={canManageProperties}
+              onSaveInfo={data => updateProperty.mutate({
+                id: property.id,
+                data: {
+                  name: data.name,
+                  address: data.address || null,
+                  type: data.type,
+                  icon: data.type === "cabin" ? "mountain" : "home",
+                },
+              }, { onSuccess: invalidateProps })}
+              onDelete={async () => {
+                await deleteProperty.mutateAsync({ id: property.id });
+                if (preferences.tabs.properties.defaultProperty === property.id) {
+                  setTabPreference("properties", "defaultProperty", "");
+                }
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: getGetPropertiesQueryKey() }),
+                  queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }),
+                ]);
+              }}
               saving={updateProperty.isPending}
+              deleting={deleteProperty.isPending}
             />
           ))}
-          {canAdministerHousehold && !addingProperty && (
+          {canManageProperties && !addingProperty && (
             <button
               onClick={() => setAddingProperty(true)}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/40 hover:bg-muted/30"

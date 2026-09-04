@@ -12,6 +12,7 @@ const allowedTests = new Set([
   "invite-token-logging.test.ts",
   "meal-memory.integration.ts",
     "memory-authorization.integration.ts",
+    "property-management.test.ts",
 ]);
 if (!allowedTests.has(testFile)) {
   throw new Error(`Unknown test file: ${testFile}`);

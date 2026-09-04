@@ -229,7 +229,8 @@ paths:
     post:
       operationId: createFamilyMember
       tags: [family]
-      summary: Create a new family member
+      summary: Create a child or pet family member
+      description: Available to any approved family account linked to a parent in the same household. Adult profiles are created through account approval or invites.
       requestBody:
         required: true
         content:
@@ -249,6 +250,7 @@ paths:
       operationId: updateFamilyMember
       tags: [family]
       summary: Update a family member
+      description: Available to any approved family account linked to a parent in the same household. Account-linked adults cannot be role-demoted.
       parameters:
         - name: id
           in: path
@@ -274,6 +276,7 @@ paths:
       operationId: deleteFamilyMember
       tags: [family]
       summary: Delete a family member
+      description: Available to any approved family account linked to a parent in the same household. Linked or referenced members cannot be deleted.
       parameters:
         - name: id
           in: path
@@ -283,6 +286,8 @@ paths:
       responses:
         "204":
           description: Deleted
+        "409":
+          description: Member is linked to an account or has household history that must first be merged or reassigned
 
   /properties:
     get:
@@ -302,6 +307,7 @@ paths:
       operationId: createProperty
       tags: [properties]
       summary: Create a property
+      description: Available to any approved family account linked to a parent in the same household.
       requestBody:
         required: true
         content:
@@ -390,6 +396,7 @@ paths:
       operationId: updateProperty
       tags: [properties]
       summary: Update a property
+      description: Available to any approved family account linked to a parent in the same household.
       parameters:
         - name: id
           in: path
@@ -411,6 +418,28 @@ paths:
                 $ref: "#/components/schemas/Property"
         "404":
           description: Not found
+    delete:
+      operationId: deleteProperty
+      tags: [properties]
+      summary: Delete a reference-free, non-final property
+      description: Available to any approved family account linked to a parent in the same household. Household records must be reassigned or cleared first.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+        "409":
+          description: The property is the household's last property or has dependent records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletePropertyConflict"
 
   /properties/{id}/streetview:
     get:
@@ -1781,6 +1810,7 @@ paths:
       operationId: mergeDuplicateAdult
       tags: [family]
       summary: Safely merge an unlinked legacy adult into an account-linked adult
+      description: Available to any approved family account linked to a parent in the same household.
       requestBody:
         required: true
         content:
@@ -2888,6 +2918,7 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
         role:
           type: string
           enum: [child, pet]
@@ -2906,6 +2937,7 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
         role:
           type: string
           enum: [parent, child, pet]
@@ -2914,9 +2946,6 @@ components:
         photoUrl:
           type: string
           nullable: true
-        linkedAccountClerkId:
-          type: string
-          description: Required when promoting a child or pet to parent; must identify an eligible approved unlinked family account in the same household.
 
     Property:
       type: object
@@ -2954,6 +2983,37 @@ components:
           nullable: true
       required:
         - name
+
+    PropertyDependencyCounts:
+      type: object
+      additionalProperties: false
+      required: [chores, maintenanceTasks, groceryLists, mealPlans, recipes, todoLists, people, contractors, allowedUserProfiles]
+      properties:
+        chores: { type: integer, minimum: 0 }
+        maintenanceTasks: { type: integer, minimum: 0 }
+        groceryLists: { type: integer, minimum: 0 }
+        mealPlans: { type: integer, minimum: 0 }
+        recipes: { type: integer, minimum: 0 }
+        todoLists: { type: integer, minimum: 0 }
+        people: { type: integer, minimum: 0 }
+        contractors: { type: integer, minimum: 0 }
+        allowedUserProfiles: { type: integer, minimum: 0 }
+
+    DeletePropertyConflict:
+      type: object
+      additionalProperties: false
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum: [LAST_PROPERTY, PROPERTY_HAS_DEPENDENCIES]
+        total:
+          type: integer
+          minimum: 1
+        dependencies:
+          $ref: "#/components/schemas/PropertyDependencyCounts"
 
     Household:
       type: object

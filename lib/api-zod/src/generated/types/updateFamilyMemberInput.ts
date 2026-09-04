@@ -8,10 +8,9 @@
 import type { UpdateFamilyMemberInputRole } from './updateFamilyMemberInputRole';
 
 export interface UpdateFamilyMemberInput {
+  /** @minLength 1 */
   name?: string;
   role?: UpdateFamilyMemberInputRole;
   color?: string;
   photoUrl?: string | null;
-  /** Required when promoting a child or pet to parent; must identify an eligible approved unlinked family account in the same household. */
-  linkedAccountClerkId?: string;
 }
