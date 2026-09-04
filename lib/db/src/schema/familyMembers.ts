@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { householdsTable } from "./households";
@@ -12,7 +12,9 @@ export const familyMembersTable = pgTable("family_members", {
   avatarInitials: text("avatar_initials").notNull(),
   photoUrl: text("photo_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  unique("family_members_id_household_key").on(table.id, table.householdId),
+]);
 
 export const insertFamilyMemberSchema = createInsertSchema(familyMembersTable).omit({ id: true, createdAt: true });
 export type InsertFamilyMember = z.infer<typeof insertFamilyMemberSchema>;
