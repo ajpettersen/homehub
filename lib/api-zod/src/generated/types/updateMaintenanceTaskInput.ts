@@ -10,6 +10,7 @@ import type { UpdateMaintenanceTaskInputScheduleType } from './updateMaintenance
 
 export interface UpdateMaintenanceTaskInput {
   title?: string;
+  canonicalKey?: string | null;
   description?: string | null;
   category?: UpdateMaintenanceTaskInputCategory;
   assigneeId?: string | null;
@@ -18,4 +19,6 @@ export interface UpdateMaintenanceTaskInput {
   scheduleType?: UpdateMaintenanceTaskInputScheduleType;
   startDate?: Date | null;
   nextDueDate?: Date;
+  /** IANA timezone used to derive the local comparison date when recalculating recurrence. */
+  timezone?: string;
 }

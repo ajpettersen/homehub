@@ -3,12 +3,23 @@ import { db } from "@workspace/db";
 import { maintenanceTasksTable, propertiesTable, familyMembersTable } from "@workspace/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
+import {
+  canonicalizeMaintenanceTitle,
+  parseIncludeCompletedQuery,
+} from "../lib/maintenanceCanonicalization";
+import {
+  getMaintenanceCatalogItem,
+  inferMaintenanceCatalogKey,
+} from "../lib/maintenanceCatalog";
+import {
+  addMaintenanceDays,
+  dateInMaintenanceTimeZone,
+  getNextAnchoredMaintenanceDate,
+  isDateOnly,
+  resolveMaintenanceTimeZone,
+} from "../lib/maintenanceDates";
 
 const router = Router();
-
-function normalizeTaskTitle(title: string): string {
-  return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
 
 function isValidFrequencyDays(value: unknown): value is number {
   return typeof value === "number" &&
@@ -64,39 +75,18 @@ async function fetchFormattedTask(id: number) {
   return formatTask(rows[0].task, rows[0].propertyName ?? "", rows[0].assigneeName, rows[0].assigneeColor);
 }
 
-/**
- * Given a startDate anchor and a frequency, return the next occurrence on or
- * after `afterDate`.  If startDate is still in the future it is returned as-is.
- */
-function getNextAnchoredDate(startDate: string, frequencyDays: number, afterDate: Date): string {
-  const start = new Date(startDate + "T00:00:00Z");
-  const after = new Date(afterDate.toISOString().split("T")[0] + "T00:00:00Z");
-
-  if (start >= after) return startDate;
-
-  const diffMs = after.getTime() - start.getTime();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  const multiplier = Math.ceil(diffDays / frequencyDays);
-
-  const next = new Date(start);
-  next.setUTCDate(next.getUTCDate() + multiplier * frequencyDays);
-  return next.toISOString().split("T")[0];
-}
-
 function formatTask(
   task: typeof maintenanceTasksTable.$inferSelect,
   propertyName: string,
   assigneeName: string | null = null,
   assigneeColor: string | null = null,
+  timeZone = "UTC",
 ) {
-  const today = new Date().toISOString().split("T")[0];
-  const sevenDaysOut = new Date();
-  sevenDaysOut.setDate(sevenDaysOut.getDate() + 7);
-  const sevenDaysStr = sevenDaysOut.toISOString().split("T")[0];
-  const effectiveNextDueDate =
-    task.scheduleType === "recurring" && task.lastCompletedAt === null
-      ? today
-      : task.nextDueDate;
+  const today = dateInMaintenanceTimeZone(timeZone);
+  const sevenDaysStr = addMaintenanceDays(today, 7);
+  // nextDueDate is the authoritative first occurrence as well as subsequent
+  // occurrences. Do not turn a future client-supplied start date into today.
+  const effectiveNextDueDate = task.nextDueDate;
 
   const isOverdue = effectiveNextDueDate < today;
   const isDueSoon = !isOverdue && effectiveNextDueDate <= sevenDaysStr;
@@ -104,6 +94,7 @@ function formatTask(
   return {
     id: String(task.id),
     title: task.title,
+    canonicalKey: task.canonicalKey ?? null,
     description: task.description ?? null,
     propertyId: String(task.propertyId),
     propertyName,
@@ -127,12 +118,21 @@ function formatTask(
 router.get("/maintenance-tasks", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
+    const { propertyId, includeCompleted, timezone } = req.query;
+    const timeZone = resolveMaintenanceTimeZone(timezone);
+    if (!timeZone) {
+      res.status(400).json({ error: "Invalid timezone" });
+      return;
+    }
+    const completedQuery = parseIncludeCompletedQuery(includeCompleted);
+    if (!completedQuery.ok) {
+      res.status(400).json({ error: "includeCompleted must be true or false" });
+      return;
+    }
     if (scope.propertyIds.length === 0) {
       res.json([]);
       return;
     }
-
-    const { propertyId } = req.query;
 
     let scopedPropertyIds = scope.propertyIds;
     if (propertyId !== undefined) {
@@ -161,11 +161,11 @@ router.get("/maintenance-tasks", async (req, res) => {
       .where(inArray(maintenanceTasksTable.propertyId, scopedPropertyIds))
       .orderBy(maintenanceTasksTable.nextDueDate);
 
-    const filtered = rows.filter(
-      ({ task }) => !(task.scheduleType === "one-time" && task.isCompleted),
-    );
+    const filtered = completedQuery.includeCompleted
+      ? rows
+      : rows.filter(({ task }) => !(task.scheduleType === "one-time" && task.isCompleted));
 
-    res.json(filtered.map((r) => formatTask(r.task, r.propertyName ?? "", r.assigneeName, r.assigneeColor)));
+    res.json(filtered.map((r) => formatTask(r.task, r.propertyName ?? "", r.assigneeName, r.assigneeColor, timeZone)));
   } catch (err) {
     req.log.error({ err }, "Failed to get maintenance tasks");
     res.status(500).json({ error: "Internal server error" });
@@ -175,7 +175,12 @@ router.get("/maintenance-tasks", async (req, res) => {
 router.post("/maintenance-tasks", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
-    const { title, description, propertyId, category, assigneeId, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
+    const { title, description, propertyId, category, assigneeId, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask, canonicalKey, timezone } = req.body;
+    const timeZone = resolveMaintenanceTimeZone(timezone);
+    if (!timeZone) {
+      res.status(400).json({ error: "Invalid timezone" });
+      return;
+    }
     const effectiveScheduleType = scheduleType ?? "recurring";
     if (!title || typeof title !== "string" || !propertyId || !category) {
       res.status(400).json({ error: "title, propertyId, and category are required" });
@@ -215,14 +220,34 @@ router.post("/maintenance-tasks", async (req, res) => {
       return;
     }
 
-    // A newly-created recurring task is actionable immediately. The optional
-    // start date remains the recurrence anchor used after the first completion.
+    if (startDate !== undefined && startDate !== null && !isDateOnly(startDate)) {
+      res.status(400).json({ error: "startDate must be a calendar date" });
+      return;
+    }
+    const inferredKey = inferMaintenanceCatalogKey(title);
+    const catalogItem = canonicalKey === undefined || canonicalKey === null || canonicalKey === ""
+      ? (inferredKey ? getMaintenanceCatalogItem(inferredKey) : undefined)
+      : getMaintenanceCatalogItem(canonicalKey);
+    if (canonicalKey !== undefined && canonicalKey !== null && canonicalKey !== "" && !catalogItem) {
+      res.status(400).json({ error: "Invalid canonicalKey" });
+      return;
+    }
+    if (catalogItem && effectiveScheduleType !== "recurring") {
+      res.status(400).json({ error: "canonicalKey is only valid for recurring tasks" });
+      return;
+    }
+
     const resolvedNextDueDate = effectiveScheduleType === "recurring"
-      ? new Date().toISOString().split("T")[0]
+      ? (startDate ?? dateInMaintenanceTimeZone(timeZone))
       : nextDueDate;
 
-    const normalizedTitle = normalizeTaskTitle(title);
-    if (!normalizedTitle) {
+    // Catalog identity owns its persisted defaults. This prevents a caller
+    // (including an AI client) from redefining what a controlled key means.
+    const persistedTitle = catalogItem?.title ?? title;
+    const persistedCategory = catalogItem?.category ?? category;
+    const persistedFrequency = catalogItem ? catalogItem.frequencyDays : freq;
+    const canonicalTitle = canonicalizeMaintenanceTitle(persistedTitle);
+    if (!canonicalTitle) {
       res.status(400).json({ error: "title is required" });
       return;
     }
@@ -231,21 +256,26 @@ router.post("/maintenance-tasks", async (req, res) => {
       // create equivalent maintenance tasks.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(${propertyIdNum})`);
       const existing = await tx
-        .select({ title: maintenanceTasksTable.title })
+        .select({ title: maintenanceTasksTable.title, canonicalKey: maintenanceTasksTable.canonicalKey, scheduleType: maintenanceTasksTable.scheduleType })
         .from(maintenanceTasksTable)
         .where(eq(maintenanceTasksTable.propertyId, propertyIdNum));
-      if (existing.some(candidate => normalizeTaskTitle(candidate.title) === normalizedTitle)) {
+       if (existing.some(candidate =>
+         canonicalizeMaintenanceTitle(candidate.title) === canonicalTitle ||
+         (catalogItem && candidate.scheduleType === "recurring" &&
+           (candidate.canonicalKey === catalogItem.key || inferMaintenanceCatalogKey(candidate.title) === catalogItem.key))
+       )) {
         return null;
       }
       const [created] = await tx
         .insert(maintenanceTasksTable)
         .values({
-          title,
+          title: persistedTitle,
+          canonicalKey: catalogItem?.key ?? null,
           description: description ?? null,
           propertyId: propertyIdNum,
-          category,
+          category: persistedCategory,
           assigneeId: assignee.value,
-          frequencyDays: freq,
+          frequencyDays: persistedFrequency,
           scheduleType: effectiveScheduleType,
           isCompleted: false,
           isCleanerTask: isCleanerTask === true,
@@ -279,7 +309,12 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    const { title, description, propertyId, category, assigneeId, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask } = req.body;
+    const { title, description, propertyId, category, assigneeId, frequencyDays, scheduleType, startDate, nextDueDate, isCleanerTask, timezone } = req.body;
+    const timeZone = resolveMaintenanceTimeZone(timezone);
+    if (!timeZone) {
+      res.status(400).json({ error: "Invalid timezone" });
+      return;
+    }
 
     const [existing] = await db
       .select()
@@ -343,9 +378,18 @@ router.put("/maintenance-tasks/:id", async (req, res) => {
       ? (startDate !== undefined ? startDate : existing.startDate)
       : null;
     let resolvedNextDueDate = nextDueDate;
-    if (effectiveScheduleType === "recurring" && (startDate !== undefined || frequencyDays !== undefined || scheduleType === "recurring")) {
+    if (
+      effectiveScheduleType === "recurring" &&
+      nextDueDate === undefined &&
+      (startDate !== undefined || frequencyDays !== undefined || scheduleType === "recurring")
+    ) {
       if (effectiveStartDate) {
-        resolvedNextDueDate = getNextAnchoredDate(effectiveStartDate, effectiveFrequencyDays!, new Date());
+        const comparisonDate = dateInMaintenanceTimeZone(timeZone);
+        resolvedNextDueDate = getNextAnchoredMaintenanceDate(
+          effectiveStartDate,
+          effectiveFrequencyDays!,
+          comparisonDate,
+        );
       }
     }
     if (effectiveScheduleType === "one-time" && !resolvedNextDueDate) {
@@ -428,7 +472,20 @@ router.post("/maintenance-tasks/:id/complete", async (req, res) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    const { completedBy } = req.body;
+    const { completedBy, completedOn, timezone } = req.body;
+    const timeZone = resolveMaintenanceTimeZone(timezone);
+    if (!timeZone) {
+      res.status(400).json({ error: "Invalid timezone" });
+      return;
+    }
+    if (completedOn !== undefined && completedOn !== null && !isDateOnly(completedOn)) {
+      res.status(400).json({ error: "completedOn must be a calendar date" });
+      return;
+    }
+    const completionDate = completedOn ?? dateInMaintenanceTimeZone(timeZone);
+    // Noon UTC represents this calendar day without parsing date-only text in
+    // the server's local timezone; recurrence math stays entirely date-only.
+    const completedAt = new Date(`${completionDate}T12:00:00Z`);
 
     const [existing] = await db
       .select()
@@ -448,7 +505,7 @@ router.post("/maintenance-tasks/:id/complete", async (req, res) => {
       await db
         .update(maintenanceTasksTable)
         .set({
-          lastCompletedAt: new Date(),
+          lastCompletedAt: completedAt,
           lastCompletedBy: completedBy ?? null,
           isCompleted: true,
         })
@@ -457,14 +514,12 @@ router.post("/maintenance-tasks/:id/complete", async (req, res) => {
           inArray(maintenanceTasksTable.propertyId, scope.propertyIds),
         ));
     } else {
-      const nextDue = new Date();
-      nextDue.setDate(nextDue.getDate() + existing.frequencyDays!);
-      const nextDueDate = nextDue.toISOString().split("T")[0];
+      const nextDueDate = addMaintenanceDays(completionDate, existing.frequencyDays!);
 
       await db
         .update(maintenanceTasksTable)
         .set({
-          lastCompletedAt: new Date(),
+          lastCompletedAt: completedAt,
           lastCompletedBy: completedBy ?? null,
           nextDueDate,
         })

@@ -10,6 +10,7 @@ import type { CreateMaintenanceTaskInputScheduleType } from './createMaintenance
 
 export interface CreateMaintenanceTaskInput {
   title: string;
+  canonicalKey?: string | null;
   description?: string | null;
   propertyId: string;
   category: CreateMaintenanceTaskInputCategory;
@@ -18,5 +19,7 @@ export interface CreateMaintenanceTaskInput {
   scheduleType: CreateMaintenanceTaskInputScheduleType;
   isCleanerTask?: boolean;
   startDate?: Date | null;
-  nextDueDate: Date;
+  nextDueDate?: Date;
+  /** IANA timezone used to derive a recurring task's date when startDate is omitted. */
+  timezone?: string;
 }

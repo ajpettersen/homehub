@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, useAuth } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 
 import { useGetMe, getGetMeQueryKey } from '@workspace/api-client-react';
 import { ActiveMemberProvider, useActiveMember } from '@/context/ActiveMemberContext';
 import { PreferencesProvider } from '@/context/PreferencesContext';
 import { Shell } from '@/components/layout/Shell';
+import { useHomeHubSignOut } from '@/hooks/useHomeHubSignOut';
 
 import Onboarding from '@/pages/Onboarding';
 import Dashboard from '@/pages/Dashboard';
@@ -136,7 +137,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   // the authoritative signal that the user is signed in. (Clerk's client
   // state can lag or fail to hydrate while cookie auth still works, which
   // previously let un-onboarded households slip past this gate.)
-  const { signOut } = useClerk();
+  const signOut = useHomeHubSignOut();
   const { data: me, isLoading, isError, refetch } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
 
   if (isError) {
@@ -147,7 +148,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
           <p className="mt-1 text-sm text-muted-foreground">Try again, or sign out and return later.</p>
           <div className="mt-4 flex justify-center gap-2">
             <button type="button" onClick={() => void refetch()} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">Try again</button>
-            <button type="button" onClick={() => void signOut({ redirectUrl: basePath || '/' })} className="rounded-lg border border-border px-4 py-2 text-sm font-bold">Sign out</button>
+            <button type="button" onClick={() => void signOut()} className="rounded-lg border border-border px-4 py-2 text-sm font-bold">Sign out</button>
           </div>
         </div>
       </div>

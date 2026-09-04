@@ -65,3 +65,125 @@
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 100%;
 }
+
+/* Letter-size refrigerator printable */
+.kids-fridge-printable {
+  --ink: #243238;
+  --muted-ink: #627178;
+  --tomato: #be6048;
+  --sun: #efd57b;
+  --sky: #cfe5e2;
+  --mint: #d8e7cf;
+  --paper: #fffdf8;
+  --line: #cdd8d3;
+  min-height: 100dvh;
+  padding: 26px 18px 40px;
+  background: #e8e3d8;
+  color: var(--ink);
+  font-family: 'Outfit', sans-serif;
+}
+
+.kids-fridge-printable * { box-sizing: border-box; }
+.kids-fridge-printable button { font: inherit; }
+.print-toolbar {
+  max-width: 816px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #5e6767;
+  font-size: 13px;
+  font-weight: 650;
+}
+.print-toolbar button {
+  border: 0;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--paper);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-weight: 750;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #122126;
+}
+.print-toolbar button:hover { transform: translateY(-1px); }
+.meal-sheet {
+  position: relative;
+  width: min(100%, 8.5in);
+  min-height: 11in;
+  margin: 0 auto;
+  overflow: hidden;
+  background: var(--paper);
+  box-shadow: 0 14px 35px rgba(72, 69, 57, .18);
+  padding: .42in .42in .34in;
+}
+.meal-sheet::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .18;
+  background-image: radial-gradient(#748782 0.6px, transparent .7px);
+  background-size: 7px 7px;
+}
+.print-head, .meal-grid, .print-foot { position: relative; z-index: 1; }
+.print-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+.brand-line { display: flex; align-items: center; gap: 8px; color: var(--tomato); font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.home-mark { width: 22px; height: 22px; border: 2px solid var(--tomato); border-radius: 7px 7px 5px 5px; transform: rotate(-4deg); display: grid; place-items: center; }
+.home-mark span { width: 7px; height: 7px; border: 2px solid var(--tomato); border-radius: 2px; }
+.sheet-title { margin: 5px 0 3px; font-family: 'Fraunces', serif; font-size: 34px; line-height: 1; letter-spacing: -.045em; }
+.sheet-subtitle { margin: 0; color: var(--muted-ink); font-size: 13px; font-weight: 650; }
+.fridge-note { width: 125px; border: 1.5px solid var(--ink); background: #fff7c9; padding: 9px 10px; transform: rotate(2.5deg); font-size: 10px; line-height: 1.2; font-weight: 750; text-align: center; }
+.fridge-note strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.meal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; }
+.day-card { min-width: 0; border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; background: rgba(255,255,255,.75); break-inside: avoid; }
+.day-card.today { border-color: var(--tomato); box-shadow: inset 0 0 0 1px var(--tomato); }
+.day-head { min-height: 51px; padding: 8px 7px 6px; background: var(--sky); border-bottom: 1.5px solid var(--line); }
+.day-card:nth-child(2n) .day-head { background: var(--mint); }
+.day-card:nth-child(3n) .day-head { background: #f6e5a7; }
+.day-card.today .day-head { background: #f4c9bb; }
+.day-name { display: block; font-family: 'Fraunces', serif; font-size: 16px; line-height: 1; letter-spacing: -.04em; }
+.day-date { display: block; margin-top: 5px; color: var(--muted-ink); font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.meal-stack { padding: 5px; display: grid; gap: 5px; }
+.meal-row { min-height: 78px; padding: 7px 6px; border-radius: 7px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 5px; }
+.meal-row.breakfast { background: #fff8df; }
+.meal-row.lunch { background: #edf5ef; }
+.meal-row.dinner { min-height: 101px; background: #f7e6df; border-color: #e7b9aa; }
+.meal-row.empty { background: repeating-linear-gradient(-45deg, #f9f8f1, #f9f8f1 4px, #f4f2e9 4px, #f4f2e9 5px); }
+.meal-label { display: flex; align-items: center; gap: 4px; color: var(--muted-ink); font-size: 8px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.meal-label svg { width: 12px; height: 12px; stroke-width: 2.4; }
+.meal-name { font-size: 11px; line-height: 1.18; font-weight: 700; overflow-wrap: anywhere; }
+.dinner .meal-name { color: #442c26; font-size: 12px; font-weight: 850; line-height: 1.16; }
+.empty .meal-name { color: #8b9694; font-weight: 600; font-size: 10px; font-style: italic; }
+.meal-note { margin: auto 0 0; padding-top: 4px; border-top: 1px dashed rgba(83, 72, 63, .25); color: #80665d; font-size: 8px; line-height: 1.15; font-weight: 600; }
+.print-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; border-top: 1.5px solid var(--line); padding-top: 10px; }
+.foot-message { margin: 0; font-family: 'Fraunces', serif; font-size: 14px; font-weight: 700; }
+.legend { display: flex; gap: 8px; color: var(--muted-ink); font-size: 9px; font-weight: 750; }
+.legend span { display: inline-flex; align-items: center; gap: 3px; }
+.legend i { display: block; width: 8px; height: 8px; border-radius: 50%; }
+
+@media (max-width: 700px) {
+  .kids-fridge-printable { padding: 14px 8px 30px; overflow-x: auto; }
+  .meal-sheet { min-width: 720px; transform-origin: top left; }
+  .print-toolbar { min-width: 720px; }
+}
+
+@page { size: letter portrait; margin: 0; }
+@media print {
+  html, body { width: 8.5in; height: 11in; background: #fff !important; }
+  body > * { visibility: hidden !important; }
+  .kids-fridge-printable, .kids-fridge-printable * { visibility: visible !important; }
+  .kids-fridge-printable { position: absolute; inset: 0; display: block; width: 8.5in; min-height: 11in; padding: 0; background: #fff !important; }
+  .print-toolbar { display: none !important; }
+  .meal-sheet { width: 8.5in; min-height: 11in; margin: 0; padding: .42in .42in .34in; box-shadow: none; overflow: hidden; }
+  .meal-sheet::before { opacity: .12; }
+  .day-card, .meal-row { break-inside: avoid; }
+}

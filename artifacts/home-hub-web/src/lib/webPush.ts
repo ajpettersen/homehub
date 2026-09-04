@@ -21,7 +21,7 @@ export function isStandaloneWebApp(): boolean {
 export async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
   const registration = await navigator.serviceWorker.register(
     `${import.meta.env.BASE_URL}sw.js`,
-    { scope: import.meta.env.BASE_URL },
+    { scope: import.meta.env.BASE_URL, updateViaCache: "none" },
   );
   await navigator.serviceWorker.ready;
   return registration;

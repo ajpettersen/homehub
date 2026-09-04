@@ -8,4 +8,12 @@
 
 export type GetMaintenanceTasksParams = {
 propertyId?: string;
+/**
+ * Include completed one-time maintenance records for management history. Defaults to false.
+ */
+includeCompleted?: boolean;
+/**
+ * IANA timezone used to calculate the local calendar date; defaults to UTC for legacy clients.
+ */
+timezone?: string;
 };

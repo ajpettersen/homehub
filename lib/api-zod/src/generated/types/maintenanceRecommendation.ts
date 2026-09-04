@@ -8,6 +8,7 @@
 import type { MaintenanceRecommendationCategory } from './maintenanceRecommendationCategory';
 
 export interface MaintenanceRecommendation {
+  canonicalKey: string;
   /**
      * @minLength 1
      * @maxLength 160

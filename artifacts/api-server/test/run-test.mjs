@@ -11,8 +11,14 @@ const allowedTests = new Set([
   "ipAddress.test.ts",
   "invite-token-logging.test.ts",
   "meal-memory.integration.ts",
+  "notification-planner-upgrade.integration.ts",
     "memory-authorization.integration.ts",
     "property-management.test.ts",
+    "recipe-validation.test.ts",
+  "maintenance-canonicalization.test.ts",
+   "maintenance-dates-catalog.test.ts",
+    "todo-bulk-validation.test.ts",
+    "store-management.test.ts",
 ]);
 if (!allowedTests.has(testFile)) {
   throw new Error(`Unknown test file: ${testFile}`);

@@ -13,8 +13,13 @@ import {
   useGetMealRatings, getGetMealRatingsQueryKey,
   useUpsertMealRating, useDeleteMealRating,
   type FamilyMember, type MealRating,
+  useGetStores, getGetStoresQueryKey,
+  useUpdateGroceryListStore,
+  type HouseholdStore,
+  type GroceryCategoryKey
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
+import { Link as RouterLink } from "wouter";
 import { usePreferences } from "@/context/PreferencesContext";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -494,40 +499,6 @@ function resolveCategory(raw: string | null | undefined): string {
   return LEGACY_MAP[k] ?? (ALL_CATEGORIES[k] ? k : "other");
 }
 
-// Store profiles — ordered by physical store walk path
-type StoreProfile = { id: string; name: string; short: string; categoryOrder: string[] };
-
-const STORE_PROFILES: StoreProfile[] = [
-  {
-    id: "cub-minnetonka",
-    name: "Cub Foods – Minnetonka",
-    short: "Cub Minnetonka",
-    // Walk order: enter at produce, sweep around the perimeter, finish at frozen/beverage aisles
-    categoryOrder: ["produce", "deli", "meat", "dairy", "bread", "grains", "canned", "snacks", "frozen", "beverages", "household", "other"],
-  },
-  {
-    id: "generic",
-    name: "Generic / Other Store",
-    short: "Generic",
-    categoryOrder: ["produce", "meat", "deli", "dairy", "bread", "grains", "canned", "snacks", "frozen", "beverages", "household", "other"],
-  },
-];
-
-const STORE_KEY = "homehub:grocery-store";
-
-function useActiveStore() {
-  const [storeId, setStoreId] = useState<string>(() => {
-    try { return localStorage.getItem(STORE_KEY) ?? STORE_PROFILES[0].id; }
-    catch { return STORE_PROFILES[0].id; }
-  });
-  const store = STORE_PROFILES.find(s => s.id === storeId) ?? STORE_PROFILES[0];
-  const setStore = (id: string) => {
-    setStoreId(id);
-    try { localStorage.setItem(STORE_KEY, id); } catch {}
-  };
-  return { store, setStore };
-}
-
 type MealForShopping = { dayName: string; mealType: string; meal: string };
 function GrocerySection({ propertyId, meals }: { propertyId: string; meals: MealForShopping[] }) {
   const queryClient = useQueryClient();
@@ -535,11 +506,12 @@ function GrocerySection({ propertyId, meals }: { propertyId: string; meals: Meal
   const { data: lists } = useGetGroceryLists({ query: { queryKey: getGetGroceryListsQueryKey() } });
   const createList = useCreateGroceryList();
 
-  const mainList = lists?.[0];
+  const propertyLists = lists?.filter(list => String(list.propertyId) === String(propertyId)) ?? [];
+  const mainList = propertyLists[0];
 
   // Auto-create a "Weekly Shopping" list if none exist
   React.useEffect(() => {
-    if (lists && lists.length === 0 && propertyId && !createList.isPending) {
+    if (lists && propertyLists.length === 0 && propertyId && !createList.isPending) {
       createList.mutate(
         { data: { name: "Weekly Shopping", propertyId } },
         { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() }) }
@@ -558,7 +530,11 @@ function GrocerySection({ propertyId, meals }: { propertyId: string; meals: Meal
 
 function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[] }) {
   const queryClient = useQueryClient();
-  const { store, setStore } = useActiveStore();
+  const { data: stores, isLoading: storesLoading } = useGetStores({ query: { queryKey: getGetStoresQueryKey() } });
+  const updateStore = useUpdateGroceryListStore();
+
+  const activeStoreId = list.storeId ?? stores?.find(s => s.isDefault)?.id ?? stores?.[0]?.id;
+  const store = stores?.find(s => s.id === activeStoreId);
 
   const { data: items } = useGetGroceryItems(list.id, { query: { queryKey: getGetGroceryItemsQueryKey(list.id) } });
   const addItem = useAddGroceryItem();
@@ -588,17 +564,14 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
       const data = await res.json() as { items: Array<{ name: string; quantity: string | null; category: string }> };
       if (!Array.isArray(data?.items)) return;
 
-      // Deduplicate against existing unchecked items (case-insensitive)
-      // Track names as we insert to guard against any duplicates in the AI response
       const seenNames = new Set(
         (items ?? []).filter(i => !i.checked).map(i => i.name.toLowerCase().trim())
       );
 
-      // Insert new items sequentially to preserve order
       for (const item of data.items) {
         const key = item.name.toLowerCase().trim();
         if (seenNames.has(key)) continue;
-        seenNames.add(key); // mark as seen before the async insert to prevent races
+        seenNames.add(key);
         await new Promise<void>((resolve) => {
           addItem.mutate(
             { id: list.id, data: { name: item.name, quantity: item.quantity ?? null, category: item.category } },
@@ -639,27 +612,77 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
     deleteItem.mutate({ id }, { onSuccess: invalidate });
   };
 
+  const handleSetStore = (storeId: string) => {
+    updateStore.mutate(
+      { id: list.id, data: { storeId } },
+      { onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(list.id) });
+      }}
+    );
+    setStorePicker(false);
+  };
+
+  if (storesLoading) {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
+        <Loader2 className="w-5 h-5 animate-spin" /> Loading stores...
+      </div>
+    );
+  }
+
+  if (!stores || stores.length === 0 || !store) {
+    return (
+      <div className="flex flex-col items-center gap-3 text-muted-foreground py-12 justify-center">
+        <Store className="w-8 h-8 opacity-50" />
+        <p className="text-sm font-medium">No stores configured.</p>
+        <RouterLink href="/settings" className="px-4 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-lg shadow-sm hover:bg-primary/90 transition-colors">
+          Add a Store in Settings
+        </RouterLink>
+      </div>
+    );
+  }
+
   const unchecked = items?.filter(i => !i.checked) ?? [];
   const checked   = items?.filter(i => i.checked)  ?? [];
 
-  // Group by category in store walk order, resolving legacy keys
-  const bySection = store.categoryOrder
-    .map(key => ({
-      key,
-      ...ALL_CATEGORIES[key],
-      items: unchecked.filter(i => resolveCategory(i.category) === key),
-    }))
+  const storeDepartments = store.departments ?? [];
+  const orderedKeys = storeDepartments.map(d => d.categoryKey);
+
+  const bySection = storeDepartments
+    .map(dept => {
+      const key = dept.categoryKey;
+      const emoji = ALL_CATEGORIES[key]?.emoji ?? "📦";
+      return {
+        key,
+        label: dept.displayName,
+        emoji,
+        items: unchecked.filter(i => resolveCategory(i.category) === key),
+      };
+    })
     .filter(g => g.items.length > 0);
 
-  // Category picker options in store walk order
-  const categoryOptions = store.categoryOrder.map(k => ({
-    key: k,
-    label: `${ALL_CATEGORIES[k].emoji} ${ALL_CATEGORIES[k].label}`,
-  }));
+  const mappedKeys = new Set<string>(orderedKeys);
+  const unmappedItems = unchecked.filter(i => !mappedKeys.has(resolveCategory(i.category)));
+  if (unmappedItems.length > 0) {
+    bySection.push({
+      key: "other",
+      label: "Other",
+      emoji: "📦",
+      items: unmappedItems,
+    });
+  }
+
+  const categoryOptions = storeDepartments.map(dept => {
+    const emoji = ALL_CATEGORIES[dept.categoryKey]?.emoji ?? "📦";
+    return {
+      key: dept.categoryKey,
+      label: `${emoji} ${dept.displayName}`,
+    };
+  });
 
   return (
     <div className="space-y-4">
-
       {/* Build from meal plan */}
       <div className="flex flex-col gap-1.5">
         <button
@@ -687,58 +710,53 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
             className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 border border-border/60 text-sm font-medium hover:bg-muted transition-colors"
           >
             <Store className="w-4 h-4 text-muted-foreground" />
-            <span className="text-foreground">{store.short}</span>
+            <span className="text-foreground">{store.name}</span>
             <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
           {storePicker && (
             <>
               <div className="fixed inset-0 z-30" onClick={() => setStorePicker(false)} />
               <div className="absolute left-0 top-full mt-1 z-40 bg-card border border-border rounded-2xl shadow-lg p-1.5 min-w-[220px]">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-3 py-1.5">Shopping at…</p>
-                {STORE_PROFILES.map(s => (
+                {stores.map(s => (
                   <button
                     key={s.id}
-                    onClick={() => { setStore(s.id); setStorePicker(false); }}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${store.id === s.id ? "bg-primary/10 text-primary" : "hover:bg-muted/50 text-foreground"}`}
+                    onClick={() => handleSetStore(s.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${s.id === store.id ? 'bg-primary/10 text-primary font-bold' : 'hover:bg-muted font-medium'}`}
                   >
-                    {s.name}
-                    {store.id === s.id && <span className="ml-1 text-xs">✓</span>}
+                    {s.id === store.id && <Check className="w-3.5 h-3.5" />}
+                    <span className={s.id === store.id ? "" : "ml-5"}>{s.name}</span>
                   </button>
                 ))}
               </div>
             </>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">Aisle order: {store.short}</p>
       </div>
 
-      {/* Add item */}
+      {/* Add form */}
       {addingOpen ? (
-        <form onSubmit={handleAdd} className="bg-card border-2 border-primary/20 rounded-2xl p-4 space-y-3 shadow-sm">
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              autoFocus
-              value={newItem}
-              onChange={e => setNewItem(e.target.value)}
-              placeholder="Item name…"
-              className="flex-1 bg-background border-2 border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"
-            />
-            <input
-              value={newQty}
-              onChange={e => setNewQty(e.target.value)}
-              placeholder="Qty"
-              className="w-20 bg-background border-2 border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"
-            />
-          </div>
-          {/* Category chips in store walk order */}
-          <div className="flex gap-1.5 flex-wrap">
+        <form onSubmit={handleAdd} className="bg-card p-3 rounded-2xl border-2 border-primary/20 shadow-sm space-y-3">
+          <input
+            ref={inputRef}
+            autoFocus
+            value={newItem}
+            onChange={e => setNewItem(e.target.value)}
+            placeholder="Item name (e.g. Apples)"
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary font-medium"
+          />
+          <input
+            value={newQty}
+            onChange={e => setNewQty(e.target.value)}
+            placeholder="Quantity or note (e.g. 3 lbs, optional)"
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary font-medium"
+          />
+          <div className="flex flex-wrap gap-1.5 pt-1">
             {categoryOptions.map(cat => (
               <button
                 key={cat.key}
                 type="button"
-                onClick={() => setNewCategory(cat.key)}
-                className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all border ${newCategory === cat.key ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}
+                onClick={() => setNewCategory(cat.key as GroceryCategoryKey)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors ${newCategory === cat.key ? "bg-primary text-primary-foreground border-primary" : "bg-muted/50 border-border/50 text-muted-foreground hover:bg-muted"}`}
               >
                 {cat.label}
               </button>

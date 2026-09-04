@@ -2,11 +2,13 @@ import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { propertiesTable } from "./properties";
+import { householdStoresTable } from "./householdStores";
 
 export const groceryListsTable = pgTable("grocery_lists", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   propertyId: integer("property_id").notNull().references(() => propertiesTable.id, { onDelete: "cascade" }),
+  storeId: integer("store_id").references(() => householdStoresTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

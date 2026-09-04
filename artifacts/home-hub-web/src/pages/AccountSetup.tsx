@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useClerk } from "@clerk/react";
 import {
   getGetMeQueryKey,
   useGetMe,
@@ -7,11 +6,10 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Loader2, LogOut, RefreshCw, Users } from "lucide-react";
-
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { useHomeHubSignOut } from "@/hooks/useHomeHubSignOut";
 
 export default function AccountSetup() {
-  const { signOut } = useClerk();
+  const signOut = useHomeHubSignOut();
   const queryClient = useQueryClient();
   const { data: me, refetch, isFetching } = useGetMe({
     query: {
@@ -38,7 +36,7 @@ export default function AccountSetup() {
     }
   };
 
-  const signOutNow = () => signOut({ redirectUrl: basePath || "/" });
+  const signOutNow = () => signOut();
 
   if (submitted) {
     return (

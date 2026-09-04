@@ -6,14 +6,25 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { RecipeAggregateRating } from './recipeAggregateRating';
+import type { RecipeIngredient } from './recipeIngredient';
+import type { RecipeSourceType } from './recipeSourceType';
 
 export interface Recipe {
   id: string;
   propertyId: string;
+  /** @maxLength 300 */
   name: string;
+  /** @maxLength 2048 */
   sourceUrl?: string | null;
+  /** @maxLength 10000 */
   notes?: string | null;
   timesCooked: number;
   aggregateRating?: RecipeAggregateRating;
+  ingredients: RecipeIngredient[];
+  instructions: string[];
+  servings?: number | null;
+  prepMinutes?: number | null;
+  cookMinutes?: number | null;
+  sourceType?: RecipeSourceType;
   createdAt: Date;
 }

@@ -4,7 +4,7 @@
  * Inspired by Skylight Calendar: person-first layout with color-coded family
  * members, every chore/task assignment visible at a glance, all editable inline.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, Pressable, Modal,
   Platform, Switch, ActivityIndicator, Alert,
@@ -29,8 +29,13 @@ import {
   useDeleteMaintenanceTask,
   useListUsers,
   useUpdateUserProfile,
+  useGetMe,
+  useGetNotificationPreferences,
+  useUpdateNotificationPreferences,
   getGetChoresQueryKey,
   getGetMaintenanceTasksQueryKey,
+  getGetMeQueryKey,
+  getGetNotificationPreferencesQueryKey,
   Chore,
   FamilyMember,
   MaintenanceTask,
@@ -71,6 +76,195 @@ const MAINT_FREQ_OPTIONS = [
 function freqLabel(days: number): string {
   const match = MAINT_FREQ_OPTIONS.find((o) => o.days === days);
   return match ? match.label : `${days}d`;
+}
+
+const COMMON_US_TIME_ZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Phoenix',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+];
+
+const REMINDER_TIME_PRESETS = [
+  '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '12:00',
+  '14:00', '16:00', '18:00', '20:00', '20:55',
+];
+
+function getDeviceTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+function getFriendlyTime(time: string): string {
+  const [hours, minutes] = time.split(':').map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return time;
+  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+    .format(new Date(2000, 0, 1, hours, minutes));
+}
+
+function getTimeZoneLabel(timeZone: string): string {
+  try {
+    const name = new Intl.DateTimeFormat(undefined, { timeZone, timeZoneName: 'long' })
+      .formatToParts(new Date())
+      .find((part) => part.type === 'timeZoneName')?.value;
+    return name ? `${timeZone.replace(/_/g, ' ')} (${name})` : timeZone.replace(/_/g, ' ');
+  } catch {
+    return timeZone.replace(/_/g, ' ');
+  }
+}
+
+function NotificationScheduleSection({ members }: { members: FamilyMember[] }) {
+  const colors = useColors();
+  const queryClient = useQueryClient();
+  const deviceTimeZone = getDeviceTimeZone();
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const { data: preferences, isLoading, isError } = useGetNotificationPreferences({
+    query: { queryKey: getGetNotificationPreferencesQueryKey() },
+  });
+  const updatePreferences = useUpdateNotificationPreferences();
+  const [timezone, setTimezone] = useState(deviceTimeZone);
+  const [dueReminderTime, setDueReminderTime] = useState('08:00');
+  const [workoutFollowUpTime, setWorkoutFollowUpTime] = useState('08:00');
+  const [showTimeZones, setShowTimeZones] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  const canManageSchedule = me?.role === 'family'
+    && !!me.linkedFamilyMemberId
+    && members.some((member) => member.id === me.linkedFamilyMemberId
+      && member.role === 'parent' && member.hasLinkedAccount);
+
+  useEffect(() => {
+    if (!preferences) return;
+    setTimezone(preferences.timezone || deviceTimeZone);
+    setDueReminderTime(preferences.dueReminderTime || '08:00');
+    setWorkoutFollowUpTime(preferences.workoutFollowUpTime || '08:00');
+  }, [preferences, deviceTimeZone]);
+
+  const current = preferences ?? {
+    timezone: deviceTimeZone,
+    dueReminderTime: '08:00',
+    workoutFollowUpTime: '08:00',
+  };
+  const timeZones = Array.from(new Set([deviceTimeZone, timezone, ...COMMON_US_TIME_ZONES]));
+
+  const saveSchedule = async () => {
+    setSaveMessage(null);
+    try {
+      await updatePreferences.mutateAsync({
+        data: { timezone, dueReminderTime, workoutFollowUpTime },
+      });
+      await queryClient.invalidateQueries({ queryKey: getGetNotificationPreferencesQueryKey() });
+      setSaveMessage('Household notification schedule saved.');
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Could not save the household notification schedule.');
+    }
+  };
+
+  if (isLoading) {
+    return <ActivityIndicator color={colors.primary} style={styles.notificationLoading} />;
+  }
+
+  if (isError) {
+    return (
+      <Text accessibilityRole="alert" style={[styles.notificationMessage, { color: colors.danger }]}>
+        Could not load the household notification schedule. Please try again.
+      </Text>
+    );
+  }
+
+  if (!canManageSchedule) {
+    return (
+      <View style={styles.notificationBody}>
+        <Text style={[styles.notificationMessage, { color: colors.mutedForeground }]}>
+          You can view this household schedule, but only an approved linked family adult can change it. These times apply to every family device.
+        </Text>
+        <View style={[styles.notificationReadOnly, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+          <Text style={[styles.notificationLabel, { color: colors.mutedForeground }]}>HOUSEHOLD TIME ZONE</Text>
+          <Text style={[styles.notificationValue, { color: colors.foreground }]}>{getTimeZoneLabel(current.timezone)}</Text>
+          <Text style={[styles.notificationLabel, { color: colors.mutedForeground }]}>DUE-DATE REMINDERS</Text>
+          <Text style={[styles.notificationValue, { color: colors.foreground }]}>{getFriendlyTime(current.dueReminderTime)}</Text>
+          <Text style={[styles.notificationLabel, { color: colors.mutedForeground }]}>WORKOUT FOLLOW-UP</Text>
+          <Text style={[styles.notificationValue, { color: colors.foreground }]}>{getFriendlyTime(current.workoutFollowUpTime)}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.notificationBody}>
+      <Text style={[styles.notificationDescription, { color: colors.mutedForeground }]}>
+        This household clock is used for reminders on every family device.
+      </Text>
+      <Text style={[styles.notificationLabel, { color: colors.mutedForeground }]}>HOUSEHOLD TIME ZONE</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Choose household time zone. Currently ${getTimeZoneLabel(timezone)}`}
+        onPress={() => setShowTimeZones(!showTimeZones)}
+        style={[styles.notificationSelector, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+      >
+        <Text style={[styles.notificationValue, { color: colors.foreground }]}>{getTimeZoneLabel(timezone)}</Text>
+        <Icon name={showTimeZones ? 'chevron-up' : 'chevron-down'} iosName={showTimeZones ? 'chevron.up' : 'chevron.down'} size={16} color={colors.mutedForeground} />
+      </Pressable>
+      {showTimeZones && (
+        <View style={styles.timeZoneOptions}>
+          {timeZones.map((zone) => (
+            <Pressable
+              key={zone}
+              accessibilityRole="button"
+              accessibilityLabel={`Use ${getTimeZoneLabel(zone)} for the household`}
+              onPress={() => { setTimezone(zone); setShowTimeZones(false); }}
+              style={[styles.timeZoneOption, { backgroundColor: timezone === zone ? colors.primary : colors.card, borderColor: timezone === zone ? colors.primary : colors.border }]}
+            >
+              <Text style={[styles.timeZoneOptionText, { color: timezone === zone ? colors.primaryForeground : colors.foreground }]}>{getTimeZoneLabel(zone)}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Use this device time zone, ${getTimeZoneLabel(deviceTimeZone)}`}
+        onPress={() => setTimezone(deviceTimeZone)}
+        style={[styles.deviceTimeZoneButton, { borderColor: colors.border }]}
+      >
+        <Text style={[styles.deviceTimeZoneText, { color: colors.primary }]}>Use this device time zone</Text>
+      </Pressable>
+
+      <View style={styles.reminderSettings}>
+        <View style={[styles.reminderCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+          <Text style={[styles.reminderTitle, { color: colors.foreground }]}>Due-date reminder time</Text>
+          <Text style={[styles.reminderDescription, { color: colors.mutedForeground }]}>Due Tasks, chores, and maintenance remind at this selected local time.</Text>
+          <View style={styles.timePresetRow}>
+            {REMINDER_TIME_PRESETS.map((time) => (
+              <Pressable key={time} accessibilityRole="button" accessibilityLabel={`Set due-date reminder time to ${getFriendlyTime(time)}`} onPress={() => setDueReminderTime(time)} style={[styles.timePreset, { borderColor: dueReminderTime === time ? colors.primary : colors.border, backgroundColor: dueReminderTime === time ? colors.primary : colors.card }]}>
+                <Text style={[styles.timePresetText, { color: dueReminderTime === time ? colors.primaryForeground : colors.foreground }]}>{getFriendlyTime(time)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        <View style={[styles.reminderCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+          <Text style={[styles.reminderTitle, { color: colors.foreground }]}>Workout follow-up time</Text>
+          <Text style={[styles.reminderDescription, { color: colors.mutedForeground }]}>Check workout completion the following morning at this selected local time.</Text>
+          <View style={styles.timePresetRow}>
+            {REMINDER_TIME_PRESETS.map((time) => (
+              <Pressable key={time} accessibilityRole="button" accessibilityLabel={`Set workout follow-up time to ${getFriendlyTime(time)}`} onPress={() => setWorkoutFollowUpTime(time)} style={[styles.timePreset, { borderColor: workoutFollowUpTime === time ? colors.primary : colors.border, backgroundColor: workoutFollowUpTime === time ? colors.primary : colors.card }]}>
+                <Text style={[styles.timePresetText, { color: workoutFollowUpTime === time ? colors.primaryForeground : colors.foreground }]}>{getFriendlyTime(time)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Save household notification schedule" disabled={updatePreferences.isPending} onPress={saveSchedule} style={[styles.saveScheduleButton, { backgroundColor: colors.primary }, updatePreferences.isPending && styles.disabledButton]}>
+        {updatePreferences.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={[styles.saveScheduleText, { color: colors.primaryForeground }]}>Save schedule</Text>}
+      </Pressable>
+      {saveMessage && <Text accessibilityRole={saveMessage.startsWith('Household') ? 'text' : 'alert'} style={[styles.notificationMessage, { color: saveMessage.startsWith('Household') ? colors.primary : colors.danger }]}>{saveMessage}</Text>}
+    </View>
+  );
 }
 
 // ─── Member Avatar ──────────────────────────────────────────────────────────
@@ -835,6 +1029,17 @@ export default function SettingsScreen() {
 
         {/* ── App Settings */}
         <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Phone Notifications</Text>
+          <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>
+            Push alerts are enabled separately on each device.
+          </Text>
+          <View style={[styles.appSettingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <NotificationScheduleSection members={members ?? []} />
+          </View>
+        </View>
+
+        {/* ── App Settings */}
+        <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>App</Text>
           <View style={[styles.appSettingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.settingRow}>
@@ -992,6 +1197,123 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
     marginTop: 2,
+  },
+  notificationBody: {
+    gap: 12,
+  },
+  notificationLoading: {
+    marginVertical: 24,
+  },
+  notificationDescription: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: 'Inter_400Regular',
+  },
+  notificationMessage: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: 'Inter_400Regular',
+  },
+  notificationLabel: {
+    fontSize: 10,
+    letterSpacing: 0.7,
+    fontFamily: 'Inter_700Bold',
+  },
+  notificationSelector: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  notificationValue: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: 'Inter_600SemiBold',
+    flexShrink: 1,
+  },
+  timeZoneOptions: {
+    gap: 6,
+  },
+  timeZoneOption: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  timeZoneOptionText: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+  },
+  deviceTimeZoneButton: {
+    alignSelf: 'flex-start',
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  deviceTimeZoneText: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+  },
+  reminderSettings: {
+    gap: 10,
+  },
+  reminderCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 6,
+  },
+  reminderTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+  },
+  reminderDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: 'Inter_400Regular',
+  },
+  timePresetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  timePreset: {
+    minHeight: 36,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    justifyContent: 'center',
+  },
+  timePresetText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  saveScheduleButton: {
+    minHeight: 44,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  saveScheduleText: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+  },
+  disabledButton: {
+    opacity: 0.55,
+  },
+  notificationReadOnly: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 4,
   },
 
   // ── Family row

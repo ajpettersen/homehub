@@ -9,5 +9,6 @@ import type { OnboardingChoreInputFrequency } from './onboardingChoreInputFreque
 
 export interface OnboardingChoreInput {
   title: string;
+  canonicalKey?: string | null;
   frequency: OnboardingChoreInputFrequency;
 }

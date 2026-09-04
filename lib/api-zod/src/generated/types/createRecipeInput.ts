@@ -5,10 +5,38 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateRecipeInputSourceType } from './createRecipeInputSourceType';
+import type { RecipeIngredient } from './recipeIngredient';
 
 export interface CreateRecipeInput {
+  /** @maxLength 300 */
   name: string;
   propertyId: string;
+  /** @maxLength 2048 */
   sourceUrl?: string | null;
+  /** @maxLength 10000 */
   notes?: string | null;
+  /** @maxItems 100 */
+  ingredients?: RecipeIngredient[];
+  /**
+     * @maxItems 100
+     * @items.maxLength 2000
+     */
+  instructions?: string[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  servings?: number;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  prepMinutes?: number;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  cookMinutes?: number;
+  sourceType?: CreateRecipeInputSourceType;
 }

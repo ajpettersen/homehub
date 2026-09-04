@@ -8,6 +8,7 @@ import {
   maintenanceTasksTable,
   propertiesTable,
   pushTokensTable,
+  userProfilesTable,
 } from "@workspace/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { buildDueNotificationMessages } from "../src/notificationPlanner";
@@ -104,6 +105,20 @@ try {
     ])
     .returning();
 
+  await db.insert(userProfilesTable).values([
+    {
+      clerkId: `notification-a-${suffix}`,
+      householdId: householdA.id,
+      role: "family",
+      linkedFamilyMemberId: memberA.id,
+    },
+    {
+      clerkId: `notification-b-${suffix}`,
+      householdId: householdB.id,
+      role: "family",
+      linkedFamilyMemberId: memberB.id,
+    },
+  ]);
   await db.insert(pushTokensTable).values([
     {
       householdId: householdA.id,
@@ -127,7 +142,7 @@ try {
   const messagesB = messages.filter((message) => message.to === tokenB);
   const unownedMessages = messages.filter((message) => message.to === unownedToken);
 
-  assert.equal(messagesA.length, 3, "household A should receive its two chores and maintenance");
+  assert.equal(messagesA.length, 2, "household A should receive only its assigned chore and maintenance");
   assert.equal(messagesB.length, 2, "household B should receive its chore and maintenance");
   assert.equal(unownedMessages.length, 0, "legacy unowned tokens must receive no notifications");
 

@@ -45,6 +45,8 @@ import type {
   DecideHouseholdJoinRequest200,
   DeletePropertyConflict,
   Exercise,
+  ExtractRecipeImageInput,
+  ExtractedRecipe,
   FamilyMember,
   GetChoresParams,
   GetContractorsParams,
@@ -67,6 +69,7 @@ import type {
   HouseholdJoinRequestAccepted,
   HouseholdJoinRequestDecision,
   HouseholdJoinRequestInput,
+  HouseholdStore,
   HouseholdTabVisibility,
   LibraryExercise,
   LibraryExerciseInput,
@@ -80,6 +83,7 @@ import type {
   MealRecipeResult,
   MergeDuplicateAdultInput,
   MergeDuplicateAdultResult,
+  NotificationPreferences,
   OkResponse,
   OnboardingInput,
   OnboardingResult,
@@ -88,20 +92,26 @@ import type {
   PersonalSetupInput,
   PersonalSetupResult,
   Property,
+  ReadRecipeStepInput,
   Recipe,
+  RecipeStepAudio,
   RecommendWorkoutInput,
   RedeemedHouseholdInvite,
   SaveWorkoutWeekPlanInput,
   ScanPantryBody,
   SelfFamilyProfile,
   SelfFamilyProfileUpdate,
+  StoreInput,
   SuggestMealsResult,
   TodoItem,
+  TodoItemBulkInput,
+  TodoItemBulkResult,
   TodoList,
   UpdateChoreInput,
   UpdateContractorInput,
   UpdateFamilyMemberInput,
   UpdateGroceryItemInput,
+  UpdateGroceryListStoreInput,
   UpdateHouseholdInput,
   UpdateHouseholdTabVisibilityInput,
   UpdateMaintenanceTaskInput,
@@ -448,6 +458,148 @@ export const useGetMealRecipe = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getGetMealRecipeMutationOptions(options));
+    }
+
+export const getExtractRecipeImageUrl = () => {
+
+
+
+
+  return `/api/ai/extract-recipe-image`
+}
+
+/**
+ * @summary Extract a reviewable structured recipe from one recipe photo without saving it
+ */
+export const extractRecipeImage = async (extractRecipeImageInput: ExtractRecipeImageInput, options?: RequestInit): Promise<ExtractedRecipe> => {
+
+  return customFetch<ExtractedRecipe>(getExtractRecipeImageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(extractRecipeImageInput)
+  }
+);}
+
+
+
+
+
+export const getExtractRecipeImageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractRecipeImage>>, TError,{data: BodyType<ExtractRecipeImageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof extractRecipeImage>>, TError,{data: BodyType<ExtractRecipeImageInput>}, TContext> => {
+
+const mutationKey = ['extractRecipeImage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof extractRecipeImage>>, {data: BodyType<ExtractRecipeImageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  extractRecipeImage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExtractRecipeImageMutationResult = NonNullable<Awaited<ReturnType<typeof extractRecipeImage>>>
+    export type ExtractRecipeImageMutationBody = BodyType<ExtractRecipeImageInput>
+    export type ExtractRecipeImageMutationError = ErrorType<void>
+
+    /**
+ * @summary Extract a reviewable structured recipe from one recipe photo without saving it
+ */
+export const useExtractRecipeImage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractRecipeImage>>, TError,{data: BodyType<ExtractRecipeImageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof extractRecipeImage>>,
+        TError,
+        {data: BodyType<ExtractRecipeImageInput>},
+        TContext
+      > => {
+      return useMutation(getExtractRecipeImageMutationOptions(options));
+    }
+
+export const getReadRecipeStepUrl = () => {
+
+
+
+
+  return `/api/ai/read-recipe-step`
+}
+
+/**
+ * @summary Generate spoken audio for a bounded recipe step without saving it
+ */
+export const readRecipeStep = async (readRecipeStepInput: ReadRecipeStepInput, options?: RequestInit): Promise<RecipeStepAudio> => {
+
+  return customFetch<RecipeStepAudio>(getReadRecipeStepUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(readRecipeStepInput)
+  }
+);}
+
+
+
+
+
+export const getReadRecipeStepMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof readRecipeStep>>, TError,{data: BodyType<ReadRecipeStepInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof readRecipeStep>>, TError,{data: BodyType<ReadRecipeStepInput>}, TContext> => {
+
+const mutationKey = ['readRecipeStep'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof readRecipeStep>>, {data: BodyType<ReadRecipeStepInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  readRecipeStep(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReadRecipeStepMutationResult = NonNullable<Awaited<ReturnType<typeof readRecipeStep>>>
+    export type ReadRecipeStepMutationBody = BodyType<ReadRecipeStepInput>
+    export type ReadRecipeStepMutationError = ErrorType<void>
+
+    /**
+ * @summary Generate spoken audio for a bounded recipe step without saving it
+ */
+export const useReadRecipeStep = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof readRecipeStep>>, TError,{data: BodyType<ReadRecipeStepInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof readRecipeStep>>,
+        TError,
+        {data: BodyType<ReadRecipeStepInput>},
+        TContext
+      > => {
+      return useMutation(getReadRecipeStepMutationOptions(options));
     }
 
 export const getSuggestMealsUrl = () => {
@@ -1402,6 +1554,155 @@ export const useUpdateHouseholdTabVisibility = <TError = ErrorType<void>,
       return useMutation(getUpdateHouseholdTabVisibilityMutationOptions(options));
     }
 
+export const getGetNotificationPreferencesUrl = () => {
+
+
+
+
+  return `/api/notification-preferences`
+}
+
+/**
+ * @summary Get household notification timezone and reminder times
+ */
+export const getNotificationPreferences = async ( options?: RequestInit): Promise<NotificationPreferences> => {
+
+  return customFetch<NotificationPreferences>(getGetNotificationPreferencesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNotificationPreferencesQueryKey = () => {
+    return [
+    `/api/notification-preferences`
+    ] as const;
+    }
+
+
+export const getGetNotificationPreferencesQueryOptions = <TData = Awaited<ReturnType<typeof getNotificationPreferences>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotificationPreferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNotificationPreferencesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNotificationPreferences>>> = ({ signal }) => getNotificationPreferences({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNotificationPreferences>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNotificationPreferencesQueryResult = NonNullable<Awaited<ReturnType<typeof getNotificationPreferences>>>
+export type GetNotificationPreferencesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get household notification timezone and reminder times
+ */
+
+export function useGetNotificationPreferences<TData = Awaited<ReturnType<typeof getNotificationPreferences>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotificationPreferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNotificationPreferencesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateNotificationPreferencesUrl = () => {
+
+
+
+
+  return `/api/notification-preferences`
+}
+
+/**
+ * Requires an approved family account linked to an adult.
+ * @summary Update household notification timezone and reminder times
+ */
+export const updateNotificationPreferences = async (notificationPreferences: NotificationPreferences, options?: RequestInit): Promise<NotificationPreferences> => {
+
+  return customFetch<NotificationPreferences>(getUpdateNotificationPreferencesUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(notificationPreferences)
+  }
+);}
+
+
+
+
+
+export const getUpdateNotificationPreferencesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNotificationPreferences>>, TError,{data: BodyType<NotificationPreferences>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateNotificationPreferences>>, TError,{data: BodyType<NotificationPreferences>}, TContext> => {
+
+const mutationKey = ['updateNotificationPreferences'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateNotificationPreferences>>, {data: BodyType<NotificationPreferences>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateNotificationPreferences(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateNotificationPreferencesMutationResult = NonNullable<Awaited<ReturnType<typeof updateNotificationPreferences>>>
+    export type UpdateNotificationPreferencesMutationBody = BodyType<NotificationPreferences>
+    export type UpdateNotificationPreferencesMutationError = ErrorType<void>
+
+    /**
+ * @summary Update household notification timezone and reminder times
+ */
+export const useUpdateNotificationPreferences = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateNotificationPreferences>>, TError,{data: BodyType<NotificationPreferences>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateNotificationPreferences>>,
+        TError,
+        {data: BodyType<NotificationPreferences>},
+        TContext
+      > => {
+      return useMutation(getUpdateNotificationPreferencesMutationOptions(options));
+    }
+
 export const getCompleteOnboardingUrl = () => {
 
 
@@ -2282,6 +2583,372 @@ export const useDeleteGroceryList = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteGroceryListMutationOptions(options));
+    }
+
+export const getUpdateGroceryListStoreUrl = (id: string,) => {
+
+
+
+
+  return `/api/grocery-lists/${id}/store`
+}
+
+/**
+ * @summary Select a household store for a grocery list
+ */
+export const updateGroceryListStore = async (id: string,
+    updateGroceryListStoreInput: UpdateGroceryListStoreInput, options?: RequestInit): Promise<GroceryList> => {
+
+  return customFetch<GroceryList>(getUpdateGroceryListStoreUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateGroceryListStoreInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateGroceryListStoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGroceryListStore>>, TError,{id: string;data: BodyType<UpdateGroceryListStoreInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateGroceryListStore>>, TError,{id: string;data: BodyType<UpdateGroceryListStoreInput>}, TContext> => {
+
+const mutationKey = ['updateGroceryListStore'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateGroceryListStore>>, {id: string;data: BodyType<UpdateGroceryListStoreInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateGroceryListStore(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateGroceryListStoreMutationResult = NonNullable<Awaited<ReturnType<typeof updateGroceryListStore>>>
+    export type UpdateGroceryListStoreMutationBody = BodyType<UpdateGroceryListStoreInput>
+    export type UpdateGroceryListStoreMutationError = ErrorType<void>
+
+    /**
+ * @summary Select a household store for a grocery list
+ */
+export const useUpdateGroceryListStore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGroceryListStore>>, TError,{id: string;data: BodyType<UpdateGroceryListStoreInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateGroceryListStore>>,
+        TError,
+        {id: string;data: BodyType<UpdateGroceryListStoreInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateGroceryListStoreMutationOptions(options));
+    }
+
+export const getGetStoresUrl = () => {
+
+
+
+
+  return `/api/stores`
+}
+
+/**
+ * @summary List household stores with departments in walking order
+ */
+export const getStores = async ( options?: RequestInit): Promise<HouseholdStore[]> => {
+
+  return customFetch<HouseholdStore[]>(getGetStoresUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStoresQueryKey = () => {
+    return [
+    `/api/stores`
+    ] as const;
+    }
+
+
+export const getGetStoresQueryOptions = <TData = Awaited<ReturnType<typeof getStores>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStores>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStoresQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStores>>> = ({ signal }) => getStores({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStores>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStoresQueryResult = NonNullable<Awaited<ReturnType<typeof getStores>>>
+export type GetStoresQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List household stores with departments in walking order
+ */
+
+export function useGetStores<TData = Awaited<ReturnType<typeof getStores>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStores>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStoresQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateStoreUrl = () => {
+
+
+
+
+  return `/api/stores`
+}
+
+/**
+ * Requires an approved family account linked to an adult.
+ * @summary Create a household store
+ */
+export const createStore = async (storeInput: StoreInput, options?: RequestInit): Promise<HouseholdStore> => {
+
+  return customFetch<HouseholdStore>(getCreateStoreUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(storeInput)
+  }
+);}
+
+
+
+
+
+export const getCreateStoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStore>>, TError,{data: BodyType<StoreInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createStore>>, TError,{data: BodyType<StoreInput>}, TContext> => {
+
+const mutationKey = ['createStore'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createStore>>, {data: BodyType<StoreInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createStore(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateStoreMutationResult = NonNullable<Awaited<ReturnType<typeof createStore>>>
+    export type CreateStoreMutationBody = BodyType<StoreInput>
+    export type CreateStoreMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a household store
+ */
+export const useCreateStore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStore>>, TError,{data: BodyType<StoreInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createStore>>,
+        TError,
+        {data: BodyType<StoreInput>},
+        TContext
+      > => {
+      return useMutation(getCreateStoreMutationOptions(options));
+    }
+
+export const getUpdateStoreUrl = (id: string,) => {
+
+
+
+
+  return `/api/stores/${id}`
+}
+
+/**
+ * Requires an approved family account linked to an adult.
+ * @summary Replace a household store and its department walking order
+ */
+export const updateStore = async (id: string,
+    storeInput: StoreInput, options?: RequestInit): Promise<HouseholdStore> => {
+
+  return customFetch<HouseholdStore>(getUpdateStoreUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(storeInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateStoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStore>>, TError,{id: string;data: BodyType<StoreInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateStore>>, TError,{id: string;data: BodyType<StoreInput>}, TContext> => {
+
+const mutationKey = ['updateStore'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateStore>>, {id: string;data: BodyType<StoreInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateStore(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateStoreMutationResult = NonNullable<Awaited<ReturnType<typeof updateStore>>>
+    export type UpdateStoreMutationBody = BodyType<StoreInput>
+    export type UpdateStoreMutationError = ErrorType<void>
+
+    /**
+ * @summary Replace a household store and its department walking order
+ */
+export const useUpdateStore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStore>>, TError,{id: string;data: BodyType<StoreInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateStore>>,
+        TError,
+        {id: string;data: BodyType<StoreInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateStoreMutationOptions(options));
+    }
+
+export const getDeleteStoreUrl = (id: string,) => {
+
+
+
+
+  return `/api/stores/${id}`
+}
+
+/**
+ * Requires an approved family account linked to an adult.
+ * @summary Delete a non-final household store
+ */
+export const deleteStore = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteStoreUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteStoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStore>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteStore>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteStore'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteStore>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteStore(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteStoreMutationResult = NonNullable<Awaited<ReturnType<typeof deleteStore>>>
+
+    export type DeleteStoreMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete a non-final household store
+ */
+export const useDeleteStore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStore>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteStore>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteStoreMutationOptions(options));
     }
 
 export const getGetGroceryItemsUrl = (id: string,) => {
@@ -4861,6 +5528,78 @@ export const useAddTodoItem = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAddTodoItemMutationOptions(options));
+    }
+
+export const getBulkAddTodoItemsUrl = (id: string,) => {
+
+
+
+
+  return `/api/todo-lists/${id}/items/bulk`
+}
+
+/**
+ * @summary Add one-off items to a to-do list atomically
+ */
+export const bulkAddTodoItems = async (id: string,
+    todoItemBulkInput: TodoItemBulkInput, options?: RequestInit): Promise<TodoItemBulkResult> => {
+
+  return customFetch<TodoItemBulkResult>(getBulkAddTodoItemsUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(todoItemBulkInput)
+  }
+);}
+
+
+
+
+
+export const getBulkAddTodoItemsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkAddTodoItems>>, TError,{id: string;data: BodyType<TodoItemBulkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkAddTodoItems>>, TError,{id: string;data: BodyType<TodoItemBulkInput>}, TContext> => {
+
+const mutationKey = ['bulkAddTodoItems'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkAddTodoItems>>, {id: string;data: BodyType<TodoItemBulkInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  bulkAddTodoItems(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkAddTodoItemsMutationResult = NonNullable<Awaited<ReturnType<typeof bulkAddTodoItems>>>
+    export type BulkAddTodoItemsMutationBody = BodyType<TodoItemBulkInput>
+    export type BulkAddTodoItemsMutationError = ErrorType<void>
+
+    /**
+ * @summary Add one-off items to a to-do list atomically
+ */
+export const useBulkAddTodoItems = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkAddTodoItems>>, TError,{id: string;data: BodyType<TodoItemBulkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkAddTodoItems>>,
+        TError,
+        {id: string;data: BodyType<TodoItemBulkInput>},
+        TContext
+      > => {
+      return useMutation(getBulkAddTodoItemsMutationOptions(options));
     }
 
 export const getUpdateTodoItemUrl = (id: string,) => {

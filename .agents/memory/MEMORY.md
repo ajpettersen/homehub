@@ -1,5 +1,5 @@
 - [Orval barrel append bug](orval-barrel-append.md) — orval appends to barrel index files; patch-zod-index.js normalizes them after each codegen run.
-- [Maintenance one-time scheduling](maintenance-one-time-scheduling.md) — dated reminders finish once; periodic tasks continue to reschedule.
+- [Task scheduling separation](maintenance-one-time-scheduling.md) — new dated one-offs live in Tasks; property routines live in Settings and recur by local calendar date.
 - [CRM property ownership](crm-property-ownership.md) — never infer a legacy contact’s property; unowned CRM rows stay hidden until explicitly assigned.
 - [Household account bootstrap](household-account-bootstrap.md) — only the configured Clerk identity can bootstrap family access; later profiles remain pending until approved.
 - [Household onboarding wizard](household-onboarding.md) — gate on the household-level completion flag; all setup seeding goes through the single transactional idempotent endpoint.
@@ -12,3 +12,7 @@
 - [Shared workout planning](shared-workout-planning.md) — workouts may belong to multiple adults; AI produces editable drafts and household-timezone weekly plans, never implicit saves.
 - [AI memory ownership](ai-memory-ownership.md) — direct-chat memories belong to the speaking adult; shared context includes household facts plus only that adult’s memories.
 - [Post-merge database setup](post-merge-database-setup.md) — use the idempotent SQL migration runner; schema push can hang when merge setup has closed stdin.
+- [Photo recipe workflow](photo-recipe-workflow.md) — AI image extraction is review-only; structured recipes drive cookbook, property-scoped groceries, and guided audio.
+- [Notification delivery contract](notification-delivery-contract.md) — household-local schedules; assigned reminders never broaden to other adults when a device is unavailable.
+- [Store-aware shopping lists](store-aware-shopping-lists.md) — stores belong to households, but each property’s grocery list keeps its own selected store and walking order.
+- [Installed Web app freshness](installed-web-app-freshness.md) — logout activates pending Web updates and performs a base-scoped fresh launch without clearing Clerk or sibling-artifact state.

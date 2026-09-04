@@ -1,8 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, Mountain, ArrowLeft, LogOut } from "lucide-react";
-import { useClerk } from "@clerk/react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useActiveMember } from "@/context/ActiveMemberContext";
+import { useHomeHubSignOut } from "@/hooks/useHomeHubSignOut";
 import {
   useGetFamilyMembers,
   getGetFamilyMembersQueryKey,
@@ -29,15 +28,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
-  const { signOut } = useClerk();
-  const queryClient = useQueryClient();
-  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const signOut = useHomeHubSignOut();
 
   const handleSignOut = async () => {
     setMemberPickerOpen(false);
-    setActiveMember(null);
-    queryClient.clear();
-    await signOut({ redirectUrl: basePath || "/" });
+    await signOut();
   };
 
   const humanMembers = familyMembers?.filter(m => m.role !== "pet") ?? [];

@@ -7,7 +7,7 @@ export type ColorMode = "light" | "dark";
 export type Density = "comfortable" | "compact";
 export type ChoreFilter = "all" | "today" | "mine" | "done";
 export type MealView = "meals" | "shopping" | "recipes";
-export type SettingsSection = "members" | "properties" | "notifications" | "memory";
+export type SettingsSection = "none" | "properties" | "notifications" | "memory";
 
 export interface HomeHubPreferences {
   version: typeof PREFERENCE_VERSION;
@@ -38,7 +38,7 @@ export const DEFAULT_PREFERENCES: HomeHubPreferences = {
     workouts: { defaultScope: "everyone" },
     properties: { defaultProperty: "cabin" },
     people: { layout: "cards" },
-    settings: { startSection: "members" },
+    settings: { startSection: "properties" },
   },
 };
 
@@ -57,6 +57,7 @@ function parsePreferences(raw: string | null): HomeHubPreferences {
     if (value.version !== PREFERENCE_VERSION) return DEFAULT_PREFERENCES;
     const appearance = value.appearance ?? {};
     const tabs = value.tabs ?? {};
+    const savedSettingsStartSection = tabs.settings?.startSection as string | undefined;
     return {
       version: PREFERENCE_VERSION,
       appearance: {
@@ -88,7 +89,11 @@ function parsePreferences(raw: string | null): HomeHubPreferences {
           layout: isOneOf(tabs.people?.layout, ["cards", "compact"], DEFAULT_PREFERENCES.tabs.people.layout),
         },
         settings: {
-          startSection: isOneOf(tabs.settings?.startSection, ["members", "properties", "notifications", "memory"], DEFAULT_PREFERENCES.tabs.settings.startSection),
+          // "members" was the former Settings landing section. Preserve every
+          // other saved preference while moving those users to Properties.
+          startSection: savedSettingsStartSection === "members"
+            ? "properties"
+            : isOneOf(savedSettingsStartSection, ["none", "properties", "notifications", "memory"], DEFAULT_PREFERENCES.tabs.settings.startSection),
         },
       },
     };

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { textToSpeech } from "@workspace/integrations-openai-ai-server/audio";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import {
@@ -32,6 +33,12 @@ import {
   getLiveHouseholdSnapshot,
 } from "../lib/aiLiveContext";
 import { isBlockedIPv4, isBlockedIPv6 } from "../lib/ipAddress";
+import {
+  MAINTENANCE_CATALOG,
+  getMaintenanceCatalogItem,
+  inferMaintenanceCatalogKey,
+  type MaintenanceCatalogKey,
+} from "../lib/maintenanceCatalog";
 
 // ── Authorization helper ──────────────────────────────────────────────────────
 
@@ -56,6 +63,57 @@ async function requireAiScope(
     return null;
   }
   return scope;
+}
+
+const RECIPE_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const RECIPE_STEP_MAX_LENGTH = 2_000;
+const RECIPE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+/**
+ * Decode the single supported image input without retaining or logging its
+ * contents. The returned normalized data URL is safe to give the vision model.
+ */
+export function parseRecipeImage(image: unknown): { dataUrl?: string; error?: string } {
+  if (typeof image !== "string" || !image.trim()) return { error: "image must be a non-empty base64 string or data URL" };
+  const trimmed = image.trim();
+  const match = trimmed.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/i);
+  let mimeType: string;
+  let base64: string;
+  if (match) {
+    mimeType = match[1].toLowerCase();
+    base64 = match[2];
+  } else {
+    mimeType = "image/jpeg";
+    base64 = trimmed;
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return { error: "image must be valid base64 or a supported image data URL" };
+  }
+  if (!RECIPE_IMAGE_MIME_TYPES.has(mimeType) || base64.length % 4 === 1) return { error: "image must be a PNG, JPEG, WebP, or GIF" };
+  const bytes = Buffer.from(base64, "base64");
+  if (!bytes.length || bytes.length > RECIPE_IMAGE_MAX_BYTES) return { error: "image must decode to between 1 byte and 8 MiB" };
+  // Buffer.from accepts some malformed padding; canonical encoding closes that gap.
+  if (bytes.toString("base64").replace(/=+$/, "") !== base64.replace(/=+$/, "")) return { error: "image must be valid base64" };
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+  const isPng = bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const isGif = bytes.subarray(0, 6).toString("ascii") === "GIF87a" || bytes.subarray(0, 6).toString("ascii") === "GIF89a";
+  const isWebp = bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+  if (!isJpeg && !isPng && !isGif && !isWebp) return { error: "image data is not a supported PNG, JPEG, WebP, or GIF" };
+  mimeType = isJpeg ? "image/jpeg" : isPng ? "image/png" : isGif ? "image/gif" : "image/webp";
+  return { dataUrl: `data:${mimeType};base64,${base64}` };
+}
+
+export function validateReadRecipeStep(body: unknown): { value?: { recipeName?: string; stepNumber?: number; text: string }; error?: string } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "request body must be an object" };
+  const { recipeName, stepNumber, text } = body as Record<string, unknown>;
+  if (typeof text !== "string" || !text.trim() || text.length > RECIPE_STEP_MAX_LENGTH) {
+    return { error: "text must be a non-empty string up to 2000 characters" };
+  }
+  if (recipeName !== undefined && (typeof recipeName !== "string" || recipeName.length > 200)) {
+    return { error: "recipeName must be a string up to 200 characters" };
+  }
+  if (stepNumber !== undefined && (typeof stepNumber !== "number" || !Number.isInteger(stepNumber) || stepNumber < 1 || stepNumber > 100)) {
+    return { error: "stepNumber must be an integer from 1 to 100" };
+  }
+  return { value: { text: text.trim(), ...(typeof recipeName === "string" && recipeName.trim() ? { recipeName: recipeName.trim() } : {}), ...(typeof stepNumber === "number" ? { stepNumber } : {}) } };
 }
 
 // ── Memory helpers ────────────────────────────────────────────────────────────
@@ -468,6 +526,7 @@ async function fetchPageText(url: string): Promise<string> {
 }
 
 type MaintenanceRecommendation = {
+  canonicalKey: MaintenanceCatalogKey;
   title: string;
   description: string | null;
   category: typeof VALID_MAINTENANCE_CATEGORIES[number];
@@ -496,34 +555,29 @@ function parseMaintenanceRecommendations(content: string): MaintenanceRecommenda
       throw new Error("AI response contained an invalid recommendation");
     }
     const item = raw as Record<string, unknown>;
-    const validKeys = new Set(["title", "description", "category", "reason", "defaultFrequencyDays"]);
+    const validKeys = new Set(["canonicalKey", "reason", "description"]);
     if (Object.keys(item).some(key => !validKeys.has(key))) {
       throw new Error("AI response contained unexpected recommendation fields");
     }
-    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const canonicalKey = typeof item.canonicalKey === "string" ? item.canonicalKey : "";
     const reason = typeof item.reason === "string" ? item.reason.trim() : "";
-    const category = item.category;
-    const frequency = item.defaultFrequencyDays;
-    const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const catalogItem = getMaintenanceCatalogItem(canonicalKey);
     if (
-      !title || title.length > 120 || !reason || reason.length > 500 ||
-      !VALID_MAINTENANCE_CATEGORIES.includes(category as typeof VALID_MAINTENANCE_CATEGORIES[number]) ||
-      typeof frequency !== "number" || !Number.isFinite(frequency) || !Number.isInteger(frequency) ||
-      frequency < 1 || frequency > 3650 ||
-      !normalizedTitle
+      !catalogItem || !reason || reason.length > 500
     ) throw new Error("AI response contained an invalid recommendation");
-    if (seen.has(normalizedTitle)) continue;
-    seen.add(normalizedTitle);
+    if (seen.has(catalogItem.key)) continue;
+    seen.add(catalogItem.key);
     if (item.description !== null && (typeof item.description !== "string" || item.description.length > 500)) {
       throw new Error("AI response contained an invalid description");
     }
     const description = typeof item.description === "string" ? item.description.trim() : null;
     recommendations.push({
-      title,
+      canonicalKey: catalogItem.key,
+      title: catalogItem.title,
       description,
-      category: category as MaintenanceRecommendation["category"],
+      category: catalogItem.category,
       reason,
-      defaultFrequencyDays: frequency,
+      defaultFrequencyDays: catalogItem.frequencyDays,
     });
   }
   return recommendations;
@@ -554,6 +608,7 @@ router.post("/ai/recommend-maintenance", async (req, res) => {
       )).limit(1),
       db.select({
         title: maintenanceTasksTable.title,
+        canonicalKey: maintenanceTasksTable.canonicalKey,
         description: maintenanceTasksTable.description,
         category: maintenanceTasksTable.category,
       }).from(maintenanceTasksTable).where(eq(maintenanceTasksTable.propertyId, propertyId)),
@@ -566,7 +621,7 @@ router.post("/ai/recommend-maintenance", async (req, res) => {
     const existing = existingTasks.length
       ? existingTasks.map(task => `- ${task.title}${task.description ? `: ${task.description}` : ""}`).join("\n")
       : "None";
-    const existingTitles = new Set(existingTasks.map(task => task.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()));
+    const existingKeys = new Set(existingTasks.map(task => task.canonicalKey ?? inferMaintenanceCatalogKey(task.title)).filter(Boolean));
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
       max_completion_tokens: 1024,
@@ -585,13 +640,11 @@ router.post("/ai/recommend-maintenance", async (req, res) => {
                 items: {
                   type: "object",
                   additionalProperties: false,
-                  required: ["title", "description", "category", "reason", "defaultFrequencyDays"],
+                  required: ["canonicalKey", "description", "reason"],
                   properties: {
-                    title: { type: "string" },
+                    canonicalKey: { type: "string", enum: MAINTENANCE_CATALOG.map(item => item.key) },
                     description: { type: ["string", "null"] },
-                    category: { type: "string", enum: [...VALID_MAINTENANCE_CATEGORIES] },
                     reason: { type: "string" },
-                    defaultFrequencyDays: { type: "integer" },
                   },
                 },
               },
@@ -602,11 +655,11 @@ router.post("/ai/recommend-maintenance", async (req, res) => {
       messages: [
         {
           role: "system",
-          content: `You are a practical property maintenance planner. Return 4–10 useful recurring maintenance ideas tailored to the property's type and details. Exclude anything already covered by an existing task, including synonymous or meaning-equivalent tasks. Avoid cosmetic projects and vague advice. Frequencies must be positive whole days between 1 and 3650 and realistic for the work.
+          content: `You are a practical property maintenance planner. Return 4–10 useful recurring maintenance ideas tailored to the property's type and details. Select only catalog keys not already covered. Avoid cosmetic projects and vague advice.
 
-Use only these category values: ${VALID_MAINTENANCE_CATEGORIES.join(", ")}.
+Available catalog: ${MAINTENANCE_CATALOG.map(item => `${item.key} (${item.title})`).join("; ")}.
 Respond ONLY as valid JSON:
-{"recommendations":[{"title":"Concise task title","description":"Optional actionable detail","category":"filter","reason":"Why this matters for this property","defaultFrequencyDays":90}]}`,
+{"recommendations":[{"canonicalKey":"hvac-filter","description":"Optional actionable detail","reason":"Why this matters for this property"}]}`,
         },
         {
           role: "user",
@@ -623,12 +676,108 @@ ${existing}`,
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error("AI response was empty");
     const recommendations = parseMaintenanceRecommendations(content).filter(
-      recommendation => !existingTitles.has(recommendation.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()),
+      recommendation => !existingKeys.has(recommendation.canonicalKey),
     );
     res.json({ recommendations });
   } catch (err) {
     console.error("Maintenance recommendation error:", err);
     res.status(500).json({ error: "Failed to recommend maintenance" });
+  }
+});
+
+// ── POST /ai/extract-recipe-image ─────────────────────────────────────────────
+// Deliberately review-only: callers must explicitly save the extracted recipe.
+router.post("/ai/extract-recipe-image", async (req, res) => {
+  const scope = await requireAiScope(req, res);
+  if (!scope) return;
+  const parsedImage = parseRecipeImage(req.body?.image);
+  if (parsedImage.error) {
+    res.status(400).json({ error: parsedImage.error });
+    return;
+  }
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 2_500,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "extracted_recipe",
+          strict: true,
+          schema: {
+            type: "object", additionalProperties: false,
+            required: ["isRecipe", "name", "ingredients", "instructions", "servings", "prepMinutes", "cookMinutes", "confidence", "warnings"],
+            properties: {
+              isRecipe: { type: "boolean" },
+              name: { type: "string" },
+              ingredients: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "quantity", "category"], properties: { name: { type: "string" }, quantity: { type: ["string", "null"] }, category: { type: ["string", "null"] } } } },
+              instructions: { type: "array", items: { type: "string" } },
+              servings: { type: ["integer", "null"] },
+              prepMinutes: { type: ["integer", "null"] },
+              cookMinutes: { type: ["integer", "null"] },
+              confidence: { type: "number" },
+              warnings: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+      },
+      messages: [{
+        role: "system",
+        content: "Extract a recipe only if the image is a recipe card, cookbook/page, or clearly contains a recipe. Transcribe faithfully; do not invent missing text. Categorize groceries with ordinary categories such as Produce, Meat & Seafood, Dairy, Pantry, Bakery, Frozen, or Other. Return null for unavailable numbers, lower confidence for obscured text, and concise warnings for uncertainty.",
+      }, {
+        role: "user",
+        content: [{ type: "text", text: "Extract this recipe for a human to review. It is not being saved automatically." }, { type: "image_url", image_url: { url: parsedImage.dataUrl!, detail: "high" } }] as any,
+      }],
+    });
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error("AI response was empty");
+    const extracted = JSON.parse(content) as {
+      isRecipe: boolean; name: string; ingredients: Array<{ name: string; quantity: string | null; category: string | null }>;
+      instructions: string[]; servings: number | null; prepMinutes: number | null; cookMinutes: number | null; confidence: number; warnings: string[];
+    };
+    if (!extracted.isRecipe) {
+      res.status(400).json({ error: "The image does not appear to contain a recipe" });
+      return;
+    }
+    if (typeof extracted.name !== "string" || !extracted.name.trim() || !Array.isArray(extracted.ingredients) || extracted.ingredients.length > 100 ||
+      !Array.isArray(extracted.instructions) || extracted.instructions.length > 100 || !extracted.ingredients.every((i) => typeof i?.name === "string" && i.name.trim().length <= 300) ||
+      !extracted.instructions.every((step) => typeof step === "string" && step.trim() && step.length <= 2000)) {
+      throw new Error("AI returned invalid recipe content");
+    }
+    res.json({
+      name: extracted.name.trim(),
+      ingredients: extracted.ingredients.map((item) => ({ name: item.name.trim(), ...(typeof item.quantity === "string" && item.quantity.trim() ? { quantity: item.quantity.trim().slice(0, 100) } : {}), ...(typeof item.category === "string" && item.category.trim() ? { category: item.category.trim().slice(0, 80) } : {}) })),
+      instructions: extracted.instructions.map((step) => step.trim()),
+      servings: Number.isInteger(extracted.servings) && extracted.servings! >= 1 && extracted.servings! <= 100 ? extracted.servings : null,
+      prepMinutes: Number.isInteger(extracted.prepMinutes) && extracted.prepMinutes! >= 0 && extracted.prepMinutes! <= 1440 ? extracted.prepMinutes : null,
+      cookMinutes: Number.isInteger(extracted.cookMinutes) && extracted.cookMinutes! >= 0 && extracted.cookMinutes! <= 1440 ? extracted.cookMinutes : null,
+      confidence: typeof extracted.confidence === "number" ? Math.max(0, Math.min(1, extracted.confidence)) : 0,
+      warnings: Array.isArray(extracted.warnings) ? extracted.warnings.filter((warning) => typeof warning === "string").map((warning) => warning.slice(0, 500)).slice(0, 20) : ["Review this extraction before saving."],
+    });
+  } catch (err) {
+    req.log.error({ err }, "Recipe image extraction failed");
+    res.status(502).json({ error: "Recipe extraction provider failed" });
+  }
+});
+
+// ── POST /ai/read-recipe-step ─────────────────────────────────────────────────
+router.post("/ai/read-recipe-step", async (req, res) => {
+  const scope = await requireAiScope(req, res);
+  if (!scope) return;
+  const validation = validateReadRecipeStep(req.body);
+  if (validation.error) {
+    res.status(400).json({ error: validation.error });
+    return;
+  }
+  try {
+    const { recipeName, stepNumber, text } = validation.value!;
+    const spokenText = `${recipeName ? `${recipeName}. ` : ""}${stepNumber ? `Step ${stepNumber}. ` : ""}${text}`;
+    const audio = await textToSpeech(spokenText, "alloy", "mp3");
+    if (!audio.length) throw new Error("Audio provider returned no audio");
+    res.json({ audioBase64: audio.toString("base64"), mimeType: "audio/mpeg" });
+  } catch (err) {
+    req.log.error({ err }, "Recipe step audio generation failed");
+    res.status(502).json({ error: "Recipe step audio provider failed" });
   }
 });
 

@@ -8,4 +8,8 @@
 
 export interface CompleteMaintenanceTaskInput {
   completedBy?: string | null;
+  /** Calendar date on which work was completed. */
+  completedOn?: Date;
+  /** IANA timezone used only when completedOn is omitted. */
+  timezone?: string;
 }

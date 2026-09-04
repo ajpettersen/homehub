@@ -1,10 +1,10 @@
 ---
-name: Maintenance one-time scheduling
-description: Defines the expected lifecycle for date-specific maintenance reminders.
+name: Task scheduling separation
+description: Defines where one-off household work and recurring property maintenance belong.
 ---
 
-One-time maintenance reminders use a specific due date, do not have a recurrence interval, and leave the active maintenance lists after completion. New recurring maintenance tasks are due immediately once; after completion, their next due date is the completion date plus the configured interval.
+Date-specific household work and recurring property upkeep are different concepts. New one-offs require a due date; routines may start on a chosen date and advance from the local calendar date on completion. Legacy one-time maintenance remains valid.
 
-**Why:** A calendar appointment or an isolated repair should not be pushed forward as though it were periodic, while a newly added routine should be actionable now instead of disappearing until its first interval elapses.
+**Why:** Mixing isolated errands with property routines made both workflows confusing, while UTC date math could move a household task to the wrong day. Suggested routines also need stable identities so wording changes cannot create duplicates.
 
-**How to apply:** Request a due date for one-time reminders and exclude them after completion. For recurring maintenance, show the first occurrence immediately and schedule later occurrences from each completion date.
+**How to apply:** Keep one-offs and routines distinct, preserve date-only values in the household timezone, and require explicit approval before suggested routines are saved.

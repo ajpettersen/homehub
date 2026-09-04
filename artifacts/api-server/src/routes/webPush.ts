@@ -2,7 +2,10 @@ import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { and, eq } from "drizzle-orm";
 import { db, webPushSubscriptionsTable } from "@workspace/db";
-import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
+import {
+  getApprovedHouseholdScope,
+  requireApprovedLinkedAdult,
+} from "../middlewares/requireApprovedHousehold";
 import { vapidKeys } from "../lib/webPush";
 
 const router = Router();
@@ -78,11 +81,8 @@ router.post("/web-push/subscriptions", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const scope = getApprovedHouseholdScope(res);
-  if (scope.role !== "family") {
-    res.status(403).json({ error: "Only family accounts can register household notifications" });
-    return;
-  }
+  const scope = requireApprovedLinkedAdult(res);
+  if (!scope) return;
   const subscription = parseSubscription(req.body);
   if (!subscription) {
     res.status(400).json({ error: "A valid browser push subscription is required" });

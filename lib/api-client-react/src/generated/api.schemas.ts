@@ -38,6 +38,7 @@ export const MaintenanceRecommendationCategory = {
 } as const;
 
 export interface MaintenanceRecommendation {
+  canonicalKey: string;
   /**
      * @minLength 1
      * @maxLength 160
@@ -652,6 +653,10 @@ export interface MergeDuplicateAdultResult {
 
 export interface CompleteMaintenanceTaskInput {
   completedBy?: string | null;
+  /** Calendar date on which work was completed. */
+  completedOn?: string;
+  /** IANA timezone used only when completedOn is omitted. */
+  timezone?: string;
 }
 
 export interface HealthStatus {
@@ -716,6 +721,7 @@ export const MaintenanceTaskScheduleType = {
 export interface MaintenanceTask {
   id: string;
   title: string;
+  canonicalKey?: string | null;
   description?: string | null;
   propertyId: string;
   propertyName: string;
@@ -1046,6 +1052,7 @@ export const OnboardingChoreInputFrequency = {
 
 export interface OnboardingChoreInput {
   title: string;
+  canonicalKey?: string | null;
   frequency: OnboardingChoreInputFrequency;
 }
 
@@ -1177,6 +1184,7 @@ export interface GroceryList {
   name: string;
   propertyId: string;
   propertyName: string;
+  storeId: string | null;
   itemCount: number;
   checkedCount: number;
   createdAt: string;
@@ -1185,6 +1193,77 @@ export interface GroceryList {
 export interface CreateGroceryListInput {
   name: string;
   propertyId: string;
+}
+
+export interface UpdateGroceryListStoreInput {
+  storeId: string;
+}
+
+export type GroceryCategoryKey = typeof GroceryCategoryKey[keyof typeof GroceryCategoryKey];
+
+
+export const GroceryCategoryKey = {
+  produce: 'produce',
+  deli: 'deli',
+  meat: 'meat',
+  dairy: 'dairy',
+  bread: 'bread',
+  grains: 'grains',
+  canned: 'canned',
+  snacks: 'snacks',
+  frozen: 'frozen',
+  beverages: 'beverages',
+  household: 'household',
+  other: 'other',
+} as const;
+
+export interface StoreDepartment {
+  categoryKey: GroceryCategoryKey;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  displayName: string;
+  /** @minimum 0 */
+  sortOrder: number;
+}
+
+export interface HouseholdStore {
+  id: string;
+  name: string;
+  address: string | null;
+  notes: string | null;
+  isDefault: boolean;
+  departments: StoreDepartment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StoreInputDepartmentsItem = {
+  categoryKey: GroceryCategoryKey;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  displayName: string;
+};
+
+export interface StoreInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /** @maxLength 300 */
+  address?: string | null;
+  /** @maxLength 1000 */
+  notes?: string | null;
+  isDefault: boolean;
+  /**
+     * @minItems 12
+     * @maxItems 12
+     */
+  departments: StoreInputDepartmentsItem[];
 }
 
 export interface GroceryItem {
@@ -1302,22 +1381,86 @@ export const RecipeAggregateRating = {
   skip: 'skip',
 } as const;
 
+export type RecipeSourceType = typeof RecipeSourceType[keyof typeof RecipeSourceType] | null;
+
+
+export const RecipeSourceType = {
+  manual: 'manual',
+  image: 'image',
+  url: 'url',
+  ai: 'ai',
+} as const;
+
+export interface RecipeIngredient {
+  /** @maxLength 300 */
+  name: string;
+  /** @maxLength 100 */
+  quantity?: string;
+  /** @maxLength 80 */
+  category?: string;
+}
+
 export interface Recipe {
   id: string;
   propertyId: string;
+  /** @maxLength 300 */
   name: string;
+  /** @maxLength 2048 */
   sourceUrl?: string | null;
+  /** @maxLength 10000 */
   notes?: string | null;
   timesCooked: number;
   aggregateRating?: RecipeAggregateRating;
+  ingredients: RecipeIngredient[];
+  instructions: string[];
+  servings?: number | null;
+  prepMinutes?: number | null;
+  cookMinutes?: number | null;
+  sourceType?: RecipeSourceType;
   createdAt: string;
 }
 
+export type CreateRecipeInputSourceType = typeof CreateRecipeInputSourceType[keyof typeof CreateRecipeInputSourceType];
+
+
+export const CreateRecipeInputSourceType = {
+  manual: 'manual',
+  image: 'image',
+  url: 'url',
+  ai: 'ai',
+} as const;
+
 export interface CreateRecipeInput {
+  /** @maxLength 300 */
   name: string;
   propertyId: string;
+  /** @maxLength 2048 */
   sourceUrl?: string | null;
+  /** @maxLength 10000 */
   notes?: string | null;
+  /** @maxItems 100 */
+  ingredients?: RecipeIngredient[];
+  /**
+     * @maxItems 100
+     * @items.maxLength 2000
+     */
+  instructions?: string[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  servings?: number;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  prepMinutes?: number;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  cookMinutes?: number;
+  sourceType?: CreateRecipeInputSourceType;
 }
 
 export type UpdateRecipeInputAggregateRating = typeof UpdateRecipeInputAggregateRating[keyof typeof UpdateRecipeInputAggregateRating] | null;
@@ -1329,12 +1472,95 @@ export const UpdateRecipeInputAggregateRating = {
   skip: 'skip',
 } as const;
 
+export type UpdateRecipeInputSourceType = typeof UpdateRecipeInputSourceType[keyof typeof UpdateRecipeInputSourceType] | null;
+
+
+export const UpdateRecipeInputSourceType = {
+  manual: 'manual',
+  image: 'image',
+  url: 'url',
+  ai: 'ai',
+} as const;
+
 export interface UpdateRecipeInput {
+  /** @maxLength 300 */
   name?: string;
+  /** @maxLength 2048 */
   sourceUrl?: string | null;
+  /** @maxLength 10000 */
   notes?: string | null;
   timesCooked?: number;
   aggregateRating?: UpdateRecipeInputAggregateRating;
+  /** @maxItems 100 */
+  ingredients?: RecipeIngredient[];
+  /**
+     * @maxItems 100
+     * @items.maxLength 2000
+     */
+  instructions?: string[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  servings?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  prepMinutes?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  cookMinutes?: number | null;
+  sourceType?: UpdateRecipeInputSourceType;
+}
+
+export interface ExtractRecipeImageInput {
+  /** A base64 string or data URL for one PNG, JPEG, WebP, or GIF image; maximum decoded size is 8 MiB. */
+  image: string;
+}
+
+export interface ExtractedRecipe {
+  name: string;
+  ingredients: RecipeIngredient[];
+  instructions: string[];
+  servings?: number | null;
+  prepMinutes?: number | null;
+  cookMinutes?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  confidence: number;
+  warnings: string[];
+}
+
+export interface ReadRecipeStepInput {
+  /** @maxLength 200 */
+  recipeName?: string;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  stepNumber?: number;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+}
+
+export type RecipeStepAudioMimeType = typeof RecipeStepAudioMimeType[keyof typeof RecipeStepAudioMimeType];
+
+
+export const RecipeStepAudioMimeType = {
+  'audio/mpeg': 'audio/mpeg',
+} as const;
+
+export interface RecipeStepAudio {
+  audioBase64: string;
+  mimeType: RecipeStepAudioMimeType;
 }
 
 export interface TodoList {
@@ -1371,6 +1597,29 @@ export interface CreateTodoItemInput {
   assigneeId?: string | null;
 }
 
+export interface TodoItemBulkEntry {
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  content: string;
+  dueDate?: string;
+  assigneeId?: string | null;
+}
+
+export interface TodoItemBulkInput {
+  defaultDueDate: string;
+  /**
+     * @minItems 1
+     * @maxItems 50
+     */
+  items: TodoItemBulkEntry[];
+}
+
+export interface TodoItemBulkResult {
+  items: TodoItem[];
+}
+
 export interface UpdateTodoItemInput {
   content?: string;
   completed?: boolean;
@@ -1401,6 +1650,7 @@ export const CreateMaintenanceTaskInputScheduleType = {
 
 export interface CreateMaintenanceTaskInput {
   title: string;
+  canonicalKey?: string | null;
   description?: string | null;
   propertyId: string;
   category: CreateMaintenanceTaskInputCategory;
@@ -1409,7 +1659,9 @@ export interface CreateMaintenanceTaskInput {
   scheduleType: CreateMaintenanceTaskInputScheduleType;
   isCleanerTask?: boolean;
   startDate?: string | null;
-  nextDueDate: string;
+  nextDueDate?: string;
+  /** IANA timezone used to derive a recurring task's date when startDate is omitted. */
+  timezone?: string;
 }
 
 export type UpdateMaintenanceTaskInputCategory = typeof UpdateMaintenanceTaskInputCategory[keyof typeof UpdateMaintenanceTaskInputCategory];
@@ -1435,6 +1687,7 @@ export const UpdateMaintenanceTaskInputScheduleType = {
 
 export interface UpdateMaintenanceTaskInput {
   title?: string;
+  canonicalKey?: string | null;
   description?: string | null;
   category?: UpdateMaintenanceTaskInputCategory;
   assigneeId?: string | null;
@@ -1443,6 +1696,8 @@ export interface UpdateMaintenanceTaskInput {
   scheduleType?: UpdateMaintenanceTaskInputScheduleType;
   startDate?: string | null;
   nextDueDate?: string;
+  /** IANA timezone used to derive the local comparison date when recalculating recurrence. */
+  timezone?: string;
 }
 
 export interface MealSuggestion {
@@ -1567,6 +1822,24 @@ export interface HouseholdInviteTokenInput {
 export interface RedeemedHouseholdInvite {
   ok: boolean;
   householdId: string;
+}
+
+export interface NotificationPreferences {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  timezone: string;
+  /**
+     * Local household time from 05:00 through 20:55.
+     * @pattern ^(?:(?:0[5-9]|1[0-9]):[0-5][0-9]|20:[0-5][0-5])$
+     */
+  dueReminderTime: string;
+  /**
+     * Local household time from 05:00 through 20:55.
+     * @pattern ^(?:(?:0[5-9]|1[0-9]):[0-5][0-9]|20:[0-5][0-5])$
+     */
+  workoutFollowUpTime: string;
 }
 
 export interface OkResponse {
@@ -1726,6 +1999,14 @@ export type GetExerciseHistory200 = {
 
 export type GetMaintenanceTasksParams = {
 propertyId?: string;
+/**
+ * Include completed one-time maintenance records for management history. Defaults to false.
+ */
+includeCompleted?: boolean;
+/**
+ * IANA timezone used to calculate the local calendar date; defaults to UTC for legacy clients.
+ */
+timezone?: string;
 };
 
 export type GetContractorsParams = {

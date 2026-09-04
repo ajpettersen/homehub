@@ -4,6 +4,7 @@ import { todoListsTable, todoItemsTable, familyMembersTable, propertiesTable } f
 import { eq, and, desc, sql } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 import type { PropertyAuthorizationScope } from "../lib/propertyAuthorization";
+import { parseBulkTodoInput } from "../lib/todoBulkValidation";
 
 const router = Router();
 
@@ -313,6 +314,77 @@ router.post("/todo-lists/:id/items", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to add todo item");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/todo-lists/:id/items/bulk", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const listId = Number(req.params.id);
+    if (!Number.isInteger(listId)) {
+      res.status(400).json({ error: "Invalid list id" });
+      return;
+    }
+
+    const parsed = parseBulkTodoInput(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+
+    const list = await resolveAccessibleList(listId, scope);
+    if (!list) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const assigneeIds = new Set<number>();
+    for (const item of parsed.data.items) {
+      if (item.assigneeId !== undefined && item.assigneeId !== null) {
+        const assigneeId = Number(item.assigneeId);
+        if (!Number.isInteger(assigneeId)) {
+          res.status(400).json({ error: "assigneeId must be a valid id" });
+          return;
+        }
+        assigneeIds.add(assigneeId);
+      }
+    }
+    for (const assigneeId of assigneeIds) {
+      if (!(await assigneeInHousehold(assigneeId, scope))) {
+        res.status(403).json({ error: "Assignee not accessible" });
+        return;
+      }
+    }
+
+    const items = await db.transaction(async (tx) => tx
+      .insert(todoItemsTable)
+      .values(parsed.data.items.map((item) => ({
+        listId,
+        content: item.content,
+        dueDate: item.dueDate ?? parsed.data.defaultDueDate,
+        // Explicit per-item null clears a list-level assignment; omitted
+        // assignments inherit the list's assignee, matching list behavior.
+        assigneeId: item.assigneeId === undefined
+          ? list.assigneeId
+          : item.assigneeId === null ? null : Number(item.assigneeId),
+      })))
+      .returning());
+
+    res.status(201).json({
+      items: items.map((item) => ({
+        id: String(item.id),
+        listId: String(item.listId),
+        content: item.content,
+        completed: item.completed,
+        dueDate: item.dueDate ?? null,
+        assigneeId: item.assigneeId ? String(item.assigneeId) : null,
+        assigneeName: null,
+        createdAt: item.createdAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk add todo items");
     res.status(500).json({ error: "Internal server error" });
   }
 });

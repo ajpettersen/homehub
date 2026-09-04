@@ -7,6 +7,9 @@ import { familyMembersTable } from "./familyMembers";
 export const maintenanceTasksTable = pgTable("maintenance_tasks", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
+  // Controlled catalog identity for recurring maintenance; null remains valid
+  // for custom and legacy tasks.
+  canonicalKey: text("canonical_key"),
   description: text("description"),
   propertyId: integer("property_id").notNull().references(() => propertiesTable.id, { onDelete: "cascade" }),
   category: text("category").notNull().default("other"), // filter | water | seasonal | appliance | yard | other | cleaning

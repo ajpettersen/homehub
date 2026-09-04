@@ -17,6 +17,8 @@ import householdRouter from "./household";
 import onboardingRouter from "./onboarding";
 import recipesRouter from "./recipes";
 import peopleRouter from "./people";
+import notificationPreferencesRouter from "./notificationPreferences";
+import storesRouter from "./stores";
 import { requireApprovedHousehold } from "../middlewares/requireApprovedHousehold";
 
 const router: IRouter = Router();
@@ -31,6 +33,7 @@ router.use(familyRouter);
 router.use(propertiesRouter);
 router.use(choresRouter);
 router.use(groceryRouter);
+router.use(storesRouter);
 router.use(mealsRouter);
 router.use(todosRouter);
 router.use(maintenanceRouter);
@@ -40,5 +43,6 @@ router.use(pushTokensRouter);
 router.use(webPushRouter);
 router.use(recipesRouter);
 router.use(peopleRouter);
+router.use(notificationPreferencesRouter);
 
 export default router;

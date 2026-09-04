@@ -79,6 +79,63 @@ export const GetMealRecipeResponse = zod.object({
 
 
 /**
+ * @summary Extract a reviewable structured recipe from one recipe photo without saving it
+ */
+export const ExtractRecipeImageBody = zod.object({
+  "image": zod.string().describe('A base64 string or data URL for one PNG, JPEG, WebP, or GIF image; maximum decoded size is 8 MiB.')
+})
+
+export const extractRecipeImageResponseIngredientsItemNameMax = 300;
+
+export const extractRecipeImageResponseIngredientsItemQuantityMax = 100;
+
+export const extractRecipeImageResponseIngredientsItemCategoryMax = 80;
+
+export const extractRecipeImageResponseConfidenceMin = 0;
+export const extractRecipeImageResponseConfidenceMax = 1;
+
+
+
+export const ExtractRecipeImageResponse = zod.object({
+  "name": zod.string(),
+  "ingredients": zod.array(zod.object({
+  "name": zod.string().max(extractRecipeImageResponseIngredientsItemNameMax),
+  "quantity": zod.string().max(extractRecipeImageResponseIngredientsItemQuantityMax).optional(),
+  "category": zod.string().max(extractRecipeImageResponseIngredientsItemCategoryMax).optional()
+})),
+  "instructions": zod.array(zod.string()),
+  "servings": zod.number().nullish(),
+  "prepMinutes": zod.number().nullish(),
+  "cookMinutes": zod.number().nullish(),
+  "confidence": zod.number().min(extractRecipeImageResponseConfidenceMin).max(extractRecipeImageResponseConfidenceMax),
+  "warnings": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Generate spoken audio for a bounded recipe step without saving it
+ */
+export const readRecipeStepBodyRecipeNameMax = 200;
+
+export const readRecipeStepBodyStepNumberMax = 100;
+
+export const readRecipeStepBodyTextMax = 2000;
+
+
+
+export const ReadRecipeStepBody = zod.object({
+  "recipeName": zod.string().max(readRecipeStepBodyRecipeNameMax).optional(),
+  "stepNumber": zod.number().min(1).max(readRecipeStepBodyStepNumberMax).optional(),
+  "text": zod.string().min(1).max(readRecipeStepBodyTextMax)
+})
+
+export const ReadRecipeStepResponse = zod.object({
+  "audioBase64": zod.string(),
+  "mimeType": zod.enum(['audio/mpeg'])
+})
+
+
+/**
  * @summary Get AI meal suggestions based on meal history
  */
 export const SuggestMealsResponse = zod.object({
@@ -138,6 +195,7 @@ export const recommendMaintenanceResponseRecommendationsMax = 10;
 
 export const RecommendMaintenanceResponse = zod.object({
   "recommendations": zod.array(zod.object({
+  "canonicalKey": zod.string(),
   "title": zod.string().min(1).max(recommendMaintenanceResponseRecommendationsItemTitleMax),
   "description": zod.string().max(recommendMaintenanceResponseRecommendationsItemDescriptionMax).nullable(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
@@ -182,6 +240,7 @@ export const GetDashboardResponse = zod.object({
   "upcomingMaintenance": zod.array(zod.object({
   "id": zod.string(),
   "title": zod.string(),
+  "canonicalKey": zod.string().nullish(),
   "description": zod.string().nullish(),
   "propertyId": zod.string(),
   "propertyName": zod.string(),
@@ -344,6 +403,51 @@ export const UpdateHouseholdTabVisibilityResponse = zod.object({
 
 
 /**
+ * @summary Get household notification timezone and reminder times
+ */
+export const getNotificationPreferencesResponseTimezoneMax = 100;
+
+export const getNotificationPreferencesResponseDueReminderTimeRegExp = new RegExp('^(?:(?:0[5-9]|1[0-9]):[0-5][0-9]|20:[0-5][0-5])$');
+export const getNotificationPreferencesResponseWorkoutFollowUpTimeRegExp = new RegExp('^(?:(?:0[5-9]|1[0-9]):[0-5][0-9]|20:[0-5][0-5])$');
+
+
+export const GetNotificationPreferencesResponse = zod.object({
+  "timezone": zod.string().min(1).max(getNotificationPreferencesResponseTimezoneMax),
+  "dueReminderTime": zod.string().regex(getNotificationPreferencesResponseDueReminderTimeRegExp).describe('Local household time from 05:00 through 20:55.'),
+  "workoutFollowUpTime": zod.string().regex(getNotificationPreferencesResponseWorkoutFollowUpTimeRegExp).describe('Local household time from 05:00 through 20:55.')
+})
+
+
+/**
+ * Requires an approved family account linked to an adult.
+ * @summary Update household notification timezone and reminder times
+ */
+export const updateNotificationPreferencesBodyTimezoneMax = 100;
+
+export const updateNotificationPreferencesBodyDueReminderTimeRegExp = new RegExp('^(?:(?:0[5-9]|1[0-9]):[0-5][0-9]|20:[0-5][0-5])$');
+export const updateNotificationPreferencesBodyWorkoutFollowUpTimeRegExp = new RegExp('^(?:(?:0[5-9]|1[0-9]):[0-5][0-9]|20:[0-5][0-5])$');
+
+
+export const UpdateNotificationPreferencesBody = zod.object({
+  "timezone": zod.string().min(1).max(updateNotificationPreferencesBodyTimezoneMax),
+  "dueReminderTime": zod.string().regex(updateNotificationPreferencesBodyDueReminderTimeRegExp).describe('Local household time from 05:00 through 20:55.'),
+  "workoutFollowUpTime": zod.string().regex(updateNotificationPreferencesBodyWorkoutFollowUpTimeRegExp).describe('Local household time from 05:00 through 20:55.')
+})
+
+export const updateNotificationPreferencesResponseTimezoneMax = 100;
+
+export const updateNotificationPreferencesResponseDueReminderTimeRegExp = new RegExp('^(?:(?:0[5-9]|1[0-9]):[0-5][0-9]|20:[0-5][0-5])$');
+export const updateNotificationPreferencesResponseWorkoutFollowUpTimeRegExp = new RegExp('^(?:(?:0[5-9]|1[0-9]):[0-5][0-9]|20:[0-5][0-5])$');
+
+
+export const UpdateNotificationPreferencesResponse = zod.object({
+  "timezone": zod.string().min(1).max(updateNotificationPreferencesResponseTimezoneMax),
+  "dueReminderTime": zod.string().regex(updateNotificationPreferencesResponseDueReminderTimeRegExp).describe('Local household time from 05:00 through 20:55.'),
+  "workoutFollowUpTime": zod.string().regex(updateNotificationPreferencesResponseWorkoutFollowUpTimeRegExp).describe('Local household time from 05:00 through 20:55.')
+})
+
+
+/**
  * @summary Seed the household from setup (transactional and duplicate-safe)
  */
 export const completeOnboardingBodyRerunDefault = false;
@@ -365,6 +469,7 @@ export const CompleteOnboardingBody = zod.object({
   "groceryListName": zod.string().nullish(),
   "chores": zod.array(zod.object({
   "title": zod.string(),
+  "canonicalKey": zod.string().nullish(),
   "frequency": zod.enum(['daily', 'weekly', 'biweekly', 'monthly', 'custom'])
 })).optional(),
   "maintenanceTasks": zod.array(zod.object({
@@ -560,6 +665,7 @@ export const GetGroceryListsResponseItem = zod.object({
   "name": zod.string(),
   "propertyId": zod.string(),
   "propertyName": zod.string(),
+  "storeId": zod.string().nullable(),
   "itemCount": zod.number(),
   "checkedCount": zod.number(),
   "createdAt": zod.coerce.date()
@@ -580,6 +686,7 @@ export const CreateGroceryListResponse = zod.object({
   "name": zod.string(),
   "propertyId": zod.string(),
   "propertyName": zod.string(),
+  "storeId": zod.string().nullable(),
   "itemCount": zod.number(),
   "checkedCount": zod.number(),
   "createdAt": zod.coerce.date()
@@ -594,6 +701,170 @@ export const DeleteGroceryListParams = zod.object({
 })
 
 export const DeleteGroceryListResponse = zod.void()
+
+
+/**
+ * @summary Select a household store for a grocery list
+ */
+export const UpdateGroceryListStoreParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateGroceryListStoreBody = zod.object({
+  "storeId": zod.string()
+})
+
+export const UpdateGroceryListStoreResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "propertyId": zod.string(),
+  "propertyName": zod.string(),
+  "storeId": zod.string().nullable(),
+  "itemCount": zod.number(),
+  "checkedCount": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List household stores with departments in walking order
+ */
+export const getStoresResponseDepartmentsItemDisplayNameMax = 80;
+
+export const getStoresResponseDepartmentsItemSortOrderMin = 0;
+
+
+
+export const GetStoresResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "address": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "isDefault": zod.boolean(),
+  "departments": zod.array(zod.object({
+  "categoryKey": zod.enum(['produce', 'deli', 'meat', 'dairy', 'bread', 'grains', 'canned', 'snacks', 'frozen', 'beverages', 'household', 'other']),
+  "displayName": zod.string().min(1).max(getStoresResponseDepartmentsItemDisplayNameMax),
+  "sortOrder": zod.number().min(getStoresResponseDepartmentsItemSortOrderMin)
+})),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const GetStoresResponse = zod.array(GetStoresResponseItem)
+
+
+/**
+ * Requires an approved family account linked to an adult.
+ * @summary Create a household store
+ */
+export const createStoreBodyNameMax = 120;
+
+export const createStoreBodyAddressMax = 300;
+
+export const createStoreBodyNotesMax = 1000;
+
+export const createStoreBodyDepartmentsItemDisplayNameMax = 80;
+
+export const createStoreBodyDepartmentsMin = 12;
+export const createStoreBodyDepartmentsMax = 12;
+
+
+
+export const CreateStoreBody = zod.object({
+  "name": zod.string().min(1).max(createStoreBodyNameMax),
+  "address": zod.string().max(createStoreBodyAddressMax).nullish(),
+  "notes": zod.string().max(createStoreBodyNotesMax).nullish(),
+  "isDefault": zod.boolean(),
+  "departments": zod.array(zod.object({
+  "categoryKey": zod.enum(['produce', 'deli', 'meat', 'dairy', 'bread', 'grains', 'canned', 'snacks', 'frozen', 'beverages', 'household', 'other']),
+  "displayName": zod.string().min(1).max(createStoreBodyDepartmentsItemDisplayNameMax)
+})).min(createStoreBodyDepartmentsMin).max(createStoreBodyDepartmentsMax)
+})
+
+export const createStoreResponseDepartmentsItemDisplayNameMax = 80;
+
+export const createStoreResponseDepartmentsItemSortOrderMin = 0;
+
+
+
+export const CreateStoreResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "address": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "isDefault": zod.boolean(),
+  "departments": zod.array(zod.object({
+  "categoryKey": zod.enum(['produce', 'deli', 'meat', 'dairy', 'bread', 'grains', 'canned', 'snacks', 'frozen', 'beverages', 'household', 'other']),
+  "displayName": zod.string().min(1).max(createStoreResponseDepartmentsItemDisplayNameMax),
+  "sortOrder": zod.number().min(createStoreResponseDepartmentsItemSortOrderMin)
+})),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Requires an approved family account linked to an adult.
+ * @summary Replace a household store and its department walking order
+ */
+export const UpdateStoreParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateStoreBodyNameMax = 120;
+
+export const updateStoreBodyAddressMax = 300;
+
+export const updateStoreBodyNotesMax = 1000;
+
+export const updateStoreBodyDepartmentsItemDisplayNameMax = 80;
+
+export const updateStoreBodyDepartmentsMin = 12;
+export const updateStoreBodyDepartmentsMax = 12;
+
+
+
+export const UpdateStoreBody = zod.object({
+  "name": zod.string().min(1).max(updateStoreBodyNameMax),
+  "address": zod.string().max(updateStoreBodyAddressMax).nullish(),
+  "notes": zod.string().max(updateStoreBodyNotesMax).nullish(),
+  "isDefault": zod.boolean(),
+  "departments": zod.array(zod.object({
+  "categoryKey": zod.enum(['produce', 'deli', 'meat', 'dairy', 'bread', 'grains', 'canned', 'snacks', 'frozen', 'beverages', 'household', 'other']),
+  "displayName": zod.string().min(1).max(updateStoreBodyDepartmentsItemDisplayNameMax)
+})).min(updateStoreBodyDepartmentsMin).max(updateStoreBodyDepartmentsMax)
+})
+
+export const updateStoreResponseDepartmentsItemDisplayNameMax = 80;
+
+export const updateStoreResponseDepartmentsItemSortOrderMin = 0;
+
+
+
+export const UpdateStoreResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "address": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "isDefault": zod.boolean(),
+  "departments": zod.array(zod.object({
+  "categoryKey": zod.enum(['produce', 'deli', 'meat', 'dairy', 'bread', 'grains', 'canned', 'snacks', 'frozen', 'beverages', 'household', 'other']),
+  "displayName": zod.string().min(1).max(updateStoreResponseDepartmentsItemDisplayNameMax),
+  "sortOrder": zod.number().min(updateStoreResponseDepartmentsItemSortOrderMin)
+})),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Requires an approved family account linked to an adult.
+ * @summary Delete a non-final household store
+ */
+export const DeleteStoreParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteStoreResponse = zod.void()
 
 
 /**
@@ -829,14 +1100,38 @@ export const GetRecipesQueryParams = zod.object({
   "propertyId": zod.coerce.string()
 })
 
+export const getRecipesResponseNameMax = 300;
+
+export const getRecipesResponseSourceUrlMax = 2048;
+
+export const getRecipesResponseNotesMax = 10000;
+
+export const getRecipesResponseIngredientsItemNameMax = 300;
+
+export const getRecipesResponseIngredientsItemQuantityMax = 100;
+
+export const getRecipesResponseIngredientsItemCategoryMax = 80;
+
+
+
 export const GetRecipesResponseItem = zod.object({
   "id": zod.string(),
   "propertyId": zod.string(),
-  "name": zod.string(),
-  "sourceUrl": zod.string().nullish(),
-  "notes": zod.string().nullish(),
+  "name": zod.string().max(getRecipesResponseNameMax),
+  "sourceUrl": zod.string().max(getRecipesResponseSourceUrlMax).nullish(),
+  "notes": zod.string().max(getRecipesResponseNotesMax).nullish(),
   "timesCooked": zod.number(),
   "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "ingredients": zod.array(zod.object({
+  "name": zod.string().max(getRecipesResponseIngredientsItemNameMax),
+  "quantity": zod.string().max(getRecipesResponseIngredientsItemQuantityMax).optional(),
+  "category": zod.string().max(getRecipesResponseIngredientsItemCategoryMax).optional()
+})),
+  "instructions": zod.array(zod.string()),
+  "servings": zod.number().nullish(),
+  "prepMinutes": zod.number().nullish(),
+  "cookMinutes": zod.number().nullish(),
+  "sourceType": zod.enum(['manual', 'image', 'url', 'ai']).nullish(),
   "createdAt": zod.coerce.date()
 })
 export const GetRecipesResponse = zod.array(GetRecipesResponseItem)
@@ -845,21 +1140,83 @@ export const GetRecipesResponse = zod.array(GetRecipesResponseItem)
 /**
  * @summary Save a new recipe to the cookbook
  */
+export const createRecipeBodyNameMax = 300;
+
+export const createRecipeBodySourceUrlMax = 2048;
+
+export const createRecipeBodyNotesMax = 10000;
+
+export const createRecipeBodyIngredientsItemNameMax = 300;
+
+export const createRecipeBodyIngredientsItemQuantityMax = 100;
+
+export const createRecipeBodyIngredientsItemCategoryMax = 80;
+
+export const createRecipeBodyIngredientsMax = 100;
+
+export const createRecipeBodyInstructionsItemMax = 2000;
+
+export const createRecipeBodyInstructionsMax = 100;
+
+export const createRecipeBodyServingsMax = 100;
+
+export const createRecipeBodyPrepMinutesMin = 0;
+export const createRecipeBodyPrepMinutesMax = 1440;
+
+export const createRecipeBodyCookMinutesMin = 0;
+export const createRecipeBodyCookMinutesMax = 1440;
+
+
+
 export const CreateRecipeBody = zod.object({
-  "name": zod.string(),
+  "name": zod.string().max(createRecipeBodyNameMax),
   "propertyId": zod.string(),
-  "sourceUrl": zod.string().nullish(),
-  "notes": zod.string().nullish()
+  "sourceUrl": zod.string().max(createRecipeBodySourceUrlMax).nullish(),
+  "notes": zod.string().max(createRecipeBodyNotesMax).nullish(),
+  "ingredients": zod.array(zod.object({
+  "name": zod.string().max(createRecipeBodyIngredientsItemNameMax),
+  "quantity": zod.string().max(createRecipeBodyIngredientsItemQuantityMax).optional(),
+  "category": zod.string().max(createRecipeBodyIngredientsItemCategoryMax).optional()
+})).max(createRecipeBodyIngredientsMax).optional(),
+  "instructions": zod.array(zod.string().max(createRecipeBodyInstructionsItemMax)).max(createRecipeBodyInstructionsMax).optional(),
+  "servings": zod.number().min(1).max(createRecipeBodyServingsMax).optional(),
+  "prepMinutes": zod.number().min(createRecipeBodyPrepMinutesMin).max(createRecipeBodyPrepMinutesMax).optional(),
+  "cookMinutes": zod.number().min(createRecipeBodyCookMinutesMin).max(createRecipeBodyCookMinutesMax).optional(),
+  "sourceType": zod.enum(['manual', 'image', 'url', 'ai']).optional()
 })
+
+export const createRecipeResponseNameMax = 300;
+
+export const createRecipeResponseSourceUrlMax = 2048;
+
+export const createRecipeResponseNotesMax = 10000;
+
+export const createRecipeResponseIngredientsItemNameMax = 300;
+
+export const createRecipeResponseIngredientsItemQuantityMax = 100;
+
+export const createRecipeResponseIngredientsItemCategoryMax = 80;
+
+
 
 export const CreateRecipeResponse = zod.object({
   "id": zod.string(),
   "propertyId": zod.string(),
-  "name": zod.string(),
-  "sourceUrl": zod.string().nullish(),
-  "notes": zod.string().nullish(),
+  "name": zod.string().max(createRecipeResponseNameMax),
+  "sourceUrl": zod.string().max(createRecipeResponseSourceUrlMax).nullish(),
+  "notes": zod.string().max(createRecipeResponseNotesMax).nullish(),
   "timesCooked": zod.number(),
   "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "ingredients": zod.array(zod.object({
+  "name": zod.string().max(createRecipeResponseIngredientsItemNameMax),
+  "quantity": zod.string().max(createRecipeResponseIngredientsItemQuantityMax).optional(),
+  "category": zod.string().max(createRecipeResponseIngredientsItemCategoryMax).optional()
+})),
+  "instructions": zod.array(zod.string()),
+  "servings": zod.number().nullish(),
+  "prepMinutes": zod.number().nullish(),
+  "cookMinutes": zod.number().nullish(),
+  "sourceType": zod.enum(['manual', 'image', 'url', 'ai']).nullish(),
   "createdAt": zod.coerce.date()
 })
 
@@ -871,22 +1228,84 @@ export const UpdateRecipeParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const updateRecipeBodyNameMax = 300;
+
+export const updateRecipeBodySourceUrlMax = 2048;
+
+export const updateRecipeBodyNotesMax = 10000;
+
+export const updateRecipeBodyIngredientsItemNameMax = 300;
+
+export const updateRecipeBodyIngredientsItemQuantityMax = 100;
+
+export const updateRecipeBodyIngredientsItemCategoryMax = 80;
+
+export const updateRecipeBodyIngredientsMax = 100;
+
+export const updateRecipeBodyInstructionsItemMax = 2000;
+
+export const updateRecipeBodyInstructionsMax = 100;
+
+export const updateRecipeBodyServingsMax = 100;
+
+export const updateRecipeBodyPrepMinutesMin = 0;
+export const updateRecipeBodyPrepMinutesMax = 1440;
+
+export const updateRecipeBodyCookMinutesMin = 0;
+export const updateRecipeBodyCookMinutesMax = 1440;
+
+
+
 export const UpdateRecipeBody = zod.object({
-  "name": zod.string().optional(),
-  "sourceUrl": zod.string().nullish(),
-  "notes": zod.string().nullish(),
+  "name": zod.string().max(updateRecipeBodyNameMax).optional(),
+  "sourceUrl": zod.string().max(updateRecipeBodySourceUrlMax).nullish(),
+  "notes": zod.string().max(updateRecipeBodyNotesMax).nullish(),
   "timesCooked": zod.number().optional(),
-  "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish()
+  "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "ingredients": zod.array(zod.object({
+  "name": zod.string().max(updateRecipeBodyIngredientsItemNameMax),
+  "quantity": zod.string().max(updateRecipeBodyIngredientsItemQuantityMax).optional(),
+  "category": zod.string().max(updateRecipeBodyIngredientsItemCategoryMax).optional()
+})).max(updateRecipeBodyIngredientsMax).optional(),
+  "instructions": zod.array(zod.string().max(updateRecipeBodyInstructionsItemMax)).max(updateRecipeBodyInstructionsMax).optional(),
+  "servings": zod.number().min(1).max(updateRecipeBodyServingsMax).nullish(),
+  "prepMinutes": zod.number().min(updateRecipeBodyPrepMinutesMin).max(updateRecipeBodyPrepMinutesMax).nullish(),
+  "cookMinutes": zod.number().min(updateRecipeBodyCookMinutesMin).max(updateRecipeBodyCookMinutesMax).nullish(),
+  "sourceType": zod.enum(['manual', 'image', 'url', 'ai']).nullish()
 })
+
+export const updateRecipeResponseNameMax = 300;
+
+export const updateRecipeResponseSourceUrlMax = 2048;
+
+export const updateRecipeResponseNotesMax = 10000;
+
+export const updateRecipeResponseIngredientsItemNameMax = 300;
+
+export const updateRecipeResponseIngredientsItemQuantityMax = 100;
+
+export const updateRecipeResponseIngredientsItemCategoryMax = 80;
+
+
 
 export const UpdateRecipeResponse = zod.object({
   "id": zod.string(),
   "propertyId": zod.string(),
-  "name": zod.string(),
-  "sourceUrl": zod.string().nullish(),
-  "notes": zod.string().nullish(),
+  "name": zod.string().max(updateRecipeResponseNameMax),
+  "sourceUrl": zod.string().max(updateRecipeResponseSourceUrlMax).nullish(),
+  "notes": zod.string().max(updateRecipeResponseNotesMax).nullish(),
   "timesCooked": zod.number(),
   "aggregateRating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "ingredients": zod.array(zod.object({
+  "name": zod.string().max(updateRecipeResponseIngredientsItemNameMax),
+  "quantity": zod.string().max(updateRecipeResponseIngredientsItemQuantityMax).optional(),
+  "category": zod.string().max(updateRecipeResponseIngredientsItemCategoryMax).optional()
+})),
+  "instructions": zod.array(zod.string()),
+  "servings": zod.number().nullish(),
+  "prepMinutes": zod.number().nullish(),
+  "cookMinutes": zod.number().nullish(),
+  "sourceType": zod.enum(['manual', 'image', 'url', 'ai']).nullish(),
   "createdAt": zod.coerce.date()
 })
 
@@ -1268,6 +1687,42 @@ export const AddTodoItemResponse = zod.object({
   "assigneeId": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Add one-off items to a to-do list atomically
+ */
+export const BulkAddTodoItemsParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const bulkAddTodoItemsBodyItemsItemContentMax = 500;
+
+export const bulkAddTodoItemsBodyItemsMax = 50;
+
+
+
+export const BulkAddTodoItemsBody = zod.object({
+  "defaultDueDate": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "content": zod.string().min(1).max(bulkAddTodoItemsBodyItemsItemContentMax),
+  "dueDate": zod.coerce.date().optional(),
+  "assigneeId": zod.string().nullish()
+})).min(1).max(bulkAddTodoItemsBodyItemsMax)
+})
+
+export const BulkAddTodoItemsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "listId": zod.string(),
+  "content": zod.string(),
+  "completed": zod.boolean(),
+  "dueDate": zod.coerce.date().nullish(),
+  "assigneeId": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}))
 })
 
 
@@ -2786,12 +3241,15 @@ export const MergeDuplicateAdultResponse = zod.object({
  * @summary List all maintenance tasks
  */
 export const GetMaintenanceTasksQueryParams = zod.object({
-  "propertyId": zod.coerce.string().optional()
+  "propertyId": zod.coerce.string().optional(),
+  "includeCompleted": zod.coerce.boolean().optional().describe('Include completed one-time maintenance records for management history. Defaults to false.'),
+  "timezone": zod.coerce.string().optional().describe('IANA timezone used to calculate the local calendar date; defaults to UTC for legacy clients.')
 })
 
 export const GetMaintenanceTasksResponseItem = zod.object({
   "id": zod.string(),
   "title": zod.string(),
+  "canonicalKey": zod.string().nullish(),
   "description": zod.string().nullish(),
   "propertyId": zod.string(),
   "propertyName": zod.string(),
@@ -2818,6 +3276,7 @@ export const GetMaintenanceTasksResponse = zod.array(GetMaintenanceTasksResponse
  */
 export const CreateMaintenanceTaskBody = zod.object({
   "title": zod.string(),
+  "canonicalKey": zod.string().nullish(),
   "description": zod.string().nullish(),
   "propertyId": zod.string(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']),
@@ -2826,12 +3285,14 @@ export const CreateMaintenanceTaskBody = zod.object({
   "scheduleType": zod.enum(['recurring', 'one-time']),
   "isCleanerTask": zod.boolean().optional(),
   "startDate": zod.coerce.date().nullish(),
-  "nextDueDate": zod.coerce.date()
+  "nextDueDate": zod.coerce.date().optional(),
+  "timezone": zod.string().optional().describe('IANA timezone used to derive a recurring task\'s date when startDate is omitted.')
 })
 
 export const CreateMaintenanceTaskResponse = zod.object({
   "id": zod.string(),
   "title": zod.string(),
+  "canonicalKey": zod.string().nullish(),
   "description": zod.string().nullish(),
   "propertyId": zod.string(),
   "propertyName": zod.string(),
@@ -2861,6 +3322,7 @@ export const UpdateMaintenanceTaskParams = zod.object({
 
 export const UpdateMaintenanceTaskBody = zod.object({
   "title": zod.string().optional(),
+  "canonicalKey": zod.string().nullish(),
   "description": zod.string().nullish(),
   "category": zod.enum(['filter', 'water', 'seasonal', 'appliance', 'yard', 'other', 'cleaning']).optional(),
   "assigneeId": zod.string().nullish(),
@@ -2868,12 +3330,14 @@ export const UpdateMaintenanceTaskBody = zod.object({
   "frequencyDays": zod.number().nullish(),
   "scheduleType": zod.enum(['recurring', 'one-time']).optional(),
   "startDate": zod.coerce.date().nullish(),
-  "nextDueDate": zod.coerce.date().optional()
+  "nextDueDate": zod.coerce.date().optional(),
+  "timezone": zod.string().optional().describe('IANA timezone used to derive the local comparison date when recalculating recurrence.')
 })
 
 export const UpdateMaintenanceTaskResponse = zod.object({
   "id": zod.string(),
   "title": zod.string(),
+  "canonicalKey": zod.string().nullish(),
   "description": zod.string().nullish(),
   "propertyId": zod.string(),
   "propertyName": zod.string(),
@@ -2912,12 +3376,15 @@ export const CompleteMaintenanceTaskParams = zod.object({
 })
 
 export const CompleteMaintenanceTaskBody = zod.object({
-  "completedBy": zod.string().nullish()
+  "completedBy": zod.string().nullish(),
+  "completedOn": zod.coerce.date().optional().describe('Calendar date on which work was completed.'),
+  "timezone": zod.string().optional().describe('IANA timezone used only when completedOn is omitted.')
 })
 
 export const CompleteMaintenanceTaskResponse = zod.object({
   "id": zod.string(),
   "title": zod.string(),
+  "canonicalKey": zod.string().nullish(),
   "description": zod.string().nullish(),
   "propertyId": zod.string(),
   "propertyName": zod.string(),

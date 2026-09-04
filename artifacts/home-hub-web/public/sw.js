@@ -1,7 +1,24 @@
-const APP_ROOT = "/";
+const APP_ROOT_URL = new URL("./", self.registration.scope).href;
+const APP_ROOT = new URL(APP_ROOT_URL).pathname;
+const HOMEHUB_CACHE_PREFIX = "homehub-web-";
 
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((cacheNames) => Promise.all(
+        cacheNames
+          .filter((cacheName) => cacheName.startsWith(HOMEHUB_CACHE_PREFIX))
+          .map((cacheName) => caches.delete(cacheName)),
+      ))
+      .then(() => self.clients.claim()),
+  );
+});
 
 self.addEventListener("push", (event) => {
   let data = {};
@@ -26,7 +43,7 @@ self.addEventListener("notificationclick", (event) => {
   const targetUrl = new URL(event.notification.data?.url || APP_ROOT, self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      const existing = clients.find((client) => client.url.startsWith(self.location.origin));
+      const existing = clients.find((client) => client.url.startsWith(APP_ROOT_URL));
       if (existing) {
         existing.navigate(targetUrl);
         return existing.focus();

@@ -3,7 +3,10 @@ import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { pushTokensTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
-import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
+import {
+  getApprovedHouseholdScope,
+  requireApprovedLinkedAdult,
+} from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
 
@@ -20,7 +23,8 @@ router.post("/push-tokens", async (req, res) => {
   if (!clerkId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  const scope = getApprovedHouseholdScope(res);
+  const scope = requireApprovedLinkedAdult(res);
+  if (!scope) return;
 
   const { token, deviceLabel } = req.body as { token?: unknown; deviceLabel?: unknown };
   if (!isValidToken(token)) {

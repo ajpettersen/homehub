@@ -11,6 +11,7 @@ import type { MaintenanceTaskScheduleType } from './maintenanceTaskScheduleType'
 export interface MaintenanceTask {
   id: string;
   title: string;
+  canonicalKey?: string | null;
   description?: string | null;
   propertyId: string;
   propertyName: string;

@@ -9,10 +9,19 @@ import {
   useListUsers, getListUsersQueryKey, useUpdateUserProfile,
   useListHouseholdJoinRequests, getListHouseholdJoinRequestsQueryKey, useDecideHouseholdJoinRequest,
   useListHouseholdInvites, getListHouseholdInvitesQueryKey, useCreateHouseholdInvite, useRevokeHouseholdInvite,
-  useMergeDuplicateAdult,
+  useMergeDuplicateAdult, useGetNotificationPreferences, useUpdateNotificationPreferences,
+  getGetNotificationPreferencesQueryKey,
   type HomeHubWebTab,
   type CreateMaintenanceTaskInputCategory,
   type UpdateMaintenanceTaskInputCategory,
+  useGetStores,
+  getGetStoresQueryKey,
+  useCreateStore,
+  useUpdateStore,
+  useDeleteStore,
+  type HouseholdStore,
+  type StoreInput,
+  type StoreInputDepartmentsItem,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -31,7 +40,7 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
   ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
-  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2
+  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2, Store, ChevronUp
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import {
@@ -43,6 +52,8 @@ import {
 } from "@/lib/webPush";
 
 import { YourProfile } from "@/components/settings/YourProfile";
+import { MaintenanceSuggestions } from "@/pages/Maintenance";
+import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
 
 // ── colour palette ───────────────────────────────────────────────────────────
 export const COLORS = [
@@ -84,7 +95,7 @@ const defaultTaskForm = (): TaskFormState => ({
   category: "other",
   scheduleType: "recurring",
   frequencyDays: 30,
-  dueDate: new Date().toISOString().split("T")[0],
+  dueDate: getLocalDateOnly(),
   description: "",
   assigneeId: "",
 });
@@ -344,10 +355,10 @@ function AppearanceAndTabsSection() {
               description="Choose the section opened first when you return to Settings."
               value={tab.settings.startSection}
               options={[
-                { value: "members", label: "Members" }, { value: "properties", label: "Properties" },
+                { value: "none", label: "All sections collapsed" }, { value: "properties", label: "Properties" },
                 { value: "notifications", label: "Notifications" }, { value: "memory", label: "AI memory" },
               ]}
-              onChange={value => setTabPreference("settings", "startSection", value as "members" | "properties" | "notifications" | "memory")}
+              onChange={value => setTabPreference("settings", "startSection", value as "none" | "properties" | "notifications" | "memory")}
             />
           </div>
         </div>
@@ -357,8 +368,8 @@ function AppearanceAndTabsSection() {
 }
 
 // ── TaskForm ──────────────────────────────────────────────────────────────────
-function TaskForm({ initial, members, onSave, onCancel, saving }: {
-  initial: TaskFormState; members: any[]; onSave: (d: TaskFormState) => void; onCancel: () => void; saving: boolean;
+function TaskForm({ initial, members, onSave, onCancel, saving, creationOnly = false }: {
+  initial: TaskFormState; members: any[]; onSave: (d: TaskFormState) => void; onCancel: () => void; saving: boolean; creationOnly?: boolean;
 }) {
   const [form, setForm] = useState<TaskFormState>(initial);
   const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm(f => ({ ...f, [k]: v }));
@@ -384,7 +395,7 @@ function TaskForm({ initial, members, onSave, onCancel, saving }: {
           </button>
         ))}
       </div>
-      <div>
+      {!creationOnly && <div>
         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Schedule</label>
         <div className="grid grid-cols-2 gap-2">
           {[
@@ -405,9 +416,9 @@ function TaskForm({ initial, members, onSave, onCancel, saving }: {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
       <div className="flex items-center gap-2">
-        {form.scheduleType === "recurring" ? (
+        {(creationOnly || form.scheduleType === "recurring") ? (
           <>
             <Repeat className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             <span className="text-xs text-muted-foreground">Every</span>
@@ -416,6 +427,15 @@ function TaskForm({ initial, members, onSave, onCancel, saving }: {
               className="w-16 bg-background border border-border rounded-lg px-2 py-1 text-sm font-bold text-center focus:outline-none focus:border-primary"
             />
             <span className="text-xs text-muted-foreground">days</span>
+            <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+              Start
+              <input
+                type="date"
+                value={form.dueDate}
+                onChange={e => set("dueDate", e.target.value)}
+                className="rounded-lg border border-border bg-background px-2 py-1 text-sm font-bold focus:outline-none focus:border-primary"
+              />
+            </label>
           </>
         ) : (
           <>
@@ -467,12 +487,15 @@ function TaskForm({ initial, members, onSave, onCancel, saving }: {
   );
 }
 
-// ── PropertyTasksSection ──────────────────────────────────────────────────────
-function PropertyTasksSection({ propertyId }: { propertyId: string }) {
+// ── Recurring maintenance ──────────────────────────────────────────────────────
+function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoToTasks: () => void }) {
+  const propertyId = property.id;
+  const timezone = getResolvedTimeZone();
+  const maintenanceQuery = { propertyId, includeCompleted: true, timezone };
   const queryClient = useQueryClient();
   const { data: tasks, isLoading } = useGetMaintenanceTasks(
-    { propertyId },
-    { query: { queryKey: getGetMaintenanceTasksQueryKey({ propertyId }) } }
+    maintenanceQuery,
+    { query: { queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) } }
   );
   const { data: members } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const createTask = useCreateMaintenanceTask();
@@ -481,8 +504,9 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
 
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey({ propertyId }) });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) });
 
   const handleAdd = (data: TaskFormState) => {
     createTask.mutate(
@@ -495,7 +519,10 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           description: data.description || undefined,
           propertyId,
           assigneeId: data.assigneeId || null,
-          nextDueDate: data.dueDate,
+          // The server needs a due date; an omitted optional anchor starts today.
+          nextDueDate: data.dueDate || getLocalDateOnly(),
+          startDate: data.scheduleType === "recurring" ? data.dueDate || getLocalDateOnly() : null,
+          timezone,
         },
       },
       { onSuccess: () => { invalidate(); setAdding(false); } }
@@ -514,6 +541,7 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           nextDueDate: data.dueDate,
           description: data.description || undefined,
           assigneeId: data.assigneeId || null,
+          ...(data.scheduleType === "recurring" && { timezone }),
         },
       },
       { onSuccess: () => { invalidate(); setEditingId(null); } }
@@ -530,12 +558,26 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 rounded-lg bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Create repeating upkeep here. Existing one-time records remain available to edit; add new one-off items in Tasks.
+        </p>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button type="button" onClick={() => setSuggesting(true)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5">
+            <Sparkles className="h-3.5 w-3.5" /> Suggestions
+          </button>
+          <button type="button" onClick={onGoToTasks} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-foreground hover:bg-background">
+            <ClipboardList className="h-3.5 w-3.5" /> New one-off task
+          </button>
+        </div>
+      </div>
+      {suggesting && <MaintenanceSuggestions property={property} timezone={timezone} onClose={() => setSuggesting(false)} onCreated={invalidate} />}
       {tasks?.length === 0 && !adding && (
-        <p className="text-xs text-muted-foreground py-2 text-center">No tasks yet — add one below.</p>
+        <p className="text-xs text-muted-foreground py-2 text-center">No maintenance records yet. Create a recurring schedule or use Suggestions.</p>
       )}
 
-      {tasks?.map(task => {
+      {tasks?.filter(task => !(task.scheduleType === "one-time" && task.isCompleted)).map(task => {
         const cat = getCat(task.category);
         if (editingId === task.id) {
           return (
@@ -593,6 +635,60 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           </div>
         );
       })}
+      {(tasks ?? []).some(task => task.scheduleType === "one-time" && task.isCompleted) && (
+        <div className="border-t border-border pt-3">
+          <p className="mb-1 px-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Completed one-time history
+          </p>
+          <p className="mb-2 px-3 text-xs text-muted-foreground">
+            These completed records are kept for reference. Edit one to reopen it.
+          </p>
+          {tasks?.filter(task => task.scheduleType === "one-time" && task.isCompleted).map(task => {
+            const cat = getCat(task.category);
+            if (editingId === task.id) {
+              return (
+                <TaskForm
+                  key={task.id}
+                  members={members ?? []}
+                  initial={{
+                    title: task.title,
+                    category: task.category,
+                    scheduleType: task.scheduleType,
+                    frequencyDays: task.frequencyDays ?? 30,
+                    dueDate: task.nextDueDate,
+                    description: task.description ?? "",
+                    assigneeId: task.assigneeId ?? "",
+                  }}
+                  onSave={data => handleEdit(task.id, data)}
+                  onCancel={() => setEditingId(null)}
+                  saving={updateTask.isPending}
+                />
+              );
+            }
+            return (
+              <div key={task.id} className="group flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors">
+                <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${cat.bg}`}>
+                  <cat.Icon className={`w-3 h-3 ${cat.color}`} />
+                </div>
+                <span className="text-sm font-medium flex-1 min-w-0 truncate">{task.title}</span>
+                <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Completed
+                </span>
+                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+                  <button onClick={() => setEditingId(task.id)}
+                    className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors">
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                  <button onClick={() => handleDelete(task.id, task.title)}
+                    className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {adding ? (
         <TaskForm
@@ -601,13 +697,14 @@ function PropertyTasksSection({ propertyId }: { propertyId: string }) {
           onSave={handleAdd}
           onCancel={() => setAdding(false)}
           saving={createTask.isPending}
+          creationOnly
         />
       ) : (
         <button
           onClick={() => setAdding(true)}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 text-muted-foreground text-xs font-medium transition-all group">
           <Plus className="w-3.5 h-3.5 text-primary/60 group-hover:text-primary" />
-          Add task
+           Add recurring maintenance
         </button>
       )}
     </div>
@@ -684,7 +781,7 @@ function NewPropertyForm({ onSave, onCancel, saving }: {
   );
 }
 
-function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canManage, isDefault }: {
+function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canManage, isDefault, onGoToTasks }: {
   property: any;
   onSaveInfo: (data: PropertyFormState) => void;
   onDelete: () => Promise<void>;
@@ -692,6 +789,7 @@ function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canMana
   deleting: boolean;
   canManage: boolean;
   isDefault: boolean;
+  onGoToTasks: () => void;
 }) {
   const baseUrl = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
   const streetViewSrc = `${baseUrl}/api/properties/${property.id}/streetview`;
@@ -851,15 +949,15 @@ function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canMana
       <button type="button" onClick={() => setTasksOpen(v => !v)}
         className="w-full flex items-center justify-between px-4 py-2.5 border-t border-border hover:bg-muted/30 transition-colors text-sm">
         <span className="flex items-center gap-2 font-semibold text-foreground/70">
-          <ClipboardList className="w-3.5 h-3.5 text-primary/50" />
-          Maintenance Tasks
+          <Repeat className="w-3.5 h-3.5 text-primary/50" />
+          Recurring maintenance
         </span>
         <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${tasksOpen ? "rotate-180" : ""}`} />
       </button>
 
       {tasksOpen && (
         <div className="px-3 pb-3 border-t border-border/50 pt-1">
-          <PropertyTasksSection propertyId={property.id} />
+          <PropertyTasksSection property={property} onGoToTasks={onGoToTasks} />
         </div>
       )}
       <AlertDialog open={confirmDelete} onOpenChange={open => { if (!deleting) setConfirmDelete(open); }}>
@@ -1134,7 +1232,7 @@ function WebNotificationsSection() {
           </p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {standalone
-              ? "HomeHub can alert this phone about chores and maintenance even when the app is closed."
+              ? "HomeHub can alert this phone about dated Tasks, chores, recurring maintenance, and workout check-ins even when the app is closed."
               : "For the best phone experience—especially on iPhone—use Share → Add to Home Screen, open that HomeHub icon, then turn notifications on here."}
           </p>
         </div>
@@ -1160,6 +1258,150 @@ function WebNotificationsSection() {
         {message ?? (checking ? "Checking this phone…" : enabled ? "Notifications are on for this phone." : "Notifications are off for this phone.")}
       </p>
     </div>
+  );
+}
+
+const COMMON_US_TIME_ZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+];
+
+function getTimeZoneLabel(timeZone: string) {
+  try {
+    const name = new Intl.DateTimeFormat(undefined, { timeZone, timeZoneName: "long" })
+      .formatToParts(new Date())
+      .find(part => part.type === "timeZoneName")?.value;
+    return name ? `${timeZone.replace(/_/g, " ")} (${name})` : timeZone.replace(/_/g, " ");
+  } catch {
+    return timeZone.replace(/_/g, " ");
+  }
+}
+
+function getFriendlyTime(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return time;
+  const date = new Date(2000, 0, 1, hours, minutes);
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function NotificationScheduleSection({ canManageSchedule }: { canManageSchedule: boolean }) {
+  const queryClient = useQueryClient();
+  const deviceTimeZone = getResolvedTimeZone();
+  const {
+    data: preferences,
+    isLoading,
+    isError,
+    error: loadError,
+  } = useGetNotificationPreferences({ query: { queryKey: getGetNotificationPreferencesQueryKey() } });
+  const updatePreferences = useUpdateNotificationPreferences();
+  const [timezone, setTimezone] = useState(deviceTimeZone);
+  const [dueReminderTime, setDueReminderTime] = useState("08:00");
+  const [workoutFollowUpTime, setWorkoutFollowUpTime] = useState("08:00");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!preferences) return;
+    setTimezone(preferences.timezone || deviceTimeZone);
+    setDueReminderTime(preferences.dueReminderTime || "08:00");
+    setWorkoutFollowUpTime(preferences.workoutFollowUpTime || "08:00");
+  }, [preferences, deviceTimeZone]);
+
+  const timeZones = React.useMemo(() => {
+    let supported: string[] = [];
+    try {
+      const supportedValuesOf = (Intl as typeof Intl & {
+        supportedValuesOf?: (key: "timeZone") => string[];
+      }).supportedValuesOf;
+      supported = supportedValuesOf ? supportedValuesOf("timeZone") : [];
+    } catch {
+      supported = [];
+    }
+    return Array.from(new Set([deviceTimeZone, timezone, ...COMMON_US_TIME_ZONES, ...supported]));
+  }, [deviceTimeZone, timezone]);
+
+  const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaveMessage(null);
+    try {
+      await updatePreferences.mutateAsync({
+        data: { timezone, dueReminderTime, workoutFollowUpTime },
+      });
+      await queryClient.invalidateQueries({ queryKey: getGetNotificationPreferencesQueryKey() });
+      setSaveMessage("Household notification schedule saved.");
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : "Could not save the household notification schedule.");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3" role="status" aria-label="Loading household notification schedule">
+        <div className="h-16 animate-pulse rounded-xl bg-muted" />
+        <div className="h-12 animate-pulse rounded-xl bg-muted" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+        Could not load the household notification schedule. {loadError instanceof Error ? loadError.message : "Please try again."}
+      </div>
+    );
+  }
+
+  const current = preferences ?? { timezone: deviceTimeZone, dueReminderTime: "08:00", workoutFollowUpTime: "08:00" };
+  if (!canManageSchedule) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground" data-testid="text-notification-schedule-read-only">
+          You can view this household schedule, but only an approved linked family adult can change it. These times apply to every family device.
+        </div>
+        <dl className="grid gap-2 rounded-xl border border-border bg-background/60 p-3 text-sm sm:grid-cols-3">
+          <div><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Household time zone</dt><dd className="mt-1 font-semibold text-foreground" data-testid="text-notification-timezone">{getTimeZoneLabel(current.timezone)}</dd></div>
+          <div><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Due-date reminders</dt><dd className="mt-1 font-semibold text-foreground" data-testid="text-due-reminder-time">{getFriendlyTime(current.dueReminderTime)}</dd></div>
+          <div><dt className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Workout follow-up</dt><dd className="mt-1 font-semibold text-foreground" data-testid="text-workout-follow-up-time">{getFriendlyTime(current.workoutFollowUpTime)}</dd></div>
+        </dl>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSave} className="space-y-4">
+      <div>
+        <label htmlFor="notification-timezone" className="text-sm font-bold text-foreground">Household time zone</label>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">This is the clock used for reminders on every family device.</p>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <select id="notification-timezone" value={timezone} onChange={event => setTimezone(event.target.value)} data-testid="select-notification-timezone" className="min-h-11 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+            {timeZones.map(zone => <option key={zone} value={zone}>{getTimeZoneLabel(zone)}</option>)}
+          </select>
+          <button type="button" onClick={() => setTimezone(deviceTimeZone)} data-testid="button-use-device-timezone" className="min-h-11 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold text-foreground hover:bg-muted">
+            Use this device time zone
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-border bg-background/60 p-3">
+          <label htmlFor="due-reminder-time" className="text-sm font-bold text-foreground">Due-date reminder time</label>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Dated Tasks, chores, and recurring maintenance reminders use this time. Default: 8:00 AM.</p>
+          <input id="due-reminder-time" type="time" value={dueReminderTime} onChange={event => setDueReminderTime(event.target.value)} required data-testid="input-due-reminder-time" className="mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
+        </div>
+        <div className="rounded-xl border border-border bg-background/60 p-3">
+          <label htmlFor="workout-follow-up-time" className="text-sm font-bold text-foreground">Workout follow-up time</label>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Workout check-ins arrive the following morning because workouts currently have scheduled dates, not start times.</p>
+          <input id="workout-follow-up-time" type="time" value={workoutFollowUpTime} onChange={event => setWorkoutFollowUpTime(event.target.value)} required data-testid="input-workout-follow-up-time" className="mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
+        </div>
+      </div>
+      <button type="submit" disabled={updatePreferences.isPending} data-testid="button-save-notification-schedule" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 sm:w-auto">
+        {updatePreferences.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+        {updatePreferences.isPending ? "Saving schedule…" : "Save schedule"}
+      </button>
+      {saveMessage && <p role={saveMessage.startsWith("Household") ? "status" : "alert"} data-testid="status-notification-schedule-save" className={`text-xs font-medium ${saveMessage.startsWith("Household") ? "text-green-700" : "text-destructive"}`}>{saveMessage}</p>}
+    </form>
   );
 }
 
@@ -1704,7 +1946,320 @@ function MergeDuplicateAdultsSection({ familyMembers }: { familyMembers: any[] }
   );
 }
 
+
+// ── Stores ────────────────────────────────────────────────────────────────────
+function StoreForm({ initial, onSave, onCancel, saving }: {
+  initial?: HouseholdStore;
+  onSave: (data: StoreInput) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const DEFAULT_DEPARTMENTS: StoreInputDepartmentsItem[] = [
+    { categoryKey: "produce", displayName: "Produce" },
+    { categoryKey: "deli", displayName: "Deli & Lunch Meat" },
+    { categoryKey: "meat", displayName: "Meat & Seafood" },
+    { categoryKey: "dairy", displayName: "Dairy & Eggs" },
+    { categoryKey: "bread", displayName: "Bread & Bakery" },
+    { categoryKey: "grains", displayName: "Grains & Pasta" },
+    { categoryKey: "canned", displayName: "Canned & Pantry" },
+    { categoryKey: "snacks", displayName: "Snacks" },
+    { categoryKey: "frozen", displayName: "Frozen" },
+    { categoryKey: "beverages", displayName: "Beverages" },
+    { categoryKey: "household", displayName: "Household" },
+    { categoryKey: "other", displayName: "Other" },
+  ];
+
+  const [name, setName] = useState(initial?.name ?? "");
+  const [address, setAddress] = useState(initial?.address ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
+  const [departments, setDepartments] = useState<StoreInputDepartmentsItem[]>(
+    initial?.departments?.map(d => ({ categoryKey: d.categoryKey, displayName: d.displayName })) ?? DEFAULT_DEPARTMENTS
+  );
+
+  const moveUp = (index: number) => {
+    if (index === 0) return;
+    const next = [...departments];
+    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+    setDepartments(next);
+  };
+
+  const moveDown = (index: number) => {
+    if (index === departments.length - 1) return;
+    const next = [...departments];
+    [next[index + 1], next[index]] = [next[index], next[index + 1]];
+    setDepartments(next);
+  };
+
+  const updateDeptName = (index: number, val: string) => {
+    const next = [...departments];
+    next[index] = { ...next[index], displayName: val };
+    setDepartments(next);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onSave({
+      name: name.trim(),
+      address: address.trim() || null,
+      notes: notes.trim() || null,
+      isDefault,
+      departments: departments.map(d => ({
+        categoryKey: d.categoryKey,
+        displayName: d.displayName.trim() || d.categoryKey,
+      }))
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="border border-border rounded-xl p-4 bg-muted/40 space-y-4">
+      <div>
+        <label htmlFor="store-name" className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Store Name</label>
+        <input
+          id="store-name"
+          autoFocus
+          required
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="e.g. Cub Foods - Minnetonka"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-primary"
+        />
+      </div>
+      <div>
+        <label htmlFor="store-address" className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Address (Optional)</label>
+        <input
+          id="store-address"
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          placeholder="e.g. 123 Main St"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+        />
+      </div>
+      <div>
+        <label htmlFor="store-notes" className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Notes (Optional)</label>
+        <input
+          id="store-notes"
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="e.g. Enter on the left side"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+        />
+      </div>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={isDefault} onChange={e => setIsDefault(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
+        <span className="text-sm font-bold text-foreground">Make default store</span>
+      </label>
+
+      <div>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Department Order</p>
+        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+          Order these to match your path through the store (e.g., Produce first if it's by the entrance).
+        </p>
+        <div className="space-y-2">
+          {departments.map((dept, idx) => (
+            <div key={dept.categoryKey} className="flex items-center gap-2 bg-background border border-border rounded-lg p-1.5 shadow-sm">
+              <div className="flex flex-col gap-0.5 shrink-0 px-1">
+                <button type="button" onClick={() => moveUp(idx)} disabled={idx === 0} aria-label={`Move ${dept.displayName || dept.categoryKey} up`} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed rounded bg-muted/50 hover:bg-muted transition-colors">
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <button type="button" onClick={() => moveDown(idx)} disabled={idx === departments.length - 1} aria-label={`Move ${dept.displayName || dept.categoryKey} down`} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed rounded bg-muted/50 hover:bg-muted transition-colors">
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex-1 min-w-0">
+                <label htmlFor={`dept-${dept.categoryKey}`} className="sr-only">Display name for {dept.categoryKey}</label>
+                <input
+                  id={`dept-${dept.categoryKey}`}
+                  required
+                  value={dept.displayName}
+                  onChange={e => updateDeptName(idx, e.target.value)}
+                  className="w-full text-sm font-medium bg-transparent focus:outline-none focus:text-primary"
+                  placeholder={dept.categoryKey}
+                />
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">{dept.categoryKey}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <button type="button" onClick={onCancel} className="flex-1 py-1.5 rounded-lg border border-border text-sm font-bold hover:bg-muted transition-colors">
+          Cancel
+        </button>
+        <button type="submit" disabled={saving || !name.trim()} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-50">
+          {saving ? "Saving…" : "Save Store"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function StoresSection({ canEdit }: { canEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const { data: stores, isLoading } = useGetStores({ query: { queryKey: getGetStoresQueryKey() } });
+
+  const createStore = useCreateStore();
+  const updateStore = useUpdateStore();
+  const deleteStore = useDeleteStore();
+
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetStoresQueryKey() });
+
+  const handleAdd = (data: StoreInput) => {
+    setErrorMsg(null);
+    createStore.mutate(
+      { data },
+      {
+        onSuccess: () => { invalidate(); setAdding(false); },
+        onError: (err: any) => setErrorMsg(err.message || "Failed to add store")
+      }
+    );
+  };
+
+  const handleEdit = (id: string, data: StoreInput) => {
+    setErrorMsg(null);
+    updateStore.mutate(
+      { id, data },
+      {
+        onSuccess: () => { invalidate(); setEditingId(null); },
+        onError: (err: any) => setErrorMsg(err.message || "Failed to update store")
+      }
+    );
+  };
+
+  const handleDelete = (id: string, name: string) => {
+    if (stores?.length === 1) {
+      setErrorMsg("Cannot delete the final store.");
+      return;
+    }
+    if (!confirm(`Delete store "${name}"?`)) return;
+    setErrorMsg(null);
+    deleteStore.mutate(
+      { id },
+      {
+        onSuccess: () => invalidate(),
+        onError: (err: any) => setErrorMsg(err.message || "Failed to delete store")
+      }
+    );
+  };
+
+  return (
+    <AccordionSection
+      icon={<Store className="w-4 h-4" />}
+      title="Stores & Aisle Order"
+      summary={<span className="text-xs text-muted-foreground">{isLoading ? "Loading stores…" : `${stores?.length ?? 0} store${stores?.length === 1 ? "" : "s"}`}</span>}
+      defaultOpen={false}
+      action={
+        canEdit && !adding ? (
+          <button
+            onClick={() => setAdding(true)}
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            title="Add store"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        ) : undefined
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Configure stores and arrange their departments in the exact order you walk through the aisles.
+        </p>
+
+        {errorMsg && (
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {isLoading && <div className="py-2 flex flex-col gap-2">{[1,2].map(i => <div key={i} className="h-16 bg-muted animate-pulse rounded-xl" />)}</div>}
+
+        {!isLoading && stores?.length === 0 && !adding && (
+          <div className="text-center py-6 px-4 bg-muted/30 rounded-xl border border-dashed border-border">
+            <Store className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
+            <p className="text-sm font-medium text-foreground">No stores added</p>
+            <p className="text-xs text-muted-foreground mt-1">Add a store to start organizing your groceries.</p>
+          </div>
+        )}
+
+        {adding && (
+          <StoreForm
+            onSave={handleAdd}
+            onCancel={() => { setAdding(false); setErrorMsg(null); }}
+            saving={createStore.isPending}
+          />
+        )}
+
+        {!isLoading && stores?.map(store => {
+          if (editingId === store.id) {
+            return (
+              <StoreForm
+                key={store.id}
+                initial={store}
+                onSave={data => handleEdit(store.id, data)}
+                onCancel={() => { setEditingId(null); setErrorMsg(null); }}
+                saving={updateStore.isPending}
+              />
+            );
+          }
+
+          return (
+            <div key={store.id} className="group relative flex flex-col sm:flex-row sm:items-start gap-4 rounded-xl border border-border bg-card p-4 transition-all hover:border-border hover:shadow-sm">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="text-base font-bold text-foreground truncate">{store.name}</h4>
+                  {store.isDefault && (
+                    <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">Default</span>
+                  )}
+                </div>
+                {store.address && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
+                    <MapPin className="w-3 h-3" />
+                    <span className="truncate">{store.address}</span>
+                  </p>
+                )}
+
+                {/* Department preview */}
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {store.departments.slice(0, 5).map((dept, i) => (
+                    <span key={dept.categoryKey} className="text-[10px] font-bold px-2 py-0.5 rounded-full border border-border bg-muted/30 text-muted-foreground truncate max-w-[100px]">
+                      {dept.displayName}
+                    </span>
+                  ))}
+                  {store.departments.length > 5 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-muted-foreground">
+                      +{store.departments.length - 5} more
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {canEdit && (
+                <div className="flex shrink-0 sm:flex-col gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => { setEditingId(store.id); setErrorMsg(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => handleDelete(store.id, store.name)} disabled={deleteStore.isPending} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </AccordionSection>
+  );
+}
+
 // ── main page ─────────────────────────────────────────────────────────────────
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
@@ -1714,7 +2269,15 @@ export default function Settings() {
   const canManageMembers = me?.role === "family" && !!me.linkedFamilyMemberId;
 
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
-  const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
+  const canManageNotificationSchedule = me?.role === "family"
+    && !!me.linkedFamilyMemberId
+    && !!familyMembers?.some(member => member.id === me.linkedFamilyMemberId && member.role === "parent" && member.hasLinkedAccount);
+  const {
+    data: properties,
+    isLoading: propertiesLoading,
+    isError: propertiesError,
+    error: propertiesLoadError,
+  } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
 
   const createMember = useCreateFamilyMember();
   const updateMember = useUpdateFamilyMember();
@@ -1789,12 +2352,12 @@ export default function Settings() {
 
       <MergeDuplicateAdultsSection familyMembers={familyMembers ?? []} />
 
-      {/* ── Family Members (person-first: leads the page) ───────────────────── */}
+      {/* ── Family Members ──────────────────────────────────────────────────── */}
       <AccordionSection
         icon={<Users className="w-4 h-4" />}
         title="Family Members"
         summary={memberSummary}
-        defaultOpen={preferences.tabs.settings.startSection === "members"}
+        defaultOpen={false}
         action={
           canManageMembers && !addingMember ? (
             <button onClick={() => { setAddingMember(true); setEditingMemberId(null); }}
@@ -1859,7 +2422,7 @@ export default function Settings() {
       <AccordionSection
         icon={<Home className="w-4 h-4" />}
         title="Properties"
-        summary={<span className="text-xs text-muted-foreground">{properties?.length ?? 0} propert{properties?.length === 1 ? "y" : "ies"}</span>}
+        summary={<span className="text-xs text-muted-foreground">{propertiesLoading ? "Loading properties…" : `${properties?.length ?? 0} propert${properties?.length === 1 ? "y" : "ies"}`}</span>}
         defaultOpen={preferences.tabs.settings.startSection === "properties"}
         action={
           canManageProperties && !addingProperty ? (
@@ -1873,6 +2436,33 @@ export default function Settings() {
         }
       >
         <div className="space-y-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Your household properties</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Every property your approved account can access is listed here, including shared homes and cabins.
+            </p>
+          </div>
+          {!canManageProperties && (
+            <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+              You have read-only property access. An approved linked family account can add, edit, or delete properties; your existing authorized properties and maintenance remain available.
+            </div>
+          )}
+          {propertiesLoading && (
+            <div className="space-y-2 py-2" role="status" aria-label="Loading properties">
+              {[1, 2].map(index => <div key={index} className="h-20 animate-pulse rounded-xl bg-muted" />)}
+            </div>
+          )}
+          {propertiesError && (
+            <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              Could not load your properties. {propertiesLoadError instanceof Error ? propertiesLoadError.message : "Please try again."}
+            </div>
+          )}
+          {!propertiesLoading && !propertiesError && properties?.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border p-5 text-center">
+              <p className="text-sm font-bold text-foreground">No accessible properties</p>
+              <p className="mt-1 text-xs text-muted-foreground">{canManageProperties ? "Add the first property for this household." : "Ask a household administrator to grant property access."}</p>
+            </div>
+          )}
           {properties && properties.length > 0 && (
             <div className="rounded-xl border border-border bg-muted/20 p-3">
               <label htmlFor="default-property" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Default maintenance property</label>
@@ -1915,6 +2505,7 @@ export default function Settings() {
               property={property}
               isDefault={property.id === defaultPropertyId}
               canManage={canManageProperties}
+              onGoToTasks={() => navigate("/tasks")}
               onSaveInfo={data => updateProperty.mutate({
                 id: property.id,
                 data: {
@@ -1949,13 +2540,30 @@ export default function Settings() {
         </div>
       </AccordionSection>
 
+      <StoresSection canEdit={canManageProperties} />
+
       <AccordionSection
         icon={<Bell className="w-4 h-4" />}
         title="Phone Notifications"
-        summary={<span className="text-xs text-muted-foreground">Chore and maintenance reminders on this phone</span>}
+        summary={<span className="text-xs text-muted-foreground">Household reminder schedule and this phone’s alerts</span>}
         defaultOpen={preferences.tabs.settings.startSection === "notifications"}
       >
-        <WebNotificationsSection />
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Household reminder schedule</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Set when household reminders are sent, then choose whether this individual phone receives them.</p>
+            <div className="mt-3">
+              <NotificationScheduleSection canManageSchedule={canManageNotificationSchedule} />
+            </div>
+          </div>
+          <div className="border-t border-border pt-5">
+            <h2 className="text-sm font-bold text-foreground">This phone</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Push alerts are enabled separately on each device.</p>
+            <div className="mt-3">
+              <WebNotificationsSection />
+            </div>
+          </div>
+        </div>
       </AccordionSection>
 
       {/* ── AI Memory ───────────────────────────────────────────────────────── */}

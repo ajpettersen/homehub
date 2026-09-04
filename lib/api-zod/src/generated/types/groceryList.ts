@@ -11,6 +11,7 @@ export interface GroceryList {
   name: string;
   propertyId: string;
   propertyName: string;
+  storeId: string | null;
   itemCount: number;
   checkedCount: number;
   createdAt: Date;

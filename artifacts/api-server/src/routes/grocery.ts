@@ -1,10 +1,26 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { groceryListsTable, groceryItemsTable, propertiesTable } from "@workspace/db";
-import { eq, sql, inArray } from "drizzle-orm";
+import { groceryListsTable, groceryItemsTable, householdStoresTable, propertiesTable } from "@workspace/db";
+import { and, eq, sql, inArray } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
+
+/** Equality key used only within one grocery list; distinct lists stay independent. */
+export function normalizeGroceryItemName(name: string): string {
+  return name.trim().toLocaleLowerCase();
+}
+
+export function canAssignStoreToList(
+  listPropertyId: number,
+  accessiblePropertyIds: number[],
+  propertyHouseholdId: number | null,
+  storeHouseholdId: number,
+): boolean {
+  return accessiblePropertyIds.includes(listPropertyId)
+    && propertyHouseholdId !== null
+    && propertyHouseholdId === storeHouseholdId;
+}
 
 router.get("/grocery-lists", async (req, res) => {
   try {
@@ -34,6 +50,7 @@ router.get("/grocery-lists", async (req, res) => {
         name: r.list.name,
         propertyId: String(r.list.propertyId),
         propertyName: r.propertyName ?? "",
+        storeId: r.list.storeId === null ? null : String(r.list.storeId),
         itemCount: r.itemCount,
         checkedCount: r.checkedCount,
         createdAt: r.list.createdAt.toISOString(),
@@ -64,9 +81,19 @@ router.post("/grocery-lists", async (req, res) => {
       return;
     }
 
+    const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyIdNum)).limit(1);
+    if (!property || property.householdId !== scope.householdId) {
+      res.status(403).json({ error: "Property not accessible" });
+      return;
+    }
+    const [defaultStore] = await db.select({ id: householdStoresTable.id }).from(householdStoresTable).where(and(
+      eq(householdStoresTable.householdId, property.householdId),
+      eq(householdStoresTable.isDefault, true),
+    )).limit(1);
+
     const [list] = await db
       .insert(groceryListsTable)
-      .values({ name, propertyId: propertyIdNum })
+      .values({ name, propertyId: propertyIdNum, storeId: defaultStore?.id ?? null })
       .returning();
 
     const [prop] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, list.propertyId));
@@ -76,12 +103,70 @@ router.post("/grocery-lists", async (req, res) => {
       name: list.name,
       propertyId: String(list.propertyId),
       propertyName: prop?.name ?? "",
+      storeId: list.storeId === null ? null : String(list.storeId),
       itemCount: 0,
       checkedCount: 0,
       createdAt: list.createdAt.toISOString(),
     });
   } catch (err) {
     req.log.error({ err }, "Failed to create grocery list");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/grocery-lists/:id/store", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const listId = Number(req.params.id);
+    const storeId = Number(req.body?.storeId);
+    if (!Number.isInteger(listId) || !Number.isInteger(storeId)) {
+      res.status(400).json({ error: "list id and storeId must be valid ids" });
+      return;
+    }
+    const [record] = await db.select({
+      list: groceryListsTable,
+      propertyName: propertiesTable.name,
+      propertyHouseholdId: propertiesTable.householdId,
+    }).from(groceryListsTable)
+      .innerJoin(propertiesTable, eq(groceryListsTable.propertyId, propertiesTable.id))
+      .where(eq(groceryListsTable.id, listId))
+      .limit(1);
+    if (!record || !scope.propertyIds.includes(record.list.propertyId)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const [store] = await db.select().from(householdStoresTable)
+      .where(eq(householdStoresTable.id, storeId))
+      .limit(1);
+    if (!store || !canAssignStoreToList(
+      record.list.propertyId,
+      scope.propertyIds,
+      record.propertyHouseholdId,
+      store.householdId,
+    )) {
+      res.status(404).json({ error: "Store not found in the grocery list household" });
+      return;
+    }
+    const [updated] = await db.update(groceryListsTable)
+      .set({ storeId })
+      .where(eq(groceryListsTable.id, listId))
+      .returning();
+    const [{ itemCount, checkedCount }] = await db.select({
+      itemCount: sql<number>`count(${groceryItemsTable.id})::int`,
+      checkedCount: sql<number>`count(case when ${groceryItemsTable.checked} = true then 1 end)::int`,
+    }).from(groceryItemsTable).where(eq(groceryItemsTable.listId, listId));
+    res.json({
+      id: String(updated.id),
+      name: updated.name,
+      propertyId: String(updated.propertyId),
+      propertyName: record.propertyName,
+      storeId: String(updated.storeId),
+      itemCount,
+      checkedCount,
+      createdAt: updated.createdAt.toISOString(),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to select grocery list store");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -165,10 +250,11 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
       return;
     }
     const { name, quantity, category, addedBy } = req.body;
-    if (!name) {
+    if (typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name required" });
       return;
     }
+    const trimmedName = name.trim();
 
     const [list] = await db
       .select()
@@ -180,12 +266,30 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
       return;
     }
 
-    const [item] = await db
-      .insert(groceryItemsTable)
-      .values({ listId, name, quantity: quantity ?? null, category: category ?? null, addedBy: addedBy ?? null })
-      .returning();
+    // A transaction-scoped PostgreSQL advisory lock serializes only additions
+    // to this list. It avoids cross-list contention while ensuring repeated or
+    // concurrent recipe imports cannot both pass the duplicate lookup.
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${listId})`);
+      const [existing] = await tx
+        .select()
+        .from(groceryItemsTable)
+        .where(and(
+          eq(groceryItemsTable.listId, listId),
+          sql`lower(btrim(${groceryItemsTable.name})) = ${normalizeGroceryItemName(trimmedName)}`,
+        ))
+        .limit(1);
+      if (existing) return { item: existing, created: false };
 
-    res.status(201).json({
+      const [item] = await tx
+        .insert(groceryItemsTable)
+        .values({ listId, name: trimmedName, quantity: quantity ?? null, category: category ?? null, addedBy: addedBy ?? null })
+        .returning();
+      return { item, created: true };
+    });
+    const { item } = result;
+
+    res.status(result.created ? 201 : 200).json({
       id: String(item.id),
       listId: String(item.listId),
       name: item.name,

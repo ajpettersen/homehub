@@ -2,19 +2,20 @@ import { useState } from "react";
 import { 
   useGetTodoLists, getGetTodoListsQueryKey, 
   useGetTodoItems, getGetTodoItemsQueryKey, 
-  useUpdateTodoItem, useAddTodoItem,
+  useUpdateTodoItem, useAddTodoItem, useBulkAddTodoItems,
   useCreateTodoList, useDeleteTodoList,
   useDeleteTodoItem, useMoveTodoListToTop
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckSquare, Plus, Check, Trash2, ArrowUp } from "lucide-react";
-import { format } from "date-fns";
 import { usePreferences } from "@/context/PreferencesContext";
+import { formatDateOnly, getLocalDateOnly } from "@/lib/dateOnly";
 
 export default function Tasks() {
   const queryClient = useQueryClient();
@@ -94,11 +95,19 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
   
   const updateItem = useUpdateTodoItem();
   const addItem = useAddTodoItem();
+  const bulkAddItems = useBulkAddTodoItems();
   const deleteItem = useDeleteTodoItem();
   const deleteList = useDeleteTodoList();
   const moveToTop = useMoveTodoListToTop();
   
   const [newItemContent, setNewItemContent] = useState("");
+  const [newItemDueDate, setNewItemDueDate] = useState(() => getLocalDateOnly());
+  const [addError, setAddError] = useState("");
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkDefaultDueDate, setBulkDefaultDueDate] = useState(() => getLocalDateOnly());
+  const [bulkError, setBulkError] = useState("");
+  const [bulkResult, setBulkResult] = useState("");
 
   const handleToggle = (item: any) => {
     updateItem.mutate(
@@ -109,15 +118,65 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItemContent.trim()) return;
+    if (!newItemContent.trim()) {
+      setAddError("Enter a task name.");
+      return;
+    }
+    if (!isValidDate(newItemDueDate)) {
+      setAddError("Choose a valid due date.");
+      return;
+    }
+    setAddError("");
     addItem.mutate(
-      { id: list.id, data: { content: newItemContent } },
+      {
+        id: list.id,
+        data: {
+          content: newItemContent.trim(),
+          dueDate: newItemDueDate,
+          ...(list.assigneeId && { assigneeId: list.assigneeId }),
+        },
+      },
       { 
         onSuccess: () => {
           setNewItemContent("");
+          setNewItemDueDate(getLocalDateOnly());
           queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
-        } 
+        },
+        onError: () => setAddError("Could not add task. Please try again."),
       }
+    );
+  };
+
+  const handleBulkAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = parseBulkTasks(bulkText, bulkDefaultDueDate);
+    if ("error" in parsed) {
+      setBulkError(parsed.error);
+      setBulkResult("");
+      return;
+    }
+
+    setBulkError("");
+    setBulkResult("");
+    bulkAddItems.mutate(
+      {
+        id: list.id,
+        data: {
+          defaultDueDate: bulkDefaultDueDate,
+          items: parsed.items.map((item) => ({
+            ...item,
+            ...(list.assigneeId && { assigneeId: list.assigneeId }),
+          })),
+        },
+      },
+      {
+        onSuccess: (result) => {
+          setBulkText("");
+          setBulkResult(`${result.items.length} tasks added.`);
+          queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
+        },
+        onError: () => setBulkError("Could not add tasks. No tasks were added."),
+      },
     );
   };
 
@@ -203,7 +262,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                 </span>
                 {(item.dueDate || item.assigneeName) && (
                   <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
-                    {item.dueDate && <span>{format(new Date(item.dueDate), 'MMM d')}</span>}
+                    {item.dueDate && <span>{formatDateOnly(item.dueDate, "MMM d")}</span>}
                     {item.assigneeName && <span>• {item.assigneeName}</span>}
                   </div>
                 )}
@@ -222,16 +281,108 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
         )}
       </CardContent>
       <div className="p-4 border-t border-border bg-card">
-        <form onSubmit={handleAdd} className="flex gap-2">
+        <form onSubmit={handleAdd} className="space-y-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
           <Input 
             value={newItemContent} 
-            onChange={(e) => setNewItemContent(e.target.value)} 
+            onChange={(e) => { setNewItemContent(e.target.value); setAddError(""); }}
             placeholder="Add a task..." 
             className="flex-1"
+            aria-label={`New task for ${list.name}`}
           />
-          <Button type="submit" variant="secondary"><Plus className="w-4 h-4" /></Button>
+            <Input
+              type="date"
+              value={newItemDueDate}
+              onChange={(e) => { setNewItemDueDate(e.target.value); setAddError(""); }}
+              className="min-h-11 sm:w-40"
+              aria-label="Due date"
+              required
+            />
+            <Button type="submit" variant="secondary" className="min-h-11" disabled={addItem.isPending}>
+              <Plus className="w-4 h-4" aria-hidden="true" />
+              <span className="sr-only">Add task</span>
+            </Button>
+          </div>
+          {addError && <p className="text-sm text-destructive" role="alert">{addError}</p>}
         </form>
+        <Dialog open={isBulkOpen} onOpenChange={(open) => {
+          setIsBulkOpen(open);
+          if (!open) setBulkError("");
+        }}>
+          <DialogTrigger asChild>
+            <Button type="button" variant="outline" className="mt-3 min-h-11 w-full">Add multiple tasks</Button>
+          </DialogTrigger>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Add multiple tasks to {list.name}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleBulkAdd} className="space-y-4 pt-2">
+              <div>
+                <label htmlFor={`bulk-due-${list.id}`} className="mb-1 block text-sm font-medium">Default due date</label>
+                <Input
+                  id={`bulk-due-${list.id}`}
+                  type="date"
+                  value={bulkDefaultDueDate}
+                  onChange={(e) => { setBulkDefaultDueDate(e.target.value); setBulkError(""); }}
+                  className="min-h-11"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor={`bulk-tasks-${list.id}`} className="mb-1 block text-sm font-medium">Tasks, one per line</label>
+                <Textarea
+                  id={`bulk-tasks-${list.id}`}
+                  value={bulkText}
+                  onChange={(e) => { setBulkText(e.target.value); setBulkError(""); }}
+                  placeholder={"Book plumber\nPack bags | 2026-07-15"}
+                  className="min-h-40 text-base"
+                  aria-describedby={`bulk-help-${list.id}`}
+                  required
+                />
+                <p id={`bulk-help-${list.id}`} className="mt-1 text-sm text-muted-foreground">
+                  Use “Task name | YYYY-MM-DD” to override the default date. Up to 50 tasks.
+                </p>
+              </div>
+              {bulkError && <p className="text-sm text-destructive" role="alert">{bulkError}</p>}
+              {bulkResult && <p className="text-sm text-primary" role="status">{bulkResult}</p>}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <DialogClose asChild><Button type="button" variant="outline" className="min-h-11">Close</Button></DialogClose>
+                <Button type="submit" className="min-h-11" disabled={bulkAddItems.isPending}>
+                  {bulkAddItems.isPending ? "Adding tasks..." : "Add tasks"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </Card>
   );
+}
+
+function isValidDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function parseBulkTasks(text: string, defaultDueDate: string):
+  | { items: Array<{ content: string; dueDate?: string }> }
+  | { error: string } {
+  if (!isValidDate(defaultDueDate)) return { error: "Choose a valid default due date." };
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return { error: "Enter at least one task." };
+  if (lines.length > 50) return { error: "Add no more than 50 tasks at once." };
+
+  const items: Array<{ content: string; dueDate?: string }> = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const parts = lines[index].split("|");
+    if (parts.length > 2) return { error: `Line ${index + 1} has more than one date separator.` };
+    const content = parts[0].trim();
+    const dueDate = parts.length === 2 ? parts[1].trim() : undefined;
+    if (!content || content.length > 500) return { error: `Line ${index + 1} needs a task name up to 500 characters.` };
+    if (dueDate !== undefined && !isValidDate(dueDate)) return { error: `Line ${index + 1} needs a date in YYYY-MM-DD format.` };
+    items.push({ content, ...(dueDate && { dueDate }) });
+  }
+  return { items };
 }

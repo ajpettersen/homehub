@@ -20,6 +20,7 @@ import {
   Leaf, Filter, ChevronDown, ChevronUp, Sparkles, Loader2
 } from "lucide-react";
 import { format, parseISO, differenceInDays } from "date-fns";
+import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
 
 // ── category config ────────────────────────────────────────────────────────────
 
@@ -197,7 +198,7 @@ function AddTaskForm({
   const handle = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !propertyId) return;
-    const today = new Date().toISOString().split("T")[0];
+    const today = getLocalDateOnly();
     onSubmit({
       title: title.trim(),
       description: description || null,
@@ -361,23 +362,29 @@ function AddTaskForm({
   );
 }
 
-type EditableRecommendation = MaintenanceRecommendation & {
+export type EditableMaintenanceRecommendation = MaintenanceRecommendation & {
+  canonicalKey: string;
   selected: boolean;
+  title: string;
   frequencyDays: number;
 };
 
-function MaintenanceSuggestions({
-  property,
-  onClose,
-  onCreated,
-}: {
+export interface MaintenanceSuggestionsProps {
   property: any;
+  timezone: string;
   onClose: () => void;
   onCreated: () => Promise<unknown>;
-}) {
+}
+
+export function MaintenanceSuggestions({
+  property,
+  timezone,
+  onClose,
+  onCreated,
+}: MaintenanceSuggestionsProps) {
   const recommend = useRecommendMaintenance();
   const createTask = useCreateMaintenanceTask();
-  const [items, setItems] = useState<EditableRecommendation[]>([]);
+  const [items, setItems] = useState<EditableMaintenanceRecommendation[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
@@ -401,7 +408,7 @@ function MaintenanceSuggestions({
     setSubmitting(true);
     setResult(null);
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const today = getLocalDateOnly();
       const results = await Promise.allSettled(submission.map(item => createTask.mutateAsync({
         data: {
           title: item.title,
@@ -410,7 +417,9 @@ function MaintenanceSuggestions({
           category: item.category as CreateMaintenanceTaskInputCategory,
           scheduleType: "recurring",
           frequencyDays: item.frequencyDays,
-          nextDueDate: today,
+          startDate: today,
+          timezone,
+          canonicalKey: item.canonicalKey,
         },
       })));
       const added = results.filter(item => item.status === "fulfilled").length;
@@ -420,9 +429,10 @@ function MaintenanceSuggestions({
       // Remove only the snapshot items that succeeded. Failed snapshot items
       // stay intact for an explicit retry; unrelated live selections remain.
       setItems(current => current.filter(item => !successfulTitles.has(item.title)));
+      const rejected = results.find((item): item is PromiseRejectedResult => item.status === "rejected");
       setResult(failed === 0
         ? `${added} maintenance task${added === 1 ? "" : "s"} added successfully.`
-        : `${added} added; ${failed} could not be added. The remaining items are ready to retry.`);
+        : `${added} added; ${failed} could not be added. ${rejected?.reason instanceof Error ? rejected.reason.message : "The remaining items are ready to retry."}`);
     } catch {
       setResult("The selected tasks could not be added. Please try again.");
     } finally {
@@ -463,7 +473,16 @@ function MaintenanceSuggestions({
                     <div className="flex items-start gap-3">
                       <input type="checkbox" disabled={submitting} checked={item.selected} aria-label={`Select ${item.title}`} onChange={event => setItems(current => current.map((value, i) => i === index ? { ...value, selected: event.target.checked } : value))} className="mt-1 h-4 w-4 accent-primary disabled:cursor-not-allowed" />
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{item.title}</h3><span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">{category.label}</span></div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            aria-label={`Title for ${item.title}`}
+                            disabled={submitting}
+                            value={item.title}
+                            onChange={event => setItems(current => current.map((value, i) => i === index ? { ...value, title: event.target.value } : value))}
+                            className="min-w-0 flex-1 bg-transparent font-bold focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">{category.label}</span>
+                        </div>
                         {item.description && <p className="mt-1 text-sm text-foreground/80">{item.description}</p>}
                         <p className="mt-1.5 text-xs text-muted-foreground">{item.reason}</p>
                         {item.selected && (
@@ -503,8 +522,10 @@ export default function Properties() {
   const queryClient = useQueryClient();
   const { activeMember } = useActiveMember();
   const { preferences } = usePreferences();
+  const timezone = getResolvedTimeZone();
+  const maintenanceQuery = { timezone };
 
-  const { data: tasks, isLoading } = useGetMaintenanceTasks({}, { query: { queryKey: getGetMaintenanceTasksQueryKey() } });
+  const { data: tasks, isLoading } = useGetMaintenanceTasks(maintenanceQuery, { query: { queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
   const { data: members } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
 
@@ -518,11 +539,11 @@ export default function Properties() {
   const [suggesting, setSuggesting] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey() });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) });
 
   const handleComplete = (id: string) => {
     completeTask.mutate(
-      { id, data: { completedBy: activeMember?.name ?? "Someone" } },
+      { id, data: { completedBy: activeMember?.name ?? "Someone", completedOn: getLocalDateOnly(), timezone } },
       { onSuccess: invalidate }
     );
   };
@@ -533,13 +554,23 @@ export default function Properties() {
   };
 
   const handleCreate = (data: any) => {
-    createTask.mutate({ data }, {
+    createTask.mutate({ data: { ...data, ...(data.scheduleType === "recurring" && { timezone }) } }, {
       onSuccess: () => { setAdding(false); invalidate(); }
     });
   };
 
   const handleAssign = (id: string, assigneeId: string | null) => {
-    updateTask.mutate({ id, data: { assigneeId } }, { onSuccess: invalidate });
+    const task = tasks?.find(candidate => candidate.id === id);
+    updateTask.mutate(
+      {
+        id,
+        data: {
+          assigneeId,
+          ...(task?.scheduleType === "recurring" && { timezone }),
+        },
+      },
+      { onSuccess: invalidate },
+    );
   };
 
   const currentProperty = properties?.find(property => property.id === activePropertyId)
@@ -601,7 +632,7 @@ export default function Properties() {
         })}
       </div>
 
-      {suggesting && currentProperty && <MaintenanceSuggestions property={currentProperty} onClose={() => setSuggesting(false)} onCreated={invalidate} />}
+      {suggesting && currentProperty && <MaintenanceSuggestions property={currentProperty} timezone={timezone} onClose={() => setSuggesting(false)} onCreated={invalidate} />}
 
       {/* Add form */}
       {adding && (
