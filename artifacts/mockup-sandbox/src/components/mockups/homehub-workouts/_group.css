@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Outfit:wght@100..900&display=swap');
+
+.homehub-workouts {
+  --background: 40 33% 98%;
+  --foreground: 20 20% 20%;
+  --border: 30 20% 85%;
+  --input: 30 20% 85%;
+  --ring: 15 70% 50%;
+  --card: 0 0% 100%;
+  --card-foreground: 20 20% 20%;
+  --primary: 15 70% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 110 20% 50%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 40 20% 90%;
+  --muted-foreground: 20 10% 40%;
+  --accent: 45 80% 60%;
+  --accent-foreground: 20 20% 20%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --radius: 1rem;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font-family: 'Outfit', sans-serif;
+}
+
+.homehub-workouts .font-serif {
+  font-family: 'Fraunces', serif;
+}
+
+.homehub-workouts button,
+.homehub-workouts input,
+.homehub-workouts textarea {
+  font-family: inherit;
+}
