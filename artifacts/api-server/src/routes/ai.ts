@@ -16,7 +16,7 @@ import {
   choresTable,
   chatMessagesTable,
 } from "@workspace/db/schema";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   getPropertyAuthorizationScope,
   type PropertyAuthorizationScope,
@@ -61,12 +61,35 @@ async function requireAiScope(
 // ── Memory helpers ────────────────────────────────────────────────────────────
 
 /** Load stored memories for one household and format as a prompt section. */
-async function getMemoriesContext(householdId: number): Promise<string> {
+export function visibleMemoryWhere(householdId: number, actorMemberId: number | null) {
+  return and(
+    eq(aiMemoriesTable.householdId, householdId),
+    actorMemberId
+      ? or(
+          isNull(aiMemoriesTable.subjectFamilyMemberId),
+          eq(aiMemoriesTable.subjectFamilyMemberId, actorMemberId),
+        )
+      : isNull(aiMemoriesTable.subjectFamilyMemberId),
+  );
+}
+
+export function deletableMemoryWhere(householdId: number, actorMemberId: number, memoryId: number) {
+  return and(
+    eq(aiMemoriesTable.id, memoryId),
+    eq(aiMemoriesTable.householdId, householdId),
+    or(
+      isNull(aiMemoriesTable.subjectFamilyMemberId),
+      eq(aiMemoriesTable.subjectFamilyMemberId, actorMemberId),
+    ),
+  );
+}
+
+async function getMemoriesContext(householdId: number, actorMemberId: number | null): Promise<string> {
   try {
     const rows = await db
       .select()
       .from(aiMemoriesTable)
-      .where(eq(aiMemoriesTable.householdId, householdId))
+      .where(visibleMemoryWhere(householdId, actorMemberId))
       .orderBy(aiMemoriesTable.createdAt);
     if (rows.length === 0) return "";
     const lines = rows.map(r => `- ${r.content}`).join("\n");
@@ -103,6 +126,7 @@ async function getPeopleContext(propertyIds: number[]): Promise<string> {
 /** Extract and persist new memory facts from a conversation exchange (fire-and-forget). */
 function extractAndSaveMemories(
   householdId: number,
+  subjectFamilyMemberId: number | null,
   userMessage: string,
   assistantReply: string,
   existingMemories: string[]
@@ -144,8 +168,10 @@ function extractAndSaveMemories(
         );
         if (alreadyStored) continue;
 
+        if (!subjectFamilyMemberId) continue;
         await db.insert(aiMemoriesTable).values({
           householdId,
+          subjectFamilyMemberId,
           content,
           category: "general",
           source: "chat",
@@ -628,7 +654,7 @@ router.post("/ai/scan-pantry", async (req, res) => {
       .limit(60);
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
-    const memoriesCtx = await getMemoriesContext(scope.householdId);
+    const memoriesCtx = await getMemoriesContext(scope.householdId, scope.linkedFamilyMemberId);
 
     const imageContent = imagesBase64.map((raw) => ({
       type: "image_url" as const,
@@ -695,7 +721,7 @@ router.post("/ai/meal-recipe", async (req, res) => {
       return;
     }
 
-    const memoriesCtx = await getMemoriesContext(scope.householdId);
+    const memoriesCtx = await getMemoriesContext(scope.householdId, scope.linkedFamilyMemberId);
 
     const recipeResp = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
@@ -768,7 +794,7 @@ router.post("/ai/suggest-week", async (req, res) => {
       db.select({ meal: mealPlansTable.meal }).from(mealPlansTable).where(inArray(mealPlansTable.propertyId, scope.propertyIds)).orderBy(desc(mealPlansTable.createdAt)).limit(60),
       db.select().from(familyMembersTable).where(eq(familyMembersTable.householdId, scope.householdId)),
       db.select({ id: mealPlansTable.id, meal: mealPlansTable.meal }).from(mealPlansTable).where(inArray(mealPlansTable.propertyId, scope.propertyIds)).limit(200),
-      getMemoriesContext(scope.householdId),
+      getMemoriesContext(scope.householdId, scope.linkedFamilyMemberId),
     ]);
 
     // Load per-member ratings for all known meal plan entries
@@ -1021,9 +1047,10 @@ router.post("/ai/chat", async (req, res) => {
     const [members, properties, memoriesCtx, peopleCtx, existingRows, liveSnapshot, groceryLists] = await Promise.all([
       db.select().from(familyMembersTable).where(eq(familyMembersTable.householdId, scope.householdId)),
       db.select().from(propertiesTable).where(inArray(propertiesTable.id, scope.propertyIds)),
-      getMemoriesContext(scope.householdId),
+      getMemoriesContext(scope.householdId, scope.linkedFamilyMemberId),
       getPeopleContext(scope.propertyIds),
-      db.select({ content: aiMemoriesTable.content }).from(aiMemoriesTable).where(eq(aiMemoriesTable.householdId, scope.householdId)),
+      db.select({ content: aiMemoriesTable.content }).from(aiMemoriesTable)
+        .where(visibleMemoryWhere(scope.householdId, scope.linkedFamilyMemberId)),
       getLiveHouseholdSnapshot(scope.propertyIds, snapshotNow),
       db
         .select({
@@ -1171,7 +1198,13 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
 
     const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
     const newMemories = lastUserMsg
-      ? await extractAndSaveMemories(scope.householdId, lastUserMsg.content, reply, existingMemories)
+      ? await extractAndSaveMemories(
+          scope.householdId,
+          scope.linkedFamilyMemberId,
+          lastUserMsg.content,
+          reply,
+          existingMemories,
+        )
       : [];
 
     if (lastUserMsg) {
@@ -1201,7 +1234,6 @@ router.get("/ai/chat/history", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
-
     const rows = await db
       .select({
         role: chatMessagesTable.role,
@@ -1241,6 +1273,10 @@ router.get("/ai/memories", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
+    if (scope.role !== "family" || !scope.linkedFamilyMemberId) {
+      res.status(403).json({ error: "An approved linked adult account is required" });
+      return;
+    }
 
     const rows = await db
       .select({
@@ -1248,10 +1284,11 @@ router.get("/ai/memories", async (req, res) => {
         content: aiMemoriesTable.content,
         category: aiMemoriesTable.category,
         source: aiMemoriesTable.source,
+        subjectFamilyMemberId: aiMemoriesTable.subjectFamilyMemberId,
         createdAt: aiMemoriesTable.createdAt,
       })
       .from(aiMemoriesTable)
-      .where(eq(aiMemoriesTable.householdId, scope.householdId))
+      .where(visibleMemoryWhere(scope.householdId, scope.linkedFamilyMemberId))
       .orderBy(aiMemoriesTable.createdAt);
     res.json({ memories: rows });
   } catch (err) {
@@ -1265,6 +1302,10 @@ router.delete("/ai/memories/:id", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
+    if (scope.role !== "family" || !scope.linkedFamilyMemberId) {
+      res.status(403).json({ error: "An approved linked adult account is required" });
+      return;
+    }
 
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -1274,10 +1315,7 @@ router.delete("/ai/memories/:id", async (req, res) => {
 
     const deleted = await db
       .delete(aiMemoriesTable)
-      .where(and(
-        eq(aiMemoriesTable.id, id),
-        eq(aiMemoriesTable.householdId, scope.householdId),
-      ))
+      .where(deletableMemoryWhere(scope.householdId, scope.linkedFamilyMemberId, id))
       .returning({ id: aiMemoriesTable.id });
 
     if (deleted.length === 0) {

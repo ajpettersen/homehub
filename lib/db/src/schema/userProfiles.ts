@@ -12,6 +12,7 @@ export const userProfilesTable = pgTable("user_profiles", {
   isAdmin: boolean("is_admin").notNull().default(false),
   allowedPropertyId: integer("allowed_property_id").references(() => propertiesTable.id, { onDelete: "set null" }),
   linkedFamilyMemberId: integer("linked_family_member_id").references(() => familyMembersTable.id, { onDelete: "set null" }),
+  personalSetupCompletedAt: timestamp("personal_setup_completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("user_profiles_linked_family_member_unique")

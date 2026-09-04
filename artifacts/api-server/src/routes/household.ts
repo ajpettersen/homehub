@@ -3,9 +3,10 @@ import {
   db,
   HOMEHUB_WEB_TABS,
   householdsTable,
+  userProfilesTable,
   type HomeHubWebTab,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
@@ -44,11 +45,18 @@ router.patch("/household", async (req, res) => {
       return;
     }
 
-    const [updated] = await db
-      .update(householdsTable)
-      .set(updates)
-      .where(eq(householdsTable.id, scope.householdId))
-      .returning();
+    const [updated] = await db.transaction(async (tx) => {
+      const rows = await tx.update(householdsTable).set(updates)
+        .where(eq(householdsTable.id, scope.householdId)).returning();
+      if (onboardingCompleted === true && scope.linkedFamilyMemberId) {
+        await tx.update(userProfilesTable).set({ personalSetupCompletedAt: new Date() }).where(and(
+          eq(userProfilesTable.clerkId, scope.clerkId),
+          eq(userProfilesTable.householdId, scope.householdId),
+          eq(userProfilesTable.linkedFamilyMemberId, scope.linkedFamilyMemberId),
+        ));
+      }
+      return rows;
+    });
 
     if (!updated) {
       res.status(404).json({ error: "Household not found" });

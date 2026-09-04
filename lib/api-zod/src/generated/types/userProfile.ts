@@ -16,6 +16,7 @@ export interface UserProfile {
   householdId: string | null;
   householdName?: string | null;
   onboardingCompleted: boolean;
+  needsPersonalSetup: boolean;
   visibleTabs: HomeHubWebTab[];
   allowedPropertyId?: string | null;
   allowedPropertyName?: string | null;

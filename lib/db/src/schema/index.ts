@@ -12,6 +12,7 @@ export * from "./pushTokens";
 export * from "./webPushSubscriptions";
 export * from "./userProfiles";
 export * from "./householdJoinRequests";
+export * from "./householdInvites";
 export * from "./joinRequestRateLimits";
 export * from "./workouts";
 export * from "./aiMemories";

@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { clerkClient, getAuth } from "@clerk/express";
 import {
   choresTable,
   db,
   familyMembersTable,
+  householdInvitesTable,
   householdJoinRequestsTable,
   HOMEHUB_WEB_TABS,
   householdsTable,
@@ -22,8 +23,10 @@ import {
   MergeDuplicateAdultBody,
   UpdateMyFamilyProfileBody,
   UpdateMyFamilyProfileResponse,
+  CompletePersonalSetupBody,
+  CompletePersonalSetupResponse,
 } from "@workspace/api-zod";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { isConfiguredBootstrapIdentity } from "../lib/bootstrapIdentity";
 
 const router = Router();
@@ -62,6 +65,11 @@ function formatProfile(
     householdId: isPending ? null : profile.householdId ? String(profile.householdId) : null,
     householdName: isPending ? null : household?.name ?? null,
     onboardingCompleted: !isPending && household ? household.onboardingCompletedAt !== null : false,
+    needsPersonalSetup: !isPending
+      && profile.role === "family"
+      && member?.role === "parent"
+      && member.householdId === profile.householdId
+      && profile.personalSetupCompletedAt === null,
     visibleTabs: isPending ? [] : household?.visibleTabs ?? [...HOMEHUB_WEB_TABS],
     allowedPropertyId: isPending ? null : profile.allowedPropertyId ? String(profile.allowedPropertyId) : null,
     allowedPropertyName: isPending ? null : property?.name ?? null,
@@ -72,6 +80,11 @@ function formatProfile(
 }
 
 interface FamilyAdminScope {
+  clerkId: string;
+  householdId: number;
+}
+
+interface ApprovedAdultScope {
   clerkId: string;
   householdId: number;
 }
@@ -166,6 +179,41 @@ async function requireFamilyAdmin(req: any, res: any): Promise<FamilyAdminScope 
     return null;
   }
 
+  return { clerkId, householdId: profile.householdId };
+}
+
+/** An approved family account may manage joining only when linked to its household's parent profile. */
+async function requireApprovedAdult(req: any, res: any): Promise<ApprovedAdultScope | null> {
+  const clerkId = getAuth(req).userId;
+  if (!clerkId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+  const [profile] = await db
+    .select({
+      householdId: userProfilesTable.householdId,
+      role: userProfilesTable.role,
+      linkedFamilyMemberId: userProfilesTable.linkedFamilyMemberId,
+    })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.clerkId, clerkId))
+    .limit(1);
+  if (!profile?.householdId || profile.role !== "family" || !profile.linkedFamilyMemberId) {
+    res.status(403).json({ error: "An approved adult family account is required" });
+    return null;
+  }
+  const [member] = await db.select({ id: familyMembersTable.id })
+    .from(familyMembersTable)
+    .where(and(
+      eq(familyMembersTable.id, profile.linkedFamilyMemberId),
+      eq(familyMembersTable.householdId, profile.householdId),
+      eq(familyMembersTable.role, "parent"),
+    ))
+    .limit(1);
+  if (!member) {
+    res.status(403).json({ error: "An approved adult family account is required" });
+    return null;
+  }
   return { clerkId, householdId: profile.householdId };
 }
 
@@ -475,6 +523,87 @@ router.patch("/me/family-profile", async (req, res): Promise<void> => {
   }
 });
 
+/** POST /api/me/personal-setup — complete setup for only the caller's linked adult. */
+router.post("/me/personal-setup", async (req, res): Promise<void> => {
+  const clerkId = getAuth(req).userId;
+  if (!clerkId) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  const parsed = CompletePersonalSetupBody.strict().safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: `Invalid personal setup fields: ${parsed.error.message}` });
+    return;
+  }
+  const updates: { name?: string; avatarInitials?: string; color?: string; photoUrl?: string | null } = {};
+  if (parsed.data.name !== undefined) {
+    const name = parsed.data.name.trim();
+    if (!name || name.length > 100) {
+      res.status(400).json({ error: "name must contain 1 to 100 non-whitespace characters" });
+      return;
+    }
+    updates.name = name;
+    updates.avatarInitials = name.charAt(0).toUpperCase();
+  }
+  if (parsed.data.color !== undefined) updates.color = parsed.data.color;
+  if (parsed.data.photoUrl !== undefined) {
+    if (parsed.data.photoUrl !== null && !isSafeProfilePhotoUrl(parsed.data.photoUrl)) {
+      res.status(400).json({ error: "photoUrl must be a valid http or https URL no longer than 2048 characters" });
+      return;
+    }
+    updates.photoUrl = parsed.data.photoUrl;
+  }
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [profile] = await tx.select().from(userProfilesTable)
+        .where(eq(userProfilesTable.clerkId, clerkId)).for("update").limit(1);
+      if (!profile || profile.role !== "family") return { status: "forbidden" } as const;
+      if (!profile.householdId || !profile.linkedFamilyMemberId) return { status: "unlinked" } as const;
+      const [member] = await tx.select().from(familyMembersTable).where(and(
+        eq(familyMembersTable.id, profile.linkedFamilyMemberId),
+        eq(familyMembersTable.householdId, profile.householdId),
+        eq(familyMembersTable.role, "parent"),
+      )).for("update").limit(1);
+      if (!member) return { status: "unlinked" } as const;
+      if (profile.personalSetupCompletedAt) {
+        return { status: "ok", member, alreadyCompleted: true } as const;
+      }
+      const [updatedMember] = Object.keys(updates).length
+        ? await tx.update(familyMembersTable).set(updates).where(and(
+            eq(familyMembersTable.id, member.id),
+            eq(familyMembersTable.householdId, profile.householdId),
+            eq(familyMembersTable.role, "parent"),
+          )).returning()
+        : [member];
+      if (!updatedMember) return { status: "unlinked" } as const;
+      await tx.update(userProfilesTable)
+        .set({ personalSetupCompletedAt: new Date() })
+        .where(and(
+          eq(userProfilesTable.clerkId, clerkId),
+          eq(userProfilesTable.linkedFamilyMemberId, member.id),
+          eq(userProfilesTable.householdId, profile.householdId),
+        ));
+      return { status: "ok", member: updatedMember, alreadyCompleted: false } as const;
+    });
+    if (result.status === "forbidden") {
+      res.status(403).json({ error: "An approved family account is required" });
+      return;
+    }
+    if (result.status === "unlinked") {
+      res.status(409).json({ error: "Your account is not linked to an adult in this household" });
+      return;
+    }
+    res.json(CompletePersonalSetupResponse.parse({
+      profile: selfFamilyProfileJson(result.member),
+      alreadyCompleted: result.alreadyCompleted,
+    }));
+  } catch (err) {
+    req.log.error({ err }, "Failed to complete personal setup");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 const JOIN_ATTEMPT_LIMIT = 5;
 const JOIN_ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const JOIN_RESPONSE_MINIMUM_MS = 1000;
@@ -527,16 +656,20 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
     res.status(200).json({ accepted: true });
   };
 
-  const administratorEmail =
-    typeof req.body?.administratorEmail === "string"
-      ? req.body.administratorEmail.trim().toLowerCase()
+  // administratorEmail remains accepted for deployed clients. New clients use
+  // householdMemberEmail because any approved adult can be the target.
+  const householdMemberEmail =
+    typeof req.body?.householdMemberEmail === "string"
+      ? req.body.householdMemberEmail.trim().toLowerCase()
+      : typeof req.body?.administratorEmail === "string"
+        ? req.body.administratorEmail.trim().toLowerCase()
       : "";
   if (
-    administratorEmail.length < 3 ||
-    administratorEmail.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(administratorEmail)
+    householdMemberEmail.length < 3 ||
+    householdMemberEmail.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(householdMemberEmail)
   ) {
-    res.status(400).json({ error: "Enter a valid administrator email." });
+    res.status(400).json({ error: "Enter a valid household member email." });
     return;
   }
 
@@ -544,20 +677,31 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
     const rateAllowed = await claimJoinAttempt(clerkId, req.ip || "unknown");
     const requester = await clerkClient.users.getUser(clerkId).catch(() => null);
     const users = await clerkClient.users.getUserList({
-      emailAddress: [administratorEmail],
+       emailAddress: [householdMemberEmail],
       limit: 2,
     }).catch(() => ({ data: [] }));
-    const administrator = users.data.length === 1 ? users.data[0] : null;
+    const householdMember = users.data.length === 1 ? users.data[0] : null;
     // Always perform this lookup, including self and unknown identities.
-    const [administratorProfile] = await db
+    const [householdMemberProfile] = await db
       .select({
         householdId: userProfilesTable.householdId,
         role: userProfilesTable.role,
-        isAdmin: userProfilesTable.isAdmin,
+        linkedFamilyMemberId: userProfilesTable.linkedFamilyMemberId,
       })
       .from(userProfilesTable)
-      .where(eq(userProfilesTable.clerkId, administrator?.id ?? "__no_matching_clerk_user__"))
+      .where(eq(userProfilesTable.clerkId, householdMember?.id ?? "__no_matching_clerk_user__"))
       .limit(1);
+    const targetHasVerifiedEmail = householdMember?.emailAddresses.some(
+      email => email.verification?.status === "verified"
+        && email.emailAddress.trim().toLowerCase() === householdMemberEmail,
+    ) ?? false;
+    const [targetAdult] = householdMemberProfile?.householdId && householdMemberProfile.linkedFamilyMemberId
+      ? await db.select({ id: familyMembersTable.id }).from(familyMembersTable).where(and(
+        eq(familyMembersTable.id, householdMemberProfile.linkedFamilyMemberId),
+        eq(familyMembersTable.householdId, householdMemberProfile.householdId),
+        eq(familyMembersTable.role, "parent"),
+      )).limit(1)
+      : [null];
     const verifiedEmail = requester?.emailAddresses.find(
       email => email.verification?.status === "verified",
     )?.emailAddress ?? null;
@@ -568,10 +712,11 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
       || verifiedEmail?.split("@")[0]
       || "HomeHub member";
     const eligible = rateAllowed
-      && administrator?.id !== clerkId
-      && administratorProfile?.role === "family"
-      && administratorProfile.isAdmin
-      && !!administratorProfile.householdId
+       && householdMember?.id !== clerkId
+       && targetHasVerifiedEmail
+       && householdMemberProfile?.role === "family"
+       && !!targetAdult
+       && !!householdMemberProfile.householdId
       && !!verifiedEmail;
 
     await db.transaction(async (tx) => {
@@ -599,7 +744,7 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
 
       const values = {
           requesterClerkId: clerkId,
-          targetHouseholdId: administratorProfile.householdId!,
+           targetHouseholdId: householdMemberProfile.householdId!,
           requesterDisplayName,
           requesterEmail: verifiedEmail!,
           status: "pending",
@@ -608,7 +753,7 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
         };
       if (existingRequest) {
         await tx.update(householdJoinRequestsTable).set({
-            targetHouseholdId: administratorProfile.householdId!,
+            targetHouseholdId: householdMemberProfile.householdId!,
             requesterDisplayName,
             requesterEmail: verifiedEmail!,
             status: "pending",
@@ -623,6 +768,181 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "Failed to submit household join request");
     await accepted();
+  }
+});
+
+const HOUSEHOLD_INVITE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function hashInviteToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function inviteJson(invite: typeof householdInvitesTable.$inferSelect) {
+  return {
+    id: String(invite.id),
+    expiresAt: invite.expiresAt.toISOString(),
+    createdAt: invite.createdAt.toISOString(),
+  };
+}
+
+/** POST /api/me/household-invites — create a single-use 24 hour household invite. */
+router.post("/me/household-invites", async (req, res): Promise<void> => {
+  try {
+    const adult = await requireApprovedAdult(req, res);
+    if (!adult) return;
+    const token = randomBytes(32).toString("base64url");
+    const [invite] = await db.insert(householdInvitesTable).values({
+      householdId: adult.householdId,
+      createdByClerkId: adult.clerkId,
+      tokenHash: hashInviteToken(token),
+      expiresAt: new Date(Date.now() + HOUSEHOLD_INVITE_TTL_MS),
+    }).returning();
+    // This is the only response that contains the bearer token.
+    res.status(201).json({ ...inviteJson(invite), token });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create household invite");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** GET /api/me/household-invites — list only active invites in the actor's household. */
+router.get("/me/household-invites", async (req, res): Promise<void> => {
+  try {
+    const adult = await requireApprovedAdult(req, res);
+    if (!adult) return;
+    const invites = await db.select().from(householdInvitesTable).where(and(
+      eq(householdInvitesTable.householdId, adult.householdId),
+      isNull(householdInvitesTable.revokedAt),
+      isNull(householdInvitesTable.redeemedAt),
+      gt(householdInvitesTable.expiresAt, new Date()),
+    )).orderBy(asc(householdInvitesTable.expiresAt));
+    res.json(invites.map(inviteJson));
+  } catch (err) {
+    req.log.error({ err }, "Failed to list household invites");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** POST /api/me/household-invites/:inviteId/revoke — revoke an active household invite. */
+router.post("/me/household-invites/:inviteId/revoke", async (req, res): Promise<void> => {
+  const inviteId = Number(req.params.inviteId);
+  if (!Number.isInteger(inviteId)) {
+    res.status(400).json({ error: "Invalid household invite" });
+    return;
+  }
+  try {
+    const adult = await requireApprovedAdult(req, res);
+    if (!adult) return;
+    const revoked = await db.update(householdInvitesTable).set({ revokedAt: new Date() }).where(and(
+      eq(householdInvitesTable.id, inviteId),
+      eq(householdInvitesTable.householdId, adult.householdId),
+      isNull(householdInvitesTable.revokedAt),
+      isNull(householdInvitesTable.redeemedAt),
+      gt(householdInvitesTable.expiresAt, new Date()),
+    )).returning({ id: householdInvitesTable.id });
+    if (!revoked.length) {
+      res.status(404).json({ error: "Active household invite not found" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to revoke household invite");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** Public, deliberately minimal invite preflight. Tokens are body-only to keep them out of URLs. */
+router.post("/me/household-invites/validate", async (req, res): Promise<void> => {
+  const token = typeof req.body?.token === "string" ? req.body.token : "";
+  if (!token || token.length < 32 || token.length > 128) {
+    res.json({ valid: false });
+    return;
+  }
+  try {
+    const [invite] = await db.select({ id: householdInvitesTable.id }).from(householdInvitesTable).where(and(
+      eq(householdInvitesTable.tokenHash, hashInviteToken(token)),
+      isNull(householdInvitesTable.revokedAt),
+      isNull(householdInvitesTable.redeemedAt),
+      gt(householdInvitesTable.expiresAt, new Date()),
+    )).limit(1);
+    res.json({ valid: !!invite });
+  } catch (err) {
+    req.log.error({ err }, "Failed to validate household invite");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** Redeem an invite once for the authenticated Clerk user and create its parent link if needed. */
+router.post("/me/household-invites/redeem", async (req, res): Promise<void> => {
+  const clerkId = getAuth(req).userId;
+  const token = typeof req.body?.token === "string" ? req.body.token : "";
+  if (!clerkId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (!token || token.length < 32 || token.length > 128) {
+    res.status(404).json({ error: "Household invite not found" });
+    return;
+  }
+  try {
+    const clerkUser = await clerkClient.users.getUser(clerkId);
+    if (!clerkUser.emailAddresses.some(email => email.verification?.status === "verified")) {
+      res.status(403).json({ error: "A verified Clerk email is required to redeem a household invite" });
+      return;
+    }
+    const displayName = clerkIdentityDisplayName(clerkUser);
+    const result = await db.transaction(async (tx) => {
+      const [invite] = await tx.select().from(householdInvitesTable)
+        .where(eq(householdInvitesTable.tokenHash, hashInviteToken(token))).for("update").limit(1);
+      if (!invite || invite.revokedAt || invite.expiresAt <= new Date()) return { status: "invalid" } as const;
+
+      await tx.insert(userProfilesTable).values({ clerkId, role: "pending", householdId: null })
+        .onConflictDoNothing({ target: userProfilesTable.clerkId });
+      const [profile] = await tx.select().from(userProfilesTable)
+        .where(eq(userProfilesTable.clerkId, clerkId)).for("update").limit(1);
+      if (!profile) return { status: "invalid" } as const;
+      if (profile.householdId && profile.householdId !== invite.householdId) return { status: "cross-household" } as const;
+      if (invite.redeemedAt && invite.redeemedByClerkId !== clerkId) return { status: "used" } as const;
+
+      const [member] = profile.linkedFamilyMemberId
+        ? await tx.select({ id: familyMembersTable.id }).from(familyMembersTable).where(and(
+          eq(familyMembersTable.id, profile.linkedFamilyMemberId),
+          eq(familyMembersTable.householdId, invite.householdId),
+          eq(familyMembersTable.role, "parent"),
+        )).limit(1)
+        : [null];
+      const memberId = member?.id ?? (await tx.insert(familyMembersTable).values({
+        householdId: invite.householdId,
+        name: displayName,
+        role: "parent",
+        color: "#2D6A4F",
+        avatarInitials: displayName.charAt(0).toUpperCase(),
+        photoUrl: null,
+      }).returning({ id: familyMembersTable.id }))[0].id;
+      await tx.update(userProfilesTable).set({
+        householdId: invite.householdId,
+        role: "family",
+        isAdmin: false,
+        linkedFamilyMemberId: memberId,
+      }).where(eq(userProfilesTable.clerkId, clerkId));
+      await tx.update(householdInvitesTable).set({
+        redeemedAt: invite.redeemedAt ?? new Date(),
+        redeemedByClerkId: clerkId,
+      }).where(eq(householdInvitesTable.id, invite.id));
+      return { status: "ok", householdId: invite.householdId } as const;
+    });
+    if (result.status === "invalid" || result.status === "used") {
+      res.status(404).json({ error: "Household invite not found" });
+      return;
+    }
+    if (result.status === "cross-household") {
+      res.status(409).json({ error: "This account is already linked to another household" });
+      return;
+    }
+    res.json({ ok: true, householdId: String(result.householdId) });
+  } catch (err) {
+    req.log.error({ err }, "Failed to redeem household invite");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -649,11 +969,11 @@ router.get("/admin/users", async (req, res) => {
   }
 });
 
-/** GET /api/admin/join-requests — pending requests are visible only to that household's admins */
+/** GET /api/admin/join-requests — pending requests are visible to approved household adults */
 router.get("/admin/join-requests", async (req, res) => {
   try {
-    const admin = await requireFamilyAdmin(req, res);
-    if (!admin) return;
+    const adult = await requireApprovedAdult(req, res);
+    if (!adult) return;
     const requests = await db
       .select({
         id: householdJoinRequestsTable.id,
@@ -663,7 +983,7 @@ router.get("/admin/join-requests", async (req, res) => {
       })
       .from(householdJoinRequestsTable)
       .where(and(
-        eq(householdJoinRequestsTable.targetHouseholdId, admin.householdId),
+        eq(householdJoinRequestsTable.targetHouseholdId, adult.householdId),
         eq(householdJoinRequestsTable.status, "pending"),
       ))
       .orderBy(householdJoinRequestsTable.createdAt);
@@ -678,7 +998,7 @@ router.get("/admin/join-requests", async (req, res) => {
   }
 });
 
-/** PUT /api/admin/join-requests/:requestId — decide and atomically provision an approved member */
+/** PUT /api/admin/join-requests/:requestId — approved adults decide and atomically provision a member */
 router.put("/admin/join-requests/:requestId", async (req, res) => {
   const requestId = Number(req.params.requestId);
   const { decision, linkedFamilyMemberId } = req.body;
@@ -687,8 +1007,8 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
     return;
   }
   try {
-    const admin = await requireFamilyAdmin(req, res);
-    if (!admin) return;
+    const adult = await requireApprovedAdult(req, res);
+    if (!adult) return;
 
     let memberId: number | null = null;
     if (decision === "approved" && linkedFamilyMemberId !== undefined && linkedFamilyMemberId !== null && linkedFamilyMemberId !== "") {
@@ -703,7 +1023,7 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
       .from(householdJoinRequestsTable)
       .where(and(
         eq(householdJoinRequestsTable.id, requestId),
-        eq(householdJoinRequestsTable.targetHouseholdId, admin.householdId),
+        eq(householdJoinRequestsTable.targetHouseholdId, adult.householdId),
         eq(householdJoinRequestsTable.status, "pending"),
       ))
       .limit(1);
@@ -718,10 +1038,21 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`homehub-join-request:${candidate.requesterClerkId}`}))`);
       const [request] = await tx.select().from(householdJoinRequestsTable).where(and(
         eq(householdJoinRequestsTable.id, requestId),
-        eq(householdJoinRequestsTable.targetHouseholdId, admin.householdId),
+        eq(householdJoinRequestsTable.targetHouseholdId, adult.householdId),
         eq(householdJoinRequestsTable.status, "pending"),
       )).for("update").limit(1);
       if (!request) return "missing" as const;
+      // Lock the requester before creating a member. Invite redemption and a
+      // competing approval lock this same row, so an already-linked account
+      // cannot leave behind an orphaned member.
+      const [requesterProfile] = await tx.select({
+        role: userProfilesTable.role,
+        householdId: userProfilesTable.householdId,
+      }).from(userProfilesTable).where(eq(userProfilesTable.clerkId, request.requesterClerkId))
+        .for("update").limit(1);
+      if (!requesterProfile || requesterProfile.role !== "pending" || requesterProfile.householdId) {
+        return "missing" as const;
+      }
 
       if (decision === "denied") {
         await tx.update(householdJoinRequestsTable)
@@ -736,7 +1067,7 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
           .from(familyMembersTable)
           .where(and(
             eq(familyMembersTable.id, approvedMemberId),
-            eq(familyMembersTable.householdId, admin.householdId),
+             eq(familyMembersTable.householdId, adult.householdId),
           ))
           .for("update")
           .limit(1);
@@ -751,7 +1082,7 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
           || request.requesterEmail.split("@")[0]
           || "HomeHub member";
         const [createdMember] = await tx.insert(familyMembersTable).values({
-          householdId: admin.householdId,
+           householdId: adult.householdId,
           name,
           role: "parent",
           color: "#2D6A4F",
@@ -763,7 +1094,7 @@ router.put("/admin/join-requests/:requestId", async (req, res) => {
 
       const attached = await tx.update(userProfilesTable)
         .set({
-          householdId: admin.householdId,
+           householdId: adult.householdId,
           role: "family",
           isAdmin: false,
           linkedFamilyMemberId: approvedMemberId,

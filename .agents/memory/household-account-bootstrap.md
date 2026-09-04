@@ -4,11 +4,11 @@ description: Trusted access and role-assignment rule for HomeHub household accou
 ---
 
 ## The rule
-Bootstrap only the configured Clerk identity as a family administrator, and only when no profile exists yet. Every other account starts pending with no household. A pending user may explicitly submit an administrator email, but the server stores only a reviewable join request—not a household attachment—and gives the requester the same accepted response for every valid lookup. The request records the verified requester's identity snapshot for the target household administrator to review.
+Bootstrap only the configured Clerk identity into a new household, and only when no profile exists yet. Every other account starts pending with no household. A pending user may submit any approved adult’s exact email, or redeem a secure single-use household invite. Email requests remain reviewable; invite redemption connects the account before self-profile setup.
 
-**Why:** CRM data and AI household context are sensitive. A pending user must never learn household metadata, enumerate administrator accounts, or promote their own account to gain access. Family membership and household administration are separate: only `role = family` plus `isAdmin = true` can manage access.
+**Why:** CRM data and AI household context are sensitive. A pending user must never learn household metadata, enumerate accounts, or promote their own account. The family chose shared adult responsibility for linking instead of a single administrator bottleneck.
 
-**Administrator boundary:** Approved non-admin family members may collaborate on household content such as chores, tasks, meals, shopping, workouts, maintenance work, and assistant interactions. Household identity and configuration—including onboarding/setup, properties, family profiles, household-wide navigation, and account access—require an approved family administrator. Authorization scopes must carry administrator status so every configuration mutation can enforce this boundary server-side.
+**Administrator boundary:** Every approved, account-linked adult may create/revoke household invites and approve/deny join requests. Unrelated sensitive household configuration—including onboarding/setup, properties, household-wide navigation, and account role changes—keeps its existing elevated authorization boundary.
 
 **Adult identity rule:** An active adult family member is the household identity for exactly one approved family login account. Children and pets may exist without accounts. Never infer which legacy adult belongs to an account from a matching name, and never delete an unlinked legacy adult automatically.
 
@@ -18,4 +18,8 @@ Bootstrap only the configured Clerk identity as a family administrator, and only
 
 **Why:** AJ and Emily each need control of their own household-facing name without gaining permission to edit other family identities or account access.
 
-**How to apply:** Keep pending accounts outside the application shell until approved. Joining and role changes must create or explicitly claim one adult identity transactionally. Preserve ambiguous legacy adults for explicit administrator reconciliation. A merge must keep the linked adult, transfer history safely, and remove the unlinked duplicate only after confirmation and reference verification. Self-service edits may change presentation fields only; role, household, administration, linking, and deletion remain administrator-controlled.
+**Joined-adult setup boundary:** The first account completes household-wide setup and seeding. Every later approved or invited adult gets a separate, idempotent personal-profile prompt and must never enter or rerun the household creator wizard.
+
+**Why:** Household setup owns shared data; joining setup owns only the new adult’s identity. Mixing them can duplicate seeded content, overwrite shared choices, or make one adult’s preferences look like another’s.
+
+**How to apply:** Keep pending accounts outside the application shell until approved or invited. Joining must create or explicitly claim one adult identity transactionally. Invite bearer tokens belong in URL fragments and request bodies only, are stored hashed, expire, and are consumed once; never place them in request paths, referrers, or logs. Gate all joining methods on the same server-backed personal-setup state. Preserve ambiguous legacy adults for explicit reconciliation. Self-service edits may change presentation fields only; household identity, elevated roles, and destructive changes remain server-controlled.

@@ -34,6 +34,50 @@ tags:
     description: Household people, follow-ups, and trusted contractors
 
 paths:
+  /ai/memories:
+    get:
+      operationId: listAiMemories
+      tags: [ai]
+      summary: List household-wide and signed-in adult personal memories
+      responses:
+        "200":
+          description: Memories visible to the signed-in linked adult
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [memories]
+                properties:
+                  memories:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AiMemory"
+        "403":
+          description: Approved linked adult access required
+
+  /ai/memories/{id}:
+    delete:
+      operationId: deleteAiMemory
+      tags: [ai]
+      summary: Delete an authorized household or personal memory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Memory deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "403":
+          description: Approved linked adult access required
+        "404":
+          description: Memory not found or not accessible
+
   /ai/scan-pantry:
     post:
       operationId: scanPantry
@@ -901,11 +945,38 @@ paths:
         "409":
           description: The account linkage changed or is invalid
 
+  /me/personal-setup:
+    post:
+      operationId: completePersonalSetup
+      tags: [users]
+      summary: Complete personal setup for the signed-in account's linked adult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonalSetupInput"
+      responses:
+        "200":
+          description: Personal setup completed, or was already completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalSetupResult"
+        "400":
+          description: Invalid personal setup fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Approved family account access required
+        "409":
+          description: Account is not validly linked to an adult in its household
+
   /me/join-request:
     post:
       operationId: requestHouseholdJoin
       tags: [users]
-      summary: Request access to an existing household using its administrator email
+      summary: Request access to an existing household using an approved adult's verified email
       requestBody:
         required: true
         content:
@@ -969,7 +1040,7 @@ paths:
     get:
       operationId: listHouseholdJoinRequests
       tags: [users]
-      summary: List pending household join requests (household administrator only)
+      summary: List pending household join requests (approved linked household adult only)
       responses:
         "200":
           description: Pending requests for the current household
@@ -984,7 +1055,7 @@ paths:
     put:
       operationId: decideHouseholdJoinRequest
       tags: [users]
-      summary: Approve or deny a household join request (household administrator only)
+      summary: Approve or deny a household join request (approved linked household adult only)
       parameters:
         - name: requestId
           in: path
@@ -1007,6 +1078,90 @@ paths:
                 properties:
                   ok:
                     type: boolean
+
+  /me/household-invites:
+    get:
+      operationId: listHouseholdInvites
+      tags: [users]
+      summary: List active single-use household invites (approved linked household adult only)
+      responses:
+        "200":
+          description: Active household invites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HouseholdInvite"
+    post:
+      operationId: createHouseholdInvite
+      tags: [users]
+      summary: Create a default 24-hour single-use household invite (approved linked household adult only)
+      responses:
+        "201":
+          description: Created invite; token is returned only in this response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedHouseholdInvite"
+
+  /me/household-invites/{inviteId}/revoke:
+    post:
+      operationId: revokeHouseholdInvite
+      tags: [users]
+      summary: Revoke an active household invite (approved linked household adult only)
+      parameters:
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  /me/household-invites/validate:
+    post:
+      operationId: validateHouseholdInvite
+      tags: [users]
+      security: []
+      summary: Public minimal household invite validation using a body-only token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdInviteTokenInput"
+      responses:
+        "200":
+          description: Whether the invite can currently be redeemed; no household data is disclosed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdInviteValidation"
+
+  /me/household-invites/redeem:
+    post:
+      operationId: redeemHouseholdInvite
+      tags: [users]
+      summary: Redeem a body-only household invite token for the authenticated Clerk account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdInviteTokenInput"
+      responses:
+        "200":
+          description: Invite redeemed or already redeemed by this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedeemedHouseholdInvite"
 
   /todo-lists:
     get:
@@ -1908,6 +2063,26 @@ paths:
 
 components:
   schemas:
+    AiMemory:
+      type: object
+      additionalProperties: false
+      required: [id, content, category, source, subjectFamilyMemberId, createdAt]
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+        category:
+          type: string
+        source:
+          type: [string, "null"]
+        subjectFamilyMemberId:
+          type: [integer, "null"]
+          description: Null for household-wide memories; otherwise always the requesting adult
+        createdAt:
+          type: string
+          format: date-time
+
     MaintenanceRecommendationInput:
       type: object
       required: [propertyId]
@@ -2669,6 +2844,44 @@ components:
           type: [string, "null"]
           maxLength: 2048
           pattern: "^https?://"
+
+    PersonalSetupInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          enum:
+            - "#C1440E"
+            - "#2D6A4F"
+            - "#E07B39"
+            - "#4A90D9"
+            - "#9B59B6"
+            - "#E74C3C"
+            - "#2ECC71"
+            - "#F39C12"
+            - "#1ABC9C"
+            - "#E91E8C"
+            - "#607D8B"
+            - "#795548"
+        photoUrl:
+          type: [string, "null"]
+          maxLength: 2048
+          pattern: "^https?://"
+
+    PersonalSetupResult:
+      type: object
+      additionalProperties: false
+      required: [profile, alreadyCompleted]
+      properties:
+        profile:
+          $ref: "#/components/schemas/SelfFamilyProfile"
+        alreadyCompleted:
+          type: boolean
 
     CreateFamilyMemberInput:
       type: object
@@ -3593,7 +3806,7 @@ components:
 
     UserProfile:
       type: object
-      required: [clerkId, role, isAdmin, householdId, onboardingCompleted, visibleTabs]
+      required: [clerkId, role, isAdmin, householdId, onboardingCompleted, needsPersonalSetup, visibleTabs]
       properties:
         clerkId:
           type: string
@@ -3608,6 +3821,8 @@ components:
           type: string
           nullable: true
         onboardingCompleted:
+          type: boolean
+        needsPersonalSetup:
           type: boolean
         visibleTabs:
           type: array
@@ -3662,12 +3877,71 @@ components:
 
     HouseholdJoinRequestInput:
       type: object
-      required: [administratorEmail]
       properties:
-        administratorEmail:
+        householdMemberEmail:
           type: string
           minLength: 3
           maxLength: 254
+        administratorEmail:
+          description: Deprecated compatibility field; use householdMemberEmail.
+          deprecated: true
+          type: string
+          minLength: 3
+          maxLength: 254
+
+    HouseholdInvite:
+      type: object
+      required: [id, expiresAt, createdAt]
+      properties:
+        id:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    CreatedHouseholdInvite:
+      allOf:
+        - $ref: "#/components/schemas/HouseholdInvite"
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+
+    HouseholdInviteValidation:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+
+    HouseholdInviteTokenInput:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 128
+
+    RedeemedHouseholdInvite:
+      type: object
+      required: [ok, householdId]
+      properties:
+        ok:
+          type: boolean
+        householdId:
+          type: string
+
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
 
     UpdateUserProfileRequest:
       type: object

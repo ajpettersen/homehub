@@ -6,9 +6,10 @@ import {
   useCreateMaintenanceTask, useUpdateMaintenanceTask, useDeleteMaintenanceTask,
   getGetFamilyMembersQueryKey, getGetPropertiesQueryKey,
   useGetMe, getGetMeQueryKey, useUpdateHouseholdTabVisibility,
-   useListUsers, getListUsersQueryKey, useUpdateUserProfile,
-   useListHouseholdJoinRequests, getListHouseholdJoinRequestsQueryKey, useDecideHouseholdJoinRequest,
-   useMergeDuplicateAdult,
+  useListUsers, getListUsersQueryKey, useUpdateUserProfile,
+  useListHouseholdJoinRequests, getListHouseholdJoinRequestsQueryKey, useDecideHouseholdJoinRequest,
+  useListHouseholdInvites, getListHouseholdInvitesQueryKey, useCreateHouseholdInvite, useRevokeHouseholdInvite,
+  useMergeDuplicateAdult,
   type HomeHubWebTab,
   type CreateMaintenanceTaskInputCategory,
   type UpdateMaintenanceTaskInputCategory,
@@ -19,7 +20,7 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
   ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
-   SlidersHorizontal, UserCog, Merge, AlertTriangle
+  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import {
@@ -33,7 +34,7 @@ import {
 import { YourProfile } from "@/components/settings/YourProfile";
 
 // ── colour palette ───────────────────────────────────────────────────────────
-const COLORS = [
+export const COLORS = [
   "#C1440E","#2D6A4F","#E07B39","#4A90D9","#9B59B6",
   "#E74C3C","#2ECC71","#F39C12","#1ABC9C","#E91E8C","#607D8B","#795548",
 ];
@@ -122,7 +123,7 @@ function AccordionSection({
 }
 
 // ── ColorPicker ───────────────────────────────────────────────────────────────
-function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+export function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
     <div className="flex flex-wrap gap-2">
       {COLORS.map(c => (
@@ -1040,65 +1041,165 @@ function WebNotificationsSection() {
   );
 }
 
-function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
+function FamilyLinkingSection({ familyMembers }: { familyMembers: any[] }) {
   const queryClient = useQueryClient();
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
-  const { data: accounts } = useListUsers({
-    query: {
-      queryKey: getListUsersQueryKey(),
-      enabled: me?.role === "family" && me.isAdmin,
-      refetchOnWindowFocus: true,
-    },
-  });
+  
   const { data: joinRequests, isLoading: joinRequestsLoading } = useListHouseholdJoinRequests({
     query: {
       queryKey: getListHouseholdJoinRequestsQueryKey(),
-      enabled: me?.role === "family" && me.isAdmin,
+      enabled: me?.role === "family",
       refetchOnWindowFocus: true,
     },
   });
-  const updateAccount = useUpdateUserProfile();
+  
+  const { data: invites, isLoading: invitesLoading, refetch: refetchInvites } = useListHouseholdInvites({
+    query: {
+      queryKey: getListHouseholdInvitesQueryKey(),
+      enabled: me?.role === "family",
+      refetchOnWindowFocus: true,
+      refetchOnMount: "always",
+      refetchInterval: 15_000,
+      staleTime: 0,
+    },
+  });
+
   const decideJoinRequest = useDecideHouseholdJoinRequest();
+  const createInvite = useCreateHouseholdInvite();
+  const revokeInvite = useRevokeHouseholdInvite();
+
   const [memberLinks, setMemberLinks] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  if (me?.role !== "family" || !me.isAdmin) return null;
+  if (me?.role !== "family") return null;
 
-  const save = async (
-    clerkId: string,
-    data: { role?: "family" | "cleaner" | "pending"; linkedFamilyMemberId?: string | null },
-  ) => {
+  const pendingRequests = joinRequests ?? [];
+  const activeInvites = (invites ?? []).filter(inv => {
+    // Only show invites that are not expired
+    const isExpired = new Date(inv.expiresAt).getTime() < Date.now();
+    return !isExpired;
+  });
+
+  const handleCreateInvite = async () => {
     setError(null);
+    setCreatedToken(null);
+    setCopied(false);
     try {
-      await updateAccount.mutateAsync({ clerkId, data });
-      await queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      const result = await createInvite.mutateAsync();
+      // The token is returned in the response (CreatedHouseholdInvite)
+      setCreatedToken(result.token);
+      await queryClient.invalidateQueries({ queryKey: getListHouseholdInvitesQueryKey() });
     } catch {
-      setError("Could not update this account. Please try again.");
+      setError("Could not create invite link. Please try again.");
     }
   };
 
-  const pending = joinRequests ?? [];
-  const active = accounts?.filter(account => account.role !== "pending") ?? [];
-  const accountLabel = (clerkId: string) =>
-    clerkId === me.clerkId ? "Your account" : `Household account •••${clerkId.slice(-4)}`;
+  const handleRevokeInvite = async (id: string) => {
+    setError(null);
+    try {
+      await revokeInvite.mutateAsync({ inviteId: id });
+      setCreatedToken(null);
+      await queryClient.invalidateQueries({ queryKey: getListHouseholdInvitesQueryKey() });
+    } catch {
+      const refreshed = await refetchInvites();
+      if (!refreshed.data?.some(invite => invite.id === id)) {
+        setCreatedToken(null);
+        return;
+      }
+      setError("Could not revoke the invite. Please try again.");
+    }
+  };
+
+  const inviteLink = createdToken ? `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/invite#${createdToken}` : "";
 
   return (
     <AccordionSection
-      icon={<UserCog className="h-4 w-4" />}
-      title="Accounts & Access"
-      summary={<span className="text-xs text-muted-foreground">{pending.length} pending request{pending.length === 1 ? "" : "s"}</span>}
-      defaultOpen={pending.length > 0}
+      icon={<LinkIcon className="h-4 w-4" />}
+      title="Family Linking"
+      summary={<span className="text-xs text-muted-foreground">{pendingRequests.length} pending request{pendingRequests.length === 1 ? "" : "s"}</span>}
+      defaultOpen={pendingRequests.length > 0}
     >
       <div className="space-y-6">
         <div>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Invite Links</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Create secure links to let family adults join your household instantly.</p>
+          
+          <div className="mt-3 space-y-3">
+            {createdToken && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-4">
+                <p className="text-sm font-bold text-foreground">Invite link created</p>
+                <p className="text-xs text-muted-foreground mb-3">Copy this link and send it to the new family member. It expires in 24 hours and can only be used once.</p>
+                <div className="flex gap-2">
+                  <input 
+                    readOnly 
+                    value={inviteLink} 
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground outline-none"
+                    onClick={e => e.currentTarget.select()}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(inviteLink);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90"
+                  >
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!createdToken && (
+              <button
+                type="button"
+                onClick={handleCreateInvite}
+                disabled={createInvite.isPending}
+                className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-bold text-foreground hover:bg-muted disabled:opacity-60"
+              >
+                {createInvite.isPending ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Plus className="h-4 w-4 text-muted-foreground" />}
+                Create new invite link
+              </button>
+            )}
+
+            {invitesLoading && <div className="h-10 animate-pulse rounded-xl bg-muted" />}
+            {!invitesLoading && activeInvites.length > 0 && (
+              <div className="mt-4 border-t border-border pt-4">
+                <p className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider">Active invites</p>
+                {activeInvites.map(inv => (
+                  <div key={inv.id} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Invite generated</p>
+                      <p className="text-xs text-muted-foreground">Expires {new Date(inv.expiresAt).toLocaleString()}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRevokeInvite(inv.id)}
+                      disabled={revokeInvite.isPending}
+                      className="text-xs font-bold text-destructive hover:text-destructive/80"
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-5">
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pending join requests</h3>
           <p className="mt-1 text-xs text-muted-foreground">Approve only accounts you recognize. Account emails are never shown here.</p>
           <div className="mt-3 space-y-3">
             {joinRequestsLoading && <div className="h-20 animate-pulse rounded-xl bg-muted" />}
-            {!joinRequestsLoading && pending.length === 0 && (
+            {!joinRequestsLoading && pendingRequests.length === 0 && (
               <p className="rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">No one is waiting for approval.</p>
             )}
-            {pending.map(request => {
+            {pendingRequests.map(request => {
               const selectedMember = memberLinks[request.id] ?? "";
               return (
                 <div key={request.id} className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
@@ -1157,7 +1258,55 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
             })}
           </div>
         </div>
+        
+        {error && <p className="mt-3 text-sm font-medium text-destructive">{error}</p>}
+      </div>
+    </AccordionSection>
+  );
+}
 
+function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
+  const queryClient = useQueryClient();
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const { data: accounts } = useListUsers({
+    query: {
+      queryKey: getListUsersQueryKey(),
+      enabled: me?.role === "family" && me.isAdmin,
+      refetchOnWindowFocus: true,
+    },
+  });
+  
+  const updateAccount = useUpdateUserProfile();
+  const [memberLinks, setMemberLinks] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  if (me?.role !== "family" || !me.isAdmin) return null;
+
+  const save = async (
+    clerkId: string,
+    data: { role?: "family" | "cleaner" | "pending"; linkedFamilyMemberId?: string | null },
+  ) => {
+    setError(null);
+    try {
+      await updateAccount.mutateAsync({ clerkId, data });
+      await queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    } catch {
+      setError("Could not update this account. Please try again.");
+    }
+  };
+
+  const active = accounts?.filter(account => account.role !== "pending") ?? [];
+  const accountLabel = (clerkId: string) =>
+    clerkId === me.clerkId ? "Your account" : `Household account •••${clerkId.slice(-4)}`;
+
+  return (
+    <AccordionSection
+      icon={<UserCog className="h-4 w-4" />}
+      title="Household Roles & Access"
+      summary={<span className="text-xs text-muted-foreground">{active.length} active account{active.length === 1 ? "" : "s"}</span>}
+      defaultOpen={false}
+    >
+      <div className="space-y-6">
         <div>
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Existing accounts</h3>
           <div className="mt-3 divide-y divide-border rounded-xl border border-border">
@@ -1486,6 +1635,8 @@ export default function Settings() {
       <YourProfile />
 
       <AppearanceAndTabsSection />
+
+      <FamilyLinkingSection familyMembers={familyMembers ?? []} />
 
       <AccountsAndAccessSection familyMembers={familyMembers ?? []} />
 

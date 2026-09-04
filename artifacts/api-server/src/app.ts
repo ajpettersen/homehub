@@ -10,20 +10,22 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { serializeRequestForLog } from "./lib/requestLogging";
 
 const app: Express = express();
+
+// Invite tokens are bearer credentials. Browsers must not forward an invite
+// fragment or any other HomeHub URL as a referrer to another origin.
+app.use((_req, res, next) => {
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 
 app.use(
   pinoHttp({
     logger,
     serializers: {
-      req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url?.split("?")[0],
-        };
-      },
+        req: serializeRequestForLog,
       res(res) {
         return {
           statusCode: res.statusCode,

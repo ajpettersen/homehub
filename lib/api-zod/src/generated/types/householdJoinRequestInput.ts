@@ -11,5 +11,12 @@ export interface HouseholdJoinRequestInput {
      * @minLength 3
      * @maxLength 254
      */
-  administratorEmail: string;
+  householdMemberEmail?: string;
+  /**
+     * Deprecated compatibility field; use householdMemberEmail.
+     * @deprecated
+     * @minLength 3
+     * @maxLength 254
+     */
+  administratorEmail?: string;
 }

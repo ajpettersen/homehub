@@ -5,6 +5,20 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
+export interface AiMemory {
+  id: number;
+  content: string;
+  category: string;
+  /** @nullable */
+  source: string | null;
+  /**
+     * Null for household-wide memories; otherwise always the requesting adult
+     * @nullable
+     */
+  subjectFamilyMemberId: number | null;
+  createdAt: string;
+}
+
 export interface MaintenanceRecommendationInput {
   /** @minLength 1 */
   propertyId: string;
@@ -817,6 +831,44 @@ export interface SelfFamilyProfileUpdate {
   photoUrl?: string | null;
 }
 
+export type PersonalSetupInputColor = typeof PersonalSetupInputColor[keyof typeof PersonalSetupInputColor];
+
+
+export const PersonalSetupInputColor = {
+  '#C1440E': '#C1440E',
+  '#2D6A4F': '#2D6A4F',
+  '#E07B39': '#E07B39',
+  '#4A90D9': '#4A90D9',
+  '#9B59B6': '#9B59B6',
+  '#E74C3C': '#E74C3C',
+  '#2ECC71': '#2ECC71',
+  '#F39C12': '#F39C12',
+  '#1ABC9C': '#1ABC9C',
+  '#E91E8C': '#E91E8C',
+  '#607D8B': '#607D8B',
+  '#795548': '#795548',
+} as const;
+
+export interface PersonalSetupInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name?: string;
+  color?: PersonalSetupInputColor;
+  /**
+     * @maxLength 2048
+     * @nullable
+     * @pattern ^https?://
+     */
+  photoUrl?: string | null;
+}
+
+export interface PersonalSetupResult {
+  profile: SelfFamilyProfile;
+  alreadyCompleted: boolean;
+}
+
 export type CreateFamilyMemberInputRole = typeof CreateFamilyMemberInputRole[keyof typeof CreateFamilyMemberInputRole];
 
 
@@ -1402,6 +1454,7 @@ export interface UserProfile {
   householdId: string | null;
   householdName?: string | null;
   onboardingCompleted: boolean;
+  needsPersonalSetup: boolean;
   visibleTabs: HomeHubWebTab[];
   allowedPropertyId?: string | null;
   allowedPropertyName?: string | null;
@@ -1440,7 +1493,45 @@ export interface HouseholdJoinRequestInput {
      * @minLength 3
      * @maxLength 254
      */
-  administratorEmail: string;
+  householdMemberEmail?: string;
+  /**
+     * Deprecated compatibility field; use householdMemberEmail.
+     * @deprecated
+     * @minLength 3
+     * @maxLength 254
+     */
+  administratorEmail?: string;
+}
+
+export interface HouseholdInvite {
+  id: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export type CreatedHouseholdInvite = HouseholdInvite & {
+  token: string;
+};
+
+export interface HouseholdInviteValidation {
+  valid: boolean;
+}
+
+export interface HouseholdInviteTokenInput {
+  /**
+     * @minLength 32
+     * @maxLength 128
+     */
+  token: string;
+}
+
+export interface RedeemedHouseholdInvite {
+  ok: boolean;
+  householdId: string;
+}
+
+export interface OkResponse {
+  ok: boolean;
 }
 
 export type UpdateUserProfileRequestRole = typeof UpdateUserProfileRequestRole[keyof typeof UpdateUserProfileRequestRole];
@@ -1539,6 +1630,10 @@ export interface ContractorMatchResult {
   problem: string;
   matches: Contractor[];
 }
+
+export type ListAiMemories200 = {
+  memories: AiMemory[];
+};
 
 export type ScanPantryBody = {
   /** @minItems 1 */

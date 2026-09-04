@@ -5,7 +5,7 @@ import {
   mealRatingsTable,
   propertiesTable,
 } from "@workspace/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 type MealPreference = "love" | "skip";
 
@@ -73,7 +73,10 @@ export async function extractAndSaveMealMemories(
       db
         .select({ content: aiMemoriesTable.content })
         .from(aiMemoriesTable)
-        .where(eq(aiMemoriesTable.householdId, householdId)),
+        .where(and(
+          eq(aiMemoriesTable.householdId, householdId),
+          isNull(aiMemoriesTable.subjectFamilyMemberId),
+        )),
     ]);
 
     const targetMealKey = normalizeMealName(target.meal);

@@ -9,6 +9,33 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List household-wide and signed-in adult personal memories
+ */
+export const ListAiMemoriesResponse = zod.object({
+  "memories": zod.array(zod.object({
+  "id": zod.number(),
+  "content": zod.string(),
+  "category": zod.string(),
+  "source": zod.string().nullable(),
+  "subjectFamilyMemberId": zod.number().nullable().describe('Null for household-wide memories; otherwise always the requesting adult'),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Delete an authorized household or personal memory
+ */
+export const DeleteAiMemoryParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteAiMemoryResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
  * @summary Scan a fridge/pantry photo and get ingredient list + meal suggestions
  */
 
@@ -862,6 +889,7 @@ export const GetMeResponse = zod.object({
   "householdId": zod.string().nullable(),
   "householdName": zod.string().nullish(),
   "onboardingCompleted": zod.boolean(),
+  "needsPersonalSetup": zod.boolean(),
   "visibleTabs": zod.array(zod.enum(['home', 'properties', 'chores', 'meals', 'tasks', 'workouts', 'people', 'settings'])),
   "allowedPropertyId": zod.string().nullish(),
   "allowedPropertyName": zod.string().nullish(),
@@ -924,15 +952,55 @@ export const UpdateMyFamilyProfileResponse = zod.object({
 
 
 /**
- * @summary Request access to an existing household using its administrator email
+ * @summary Complete personal setup for the signed-in account's linked adult
  */
+export const completePersonalSetupBodyNameMax = 100;
+
+export const completePersonalSetupBodyPhotoUrlMax = 2048;
+
+
+export const completePersonalSetupBodyPhotoUrlRegExp = new RegExp('^https?:/');
+
+
+export const CompletePersonalSetupBody = zod.object({
+  "name": zod.string().min(1).max(completePersonalSetupBodyNameMax).optional(),
+  "color": zod.enum(['#C1440E', '#2D6A4F', '#E07B39', '#4A90D9', '#9B59B6', '#E74C3C', '#2ECC71', '#F39C12', '#1ABC9C', '#E91E8C', '#607D8B', '#795548']).optional(),
+  "photoUrl": zod.string().max(completePersonalSetupBodyPhotoUrlMax).regex(completePersonalSetupBodyPhotoUrlRegExp).nullish()
+})
+
+export const completePersonalSetupResponseProfileNameMax = 100;
+
+export const completePersonalSetupResponseProfilePhotoUrlMax = 2048;
+
+
+export const completePersonalSetupResponseProfilePhotoUrlRegExp = new RegExp('^https?:/');
+
+
+export const CompletePersonalSetupResponse = zod.object({
+  "profile": zod.object({
+  "id": zod.string(),
+  "name": zod.string().min(1).max(completePersonalSetupResponseProfileNameMax),
+  "color": zod.enum(['#C1440E', '#2D6A4F', '#E07B39', '#4A90D9', '#9B59B6', '#E74C3C', '#2ECC71', '#F39C12', '#1ABC9C', '#E91E8C', '#607D8B', '#795548']),
+  "photoUrl": zod.string().max(completePersonalSetupResponseProfilePhotoUrlMax).regex(completePersonalSetupResponseProfilePhotoUrlRegExp).nullable()
+}),
+  "alreadyCompleted": zod.boolean()
+})
+
+
+/**
+ * @summary Request access to an existing household using an approved adult's verified email
+ */
+export const requestHouseholdJoinBodyHouseholdMemberEmailMin = 3;
+export const requestHouseholdJoinBodyHouseholdMemberEmailMax = 254;
+
 export const requestHouseholdJoinBodyAdministratorEmailMin = 3;
 export const requestHouseholdJoinBodyAdministratorEmailMax = 254;
 
 
 
 export const RequestHouseholdJoinBody = zod.object({
-  "administratorEmail": zod.string().min(requestHouseholdJoinBodyAdministratorEmailMin).max(requestHouseholdJoinBodyAdministratorEmailMax)
+  "householdMemberEmail": zod.string().min(requestHouseholdJoinBodyHouseholdMemberEmailMin).max(requestHouseholdJoinBodyHouseholdMemberEmailMax).optional(),
+  "administratorEmail": zod.string().min(requestHouseholdJoinBodyAdministratorEmailMin).max(requestHouseholdJoinBodyAdministratorEmailMax).optional().describe('Deprecated compatibility field; use householdMemberEmail.')
 })
 
 export const RequestHouseholdJoinResponse = zod.object({
@@ -950,6 +1018,7 @@ export const ListUsersResponseItem = zod.object({
   "householdId": zod.string().nullable(),
   "householdName": zod.string().nullish(),
   "onboardingCompleted": zod.boolean(),
+  "needsPersonalSetup": zod.boolean(),
   "visibleTabs": zod.array(zod.enum(['home', 'properties', 'chores', 'meals', 'tasks', 'workouts', 'people', 'settings'])),
   "allowedPropertyId": zod.string().nullish(),
   "allowedPropertyName": zod.string().nullish(),
@@ -980,7 +1049,7 @@ export const UpdateUserProfileResponse = zod.object({
 
 
 /**
- * @summary List pending household join requests (household administrator only)
+ * @summary List pending household join requests (approved linked household adult only)
  */
 export const ListHouseholdJoinRequestsResponseItem = zod.object({
   "id": zod.string(),
@@ -992,7 +1061,7 @@ export const ListHouseholdJoinRequestsResponse = zod.array(ListHouseholdJoinRequ
 
 
 /**
- * @summary Approve or deny a household join request (household administrator only)
+ * @summary Approve or deny a household join request (approved linked household adult only)
  */
 export const DecideHouseholdJoinRequestParams = zod.object({
   "requestId": zod.coerce.string()
@@ -1005,6 +1074,76 @@ export const DecideHouseholdJoinRequestBody = zod.object({
 
 export const DecideHouseholdJoinRequestResponse = zod.object({
   "ok": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List active single-use household invites (approved linked household adult only)
+ */
+export const ListHouseholdInvitesResponseItem = zod.object({
+  "id": zod.string(),
+  "expiresAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+export const ListHouseholdInvitesResponse = zod.array(ListHouseholdInvitesResponseItem)
+
+
+/**
+ * @summary Create a default 24-hour single-use household invite (approved linked household adult only)
+ */
+export const CreateHouseholdInviteResponse = zod.object({
+  "id": zod.string(),
+  "expiresAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+}).and(zod.object({
+  "token": zod.string()
+}))
+
+
+/**
+ * @summary Revoke an active household invite (approved linked household adult only)
+ */
+export const RevokeHouseholdInviteParams = zod.object({
+  "inviteId": zod.coerce.string()
+})
+
+export const RevokeHouseholdInviteResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Public minimal household invite validation using a body-only token
+ */
+export const validateHouseholdInviteBodyTokenMin = 32;
+export const validateHouseholdInviteBodyTokenMax = 128;
+
+
+
+export const ValidateHouseholdInviteBody = zod.object({
+  "token": zod.string().min(validateHouseholdInviteBodyTokenMin).max(validateHouseholdInviteBodyTokenMax)
+})
+
+export const ValidateHouseholdInviteResponse = zod.object({
+  "valid": zod.boolean()
+})
+
+
+/**
+ * @summary Redeem a body-only household invite token for the authenticated Clerk account
+ */
+export const redeemHouseholdInviteBodyTokenMin = 32;
+export const redeemHouseholdInviteBodyTokenMax = 128;
+
+
+
+export const RedeemHouseholdInviteBody = zod.object({
+  "token": zod.string().min(redeemHouseholdInviteBodyTokenMin).max(redeemHouseholdInviteBodyTokenMax)
+})
+
+export const RedeemHouseholdInviteResponse = zod.object({
+  "ok": zod.boolean(),
+  "householdId": zod.string()
 })
 
 

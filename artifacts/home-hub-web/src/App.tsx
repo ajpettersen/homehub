@@ -21,6 +21,8 @@ import People from '@/pages/People';
 import NotFound from '@/pages/not-found';
 import Landing from '@/pages/Landing';
 import AccountSetup from '@/pages/AccountSetup';
+import Invite from '@/pages/Invite';
+import PersonalSetup from '@/pages/PersonalSetup';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -167,6 +169,11 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   if (me?.role === 'family' && me.isAdmin && !me.onboardingCompleted) {
     return <Onboarding />;
   }
+  
+  if (me.needsPersonalSetup) {
+    return <PersonalSetup />;
+  }
+
   return <>{children}</>;
 }
 
@@ -223,6 +230,7 @@ function Router() {
     <Switch>
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
+      <Route path="/invite" component={Invite} />
       <Route path="/" component={RootPage} />
       <Route component={AuthenticatedApp} />
     </Switch>

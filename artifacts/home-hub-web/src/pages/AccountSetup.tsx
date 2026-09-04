@@ -30,11 +30,11 @@ export default function AccountSetup() {
     event.preventDefault();
     setError(null);
     try {
-      await requestJoin.mutateAsync({ data: { administratorEmail: email.trim() } });
+      await requestJoin.mutateAsync({ data: { householdMemberEmail: email.trim() } });
       setSubmitted(true);
       await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
     } catch {
-      setError("Unable to submit this join request. Check the administrator email and try again.");
+      setError("Unable to submit this join request. Check the household member email and try again.");
     }
   };
 
@@ -48,7 +48,7 @@ export default function AccountSetup() {
         </div>
         <h1 className="mt-5 font-serif text-3xl font-bold text-foreground">Request sent</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          If this is an eligible household administrator, they can review your request. HomeHub will remain locked unless they approve it.
+          If this is an eligible family member, they can review your request. HomeHub will remain locked until they approve it.
         </p>
         <div className="mt-6 space-y-2">
           <button
@@ -99,20 +99,20 @@ export default function AccountSetup() {
           <button type="button" onClick={() => { setChoice(null); setError(null); }} className="mb-4 flex items-center gap-1 text-xs font-bold text-muted-foreground">
             <ArrowLeft className="h-3.5 w-3.5" /> Back
           </button>
-          <label htmlFor="administrator-email" className="text-sm font-bold text-foreground">Family administrator email</label>
+          <label htmlFor="household-member-email" className="text-sm font-bold text-foreground">Family member email</label>
           <input
-            id="administrator-email"
+            id="household-member-email"
             type="email"
             autoComplete="email"
             required
             maxLength={254}
             value={email}
             onChange={event => setEmail(event.target.value)}
-            placeholder="administrator@example.com"
+            placeholder="family@example.com"
             className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none focus:border-primary"
           />
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            We’ll send your request to that administrator’s household. They must approve your account before you can access family information.
+            We’ll send your request to that household. A family member must approve your account before you can access family information.
           </p>
           {error && <p className="mt-3 text-sm font-medium text-destructive">{error}</p>}
           <button type="submit" disabled={requestJoin.isPending} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-60">
@@ -125,7 +125,7 @@ export default function AccountSetup() {
       {choice === "not-joining" && (
         <div className="mt-5">
           <p className="rounded-xl bg-muted/60 p-4 text-sm leading-relaxed text-muted-foreground">
-            HomeHub accounts need approval from an existing family administrator. If you were invited, go back and enter that person’s email.
+            HomeHub accounts need approval from an existing family member. If you were invited, go back and enter their email.
           </p>
           <button type="button" onClick={() => setChoice(null)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-bold">
             <ArrowLeft className="h-4 w-4" /> Go back

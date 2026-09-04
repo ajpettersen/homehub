@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { propertiesTable, userProfilesTable } from "@workspace/db/schema";
+import { familyMembersTable, propertiesTable, userProfilesTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 
 /**
@@ -13,10 +13,12 @@ export async function getAuthorizedPropertyIds(clerkId: string): Promise<number[
 }
 
 export interface PropertyAuthorizationScope {
+  clerkId: string;
   householdId: number;
   propertyIds: number[];
   role: "family" | "cleaner";
   isAdmin: boolean;
+  linkedFamilyMemberId: number | null;
 }
 
 export async function getPropertyAuthorizationScope(
@@ -33,20 +35,29 @@ export async function getPropertyAuthorizationScope(
   }
 
   if (profile.role === "family") {
+    const [linkedAdult] = profile.linkedFamilyMemberId
+      ? await db.select({ id: familyMembersTable.id }).from(familyMembersTable).where(and(
+          eq(familyMembersTable.id, profile.linkedFamilyMemberId),
+          eq(familyMembersTable.householdId, profile.householdId),
+          eq(familyMembersTable.role, "parent"),
+        )).limit(1)
+      : [];
     const properties = await db
       .select({ id: propertiesTable.id })
       .from(propertiesTable)
       .where(eq(propertiesTable.householdId, profile.householdId));
     return {
+      clerkId,
       householdId: profile.householdId,
       propertyIds: properties.map(property => property.id),
       role: "family",
       isAdmin: profile.isAdmin,
+      linkedFamilyMemberId: linkedAdult?.id ?? null,
     };
   }
 
   if (!profile.allowedPropertyId) {
-    return { householdId: profile.householdId, propertyIds: [], role: "cleaner", isAdmin: false };
+    return { clerkId, householdId: profile.householdId, propertyIds: [], role: "cleaner", isAdmin: false, linkedFamilyMemberId: null };
   }
   const [property] = await db
     .select({ id: propertiesTable.id })
@@ -57,9 +68,11 @@ export async function getPropertyAuthorizationScope(
     ))
     .limit(1);
   return {
+    clerkId,
     householdId: profile.householdId,
     propertyIds: property ? [property.id] : [],
     role: "cleaner",
     isAdmin: false,
+    linkedFamilyMemberId: null,
   };
 }
