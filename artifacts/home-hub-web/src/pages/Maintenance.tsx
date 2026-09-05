@@ -49,6 +49,7 @@ function TaskCard({
   onAssign,
   onDueDateChange,
   updatingDueDate,
+  busy,
 }: {
   task: any;
   members: any[];
@@ -57,6 +58,7 @@ function TaskCard({
   onAssign: (assigneeId: string | null) => void;
   onDueDateChange: (nextDueDate: string) => void;
   updatingDueDate: boolean;
+  busy: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [dueDate, setDueDate] = useState(task.nextDueDate);
@@ -112,7 +114,8 @@ function TaskCard({
           )}
           <button
             onClick={e => { e.stopPropagation(); onComplete(); }}
-            className="w-8 h-8 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground rounded-lg transition-all"
+            disabled={busy}
+            className="w-8 h-8 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground rounded-lg transition-all disabled:cursor-wait disabled:opacity-50"
             title="Mark done"
           >
             <CheckCircle2 className="w-4 h-4" />
@@ -142,7 +145,8 @@ function TaskCard({
             )}
             <button
               onClick={e => { e.stopPropagation(); onDelete(); }}
-              className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all shrink-0"
+              disabled={busy}
+              className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all shrink-0 disabled:cursor-wait disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -153,6 +157,7 @@ function TaskCard({
             <div className="flex gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
               <button
                 onClick={() => onAssign(null)}
+                disabled={busy}
                 className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
                   !task.assigneeId
                     ? "bg-foreground text-background border-foreground"
@@ -167,6 +172,7 @@ function TaskCard({
                   <button
                     key={m.id}
                     onClick={() => onAssign(m.id)}
+                    disabled={busy}
                     data-testid={`button-assign-${task.id}-${m.id}`}
                     className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
                       active ? "text-white border-transparent shadow-sm" : "border-border text-muted-foreground hover:border-foreground/40"
@@ -186,7 +192,7 @@ function TaskCard({
               <input
                 type="date"
                 value={dueDate}
-                disabled={updatingDueDate}
+                 disabled={updatingDueDate || busy}
                 aria-label={`Next due date for ${task.title}`}
                 onChange={event => {
                   const nextDueDate = event.target.value;
@@ -197,7 +203,7 @@ function TaskCard({
               />
               <button
                 type="button"
-                disabled={updatingDueDate}
+                 disabled={updatingDueDate || busy}
                 onClick={() => {
                   const nextDueDate = getLocalDateOnly(addDays(new Date(), 1));
                   setDueDate(nextDueDate);
@@ -209,7 +215,7 @@ function TaskCard({
               </button>
               <button
                 type="button"
-                disabled={updatingDueDate}
+                 disabled={updatingDueDate || busy}
                 onClick={() => {
                   const nextDueDate = getLocalDateOnly(addDays(new Date(), 7));
                   setDueDate(nextDueDate);
@@ -584,8 +590,8 @@ export default function Properties() {
   const timezone = getResolvedTimeZone();
   const maintenanceQuery = { timezone };
 
-  const { data: tasks, isLoading } = useGetMaintenanceTasks(maintenanceQuery, { query: { queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) } });
-  const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
+  const { data: tasks, isLoading, isError: tasksFailed, refetch: retryTasks } = useGetMaintenanceTasks(maintenanceQuery, { query: { queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery), retry: false } });
+  const { data: properties, isError: propertiesFailed, refetch: retryProperties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey(), retry: false } });
   const { data: members } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
 
   const completeTask = useCompleteMaintenanceTask();
@@ -598,6 +604,8 @@ export default function Properties() {
   const [suggesting, setSuggesting] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [updatingDueDateId, setUpdatingDueDateId] = useState<string | null>(null);
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
 
   const invalidate = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) }),
@@ -605,24 +613,43 @@ export default function Properties() {
   ]);
 
   const handleComplete = (id: string) => {
+    if (completeTask.isPending) return;
+    setActionError("");
+    setPendingTaskId(id);
     completeTask.mutate(
       { id, data: { completedBy: activeMember?.name ?? "Someone", completedOn: getLocalDateOnly(), timezone } },
-      { onSuccess: invalidate }
+      {
+        onSuccess: invalidate,
+        onError: () => setActionError("Could not complete that maintenance task. Please try again."),
+        onSettled: () => setPendingTaskId(null),
+      }
     );
   };
 
   const handleDelete = (id: string) => {
     if (!confirm("Remove this task?")) return;
-    deleteTask.mutate({ id }, { onSuccess: invalidate });
+    if (deleteTask.isPending) return;
+    setActionError("");
+    setPendingTaskId(id);
+    deleteTask.mutate({ id }, {
+      onSuccess: invalidate,
+      onError: () => setActionError("Could not remove that maintenance task. Please try again."),
+      onSettled: () => setPendingTaskId(null),
+    });
   };
 
   const handleCreate = (data: any) => {
+    setActionError("");
     createTask.mutate({ data: { ...data, ...(data.scheduleType === "recurring" && { timezone }) } }, {
-      onSuccess: () => { setAdding(false); invalidate(); }
+      onSuccess: () => { setAdding(false); invalidate(); },
+      onError: () => setActionError("Could not create that maintenance task. Please try again."),
     });
   };
 
   const handleAssign = (id: string, assigneeId: string | null) => {
+    if (updateTask.isPending) return;
+    setActionError("");
+    setPendingTaskId(id);
     const task = tasks?.find(candidate => candidate.id === id);
     updateTask.mutate(
       {
@@ -632,11 +659,17 @@ export default function Properties() {
           ...(task?.scheduleType === "recurring" && { timezone }),
         },
       },
-      { onSuccess: invalidate },
+      {
+        onSuccess: invalidate,
+        onError: () => setActionError("Could not change the assignment. Please try again."),
+        onSettled: () => setPendingTaskId(null),
+      },
     );
   };
 
   const handleDueDateChange = (task: any, nextDueDate: string) => {
+    if (updateTask.isPending) return;
+    setActionError("");
     setUpdatingDueDateId(task.id);
     updateTask.mutate(
       {
@@ -648,6 +681,7 @@ export default function Properties() {
       },
       {
         onSuccess: invalidate,
+        onError: () => setActionError("Could not change the due date. Please try again."),
         onSettled: () => setUpdatingDueDateId(null),
       },
     );
@@ -669,8 +703,30 @@ export default function Properties() {
 
   const usedCategories = [...new Set(propertyTasks.map(t => t.category))];
 
+  if (tasksFailed || propertiesFailed || (!isLoading && (!tasks || !properties))) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-destructive/30 bg-card px-5 py-12 text-center" role="alert">
+        <AlertTriangle className="mb-3 h-10 w-10 text-destructive" />
+        <h1 className="font-serif text-2xl font-bold">Properties couldn’t load</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
+        <button
+          type="button"
+          className="mt-5 min-h-11 rounded-xl bg-primary px-5 text-sm font-bold text-primary-foreground"
+          onClick={() => void Promise.all([retryTasks(), retryProperties()])}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {actionError && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
+          {actionError}
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
@@ -769,7 +825,7 @@ export default function Properties() {
                 <AlertTriangle className="w-3.5 h-3.5" /> Overdue ({overdue.length})
               </h2>
               <div className="space-y-2">
-                {overdue.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} />)}
+                {overdue.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} busy={pendingTaskId === t.id} />)}
               </div>
             </section>
           )}
@@ -780,7 +836,7 @@ export default function Properties() {
                 <Clock className="w-3.5 h-3.5" /> Coming Up ({dueSoon.length})
               </h2>
               <div className="space-y-2">
-                {dueSoon.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} />)}
+                {dueSoon.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} busy={pendingTaskId === t.id} />)}
               </div>
             </section>
           )}
@@ -791,7 +847,7 @@ export default function Properties() {
                 Scheduled ({upcoming.length})
               </h2>
               <div className="space-y-2">
-                {upcoming.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} />)}
+                {upcoming.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} busy={pendingTaskId === t.id} />)}
               </div>
             </section>
           )}

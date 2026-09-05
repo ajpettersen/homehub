@@ -6,6 +6,7 @@ import {
   familyMembersTable,
   householdNotificationPreferencesTable,
   householdsTable,
+  maintenanceTasksTable,
   notificationDeliveryTable,
   propertiesTable,
   pushTokensTable,
@@ -119,6 +120,13 @@ try {
       dueDate: "2026-01-02",
     },
   ]);
+  await db.insert(maintenanceTasksTable).values({
+    title: "Chicago boundary maintenance",
+    propertyId: chicagoProperty.id,
+    category: "other",
+    scheduleType: "one-time",
+    nextDueDate: "2026-01-02",
+  });
   const [list] = await db.insert(todoListsTable).values({
     householdId: chicago.id,
     name: "Assigned reminders",
@@ -188,6 +196,11 @@ try {
 
   const webAfter = await buildDueWebPushMessages(
     new Date("2026-01-02T14:01:00Z"),
+  );
+  assert.equal(
+    webAfter.find((message) => message.delivery.kind === "maintenance")?.payload.url,
+    "/properties",
+    "maintenance Web Push must open the current Properties route",
   );
   assert(
     chicagoAfter.some((message) => message.delivery.kind === "workout-follow-up"),

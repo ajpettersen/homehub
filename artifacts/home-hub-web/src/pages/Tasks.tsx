@@ -20,26 +20,47 @@ import { formatDateOnly, getLocalDateOnly } from "@/lib/dateOnly";
 export default function Tasks() {
   const queryClient = useQueryClient();
   const { preferences } = usePreferences();
-  const { data: lists, isLoading: loadingLists } = useGetTodoLists({ query: { queryKey: getGetTodoListsQueryKey() } });
+  const {
+    data: lists,
+    isLoading: loadingLists,
+    isError: listsFailed,
+    refetch: retryLists,
+  } = useGetTodoLists({ query: { queryKey: getGetTodoListsQueryKey(), retry: false } });
   
   const createList = useCreateTodoList();
   const [newListName, setNewListName] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createListError, setCreateListError] = useState("");
 
   const handleCreateList = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newListName.trim()) return;
+    setCreateListError("");
     createList.mutate(
       { data: { name: newListName } },
       { onSuccess: () => {
         setNewListName("");
         setIsCreateOpen(false);
         queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() });
-      }}
+      },
+      onError: () => setCreateListError("Could not create this list. Please try again."),
+      }
     );
   };
 
   if (loadingLists) return <div className="p-8 font-serif text-xl text-muted-foreground animate-pulse">Loading tasks...</div>;
+  if (listsFailed || !lists) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-destructive/30 bg-card px-5 py-12 text-center" role="alert">
+        <CheckSquare className="mb-3 h-10 w-10 text-destructive" />
+        <h1 className="font-serif text-2xl font-bold">Tasks couldn’t load</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
+        <Button type="button" className="mt-5 min-h-11" onClick={() => void retryLists()}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 sm:space-y-8">
@@ -63,8 +84,9 @@ export default function Tasks() {
             <form onSubmit={handleCreateList} className="space-y-4 pt-4">
               <div>
                 <label className="text-sm font-medium mb-1 block">List Name</label>
-                <Input value={newListName} onChange={(e) => setNewListName(e.target.value)} autoFocus required />
+                 <Input value={newListName} onChange={(e) => { setNewListName(e.target.value); setCreateListError(""); }} autoFocus required />
               </div>
+               {createListError && <p className="text-sm text-destructive" role="alert">{createListError}</p>}
               <div className="flex justify-end gap-2">
                 <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
                 <Button type="submit" disabled={createList.isPending}>
@@ -93,7 +115,12 @@ export default function Tasks() {
 
 function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
   const queryClient = useQueryClient();
-  const { data: items, isLoading } = useGetTodoItems(list.id, { query: { enabled: !!list.id, queryKey: getGetTodoItemsQueryKey(list.id) } });
+  const {
+    data: items,
+    isLoading,
+    isError: itemsFailed,
+    refetch: retryItems,
+  } = useGetTodoItems(list.id, { query: { enabled: !!list.id, queryKey: getGetTodoItemsQueryKey(list.id), retry: false } });
   
   const updateItem = useUpdateTodoItem();
   const addItem = useAddTodoItem();
@@ -112,11 +139,17 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
   const [bulkDefaultDueDate, setBulkDefaultDueDate] = useState(() => getLocalDateOnly());
   const [bulkError, setBulkError] = useState("");
   const [bulkResult, setBulkResult] = useState("");
+  const [itemActionError, setItemActionError] = useState("");
 
   const handleToggle = (item: any) => {
+    if (updateItem.isPending) return;
+    setItemActionError("");
     updateItem.mutate(
       { id: item.id, data: { completed: !item.completed } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) }) }
+      {
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) }),
+        onError: () => setItemActionError("Could not update that task. Please try again."),
+      }
     );
   };
 
@@ -202,21 +235,27 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
     e.stopPropagation();
     e.preventDefault();
     if (!confirm('Delete this task?')) return;
+    setItemActionError("");
     deleteItem.mutate({ id: itemId }, {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) })
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) }),
+      onError: () => setItemActionError("Could not delete that task. Please try again."),
     });
   };
 
   const handleMoveToTop = () => {
+    setItemActionError("");
     moveToTop.mutate({ id: list.id }, {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() })
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() }),
+      onError: () => setItemActionError("Could not move this list. Please try again."),
     });
   };
 
   const handleDeleteList = () => {
     if (!confirm('Are you sure you want to delete this list and all its tasks?')) return;
+    setItemActionError("");
     deleteList.mutate({ id: list.id }, {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() })
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() }),
+      onError: () => setItemActionError("Could not delete this list. Please try again."),
     });
   };
 
@@ -247,14 +286,22 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
         </div>
       </div>
       <CardContent className="flex-1 space-y-1 overflow-visible p-2 sm:space-y-2 sm:overflow-y-auto sm:p-4">
+        {itemActionError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{itemActionError}</p>}
         {isLoading ? (
           <div className="animate-pulse space-y-2">
             {[1,2].map(i => <div key={i} className="h-10 bg-muted rounded-lg w-full"></div>)}
           </div>
-        ) : items?.length === 0 ? (
+        ) : itemsFailed || !items ? (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center" role="alert">
+            <p className="text-sm font-medium text-destructive">Tasks in this list couldn’t load.</p>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void retryItems()}>
+              Try again
+            </Button>
+          </div>
+        ) : items.length === 0 ? (
           <div className="text-center p-4 text-muted-foreground italic text-sm">No tasks yet.</div>
         ) : (
-          items?.map((item: any) => (
+          items.map((item: any) => (
             <div
               key={item.id} 
               className={`group flex items-start gap-2 rounded-lg border p-2 transition-all sm:gap-3 sm:p-3 ${
@@ -263,7 +310,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                   : "bg-background border-border hover:border-primary/50 shadow-sm"
               }`}
             >
-              <label className="cursor-pointer" aria-label={`${item.completed ? "Mark incomplete" : "Mark complete"}: ${item.content}`}>
+              <label className={updateItem.isPending ? "cursor-wait opacity-60" : "cursor-pointer"} aria-label={`${item.completed ? "Mark incomplete" : "Mark complete"}: ${item.content}`}>
                 <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${
                   item.completed ? "bg-accent border-accent text-accent-foreground" : "border-input bg-background"
                 }`}>
@@ -273,6 +320,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                   type="checkbox"
                   className="sr-only"
                   checked={item.completed}
+                   disabled={updateItem.isPending}
                   onChange={() => handleToggle(item)}
                 />
               </label>

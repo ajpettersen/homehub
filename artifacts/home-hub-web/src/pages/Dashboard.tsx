@@ -379,7 +379,12 @@ function overdueWorkoutQuestion(scheduledDate: string | null, workoutDate: strin
 export default function Dashboard() {
   const { preferences } = usePreferences();
   const queryClient = useQueryClient();
-  const { data: dashboard, isLoading } = useGetDashboard({ query: { queryKey: getGetDashboardQueryKey() } });
+  const {
+    data: dashboard,
+    isLoading,
+    isError,
+    refetch: retryDashboard,
+  } = useGetDashboard({ query: { queryKey: getGetDashboardQueryKey(), retry: false } });
   const { data: overdueSessions, isLoading: overdueLoading } = useGetOverdueWorkoutSessions({
     query: { queryKey: getGetOverdueWorkoutSessionsQueryKey() },
   });
@@ -403,7 +408,24 @@ export default function Dashboard() {
     </div>;
   }
 
-  if (!dashboard) return null;
+  if (isError || !dashboard) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-destructive/30 bg-card px-5 py-12 text-center" role="alert">
+        <AlertTriangle className="mb-3 h-10 w-10 text-destructive" />
+        <h1 className="font-serif text-2xl font-bold">HomeHub couldn’t load</h1>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">
+          Check your connection and try again. Your household information is still safe.
+        </p>
+        <button
+          type="button"
+          onClick={() => void retryDashboard()}
+          className="mt-5 min-h-11 rounded-xl bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary/90"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col space-y-8">

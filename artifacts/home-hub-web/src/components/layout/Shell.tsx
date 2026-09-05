@@ -35,7 +35,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     await signOut();
   };
 
-  const humanMembers = familyMembers?.filter(m => m.role !== "pet") ?? [];
+  const selectableMembers = familyMembers ?? [];
   const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? navItems.map(item => item.tab));
   const visibleNavItems = navItems.filter(item => visibleTabs.has(item.tab));
 
@@ -153,7 +153,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setMemberPickerOpen(false)} />
                 <div className="absolute right-0 top-full mt-2 z-40 bg-card border border-border rounded-2xl shadow-lg p-2 min-w-[160px]">
-                  {humanMembers.map(member => (
+                  {selectableMembers.map(member => (
                     <button
                       key={member.id}
                       onClick={() => { setActiveMember(member); setMemberPickerOpen(false); }}

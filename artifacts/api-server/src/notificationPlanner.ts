@@ -247,7 +247,7 @@ async function loadEvents(
         body: task.nextDueDate < today
           ? "Home maintenance is overdue"
           : "Home maintenance is due today",
-        url: "/maintenance",
+        url: "/properties",
         targetMemberIds: task.assigneeId === null
           ? undefined
           : new Set([task.assigneeId]),

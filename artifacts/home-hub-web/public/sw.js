@@ -1,6 +1,38 @@
 const APP_ROOT_URL = new URL("./", self.registration.scope).href;
 const APP_ROOT = new URL(APP_ROOT_URL).pathname;
 const HOMEHUB_CACHE_PREFIX = "homehub-web-";
+const LEGACY_NOTIFICATION_ROUTES = new Map([
+  ["maintenance", "properties"],
+]);
+const NOTIFICATION_ROUTES = new Set([
+  "",
+  "chores",
+  "properties",
+  "tasks",
+  "workouts",
+]);
+
+function getNotificationTargetUrl(value) {
+  if (typeof value !== "string" || value.trim() === "") return APP_ROOT_URL;
+
+  try {
+    const candidate = new URL(value, self.location.origin);
+    if (candidate.origin !== self.location.origin) return APP_ROOT_URL;
+
+    const pathWithinApp = candidate.pathname.startsWith(APP_ROOT)
+      ? candidate.pathname.slice(APP_ROOT.length)
+      : candidate.pathname.replace(/^\/+/, "");
+    const route = LEGACY_NOTIFICATION_ROUTES.get(pathWithinApp) ?? pathWithinApp;
+    if (!NOTIFICATION_ROUTES.has(route)) return APP_ROOT_URL;
+
+    const target = new URL(route || "./", APP_ROOT_URL);
+    target.search = candidate.search;
+    target.hash = candidate.hash;
+    return target.href;
+  } catch {
+    return APP_ROOT_URL;
+  }
+}
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") {
@@ -40,13 +72,17 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || APP_ROOT, self.location.origin).href;
+  const targetUrl = getNotificationTargetUrl(event.notification.data?.url);
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
       const existing = clients.find((client) => client.url.startsWith(APP_ROOT_URL));
       if (existing) {
-        existing.navigate(targetUrl);
-        return existing.focus();
+        try {
+          const navigated = await existing.navigate(targetUrl);
+          return (navigated || existing).focus();
+        } catch {
+          // Fall through and open a fresh HomeHub window.
+        }
       }
       return self.clients.openWindow(targetUrl);
     }),
