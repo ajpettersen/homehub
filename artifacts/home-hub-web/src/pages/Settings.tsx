@@ -1149,12 +1149,12 @@ function MemberCard({ member, onEdit, onDelete, canManage }: { member: any; onEd
             </p>
           )}
         </div>
-        {canManage && <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
-          <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Edit">
+        {canManage && <div className="flex shrink-0 gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+          <button onClick={onEdit} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:h-7 sm:w-7" title="Edit" aria-label={`Edit ${member.name}`}>
             <Pencil className="w-3.5 h-3.5" />
           </button>
           {!member.hasLinkedAccount && (
-            <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors" title="Delete">
+            <button onClick={onDelete} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7" title="Delete" aria-label={`Delete ${member.name}`}>
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
@@ -1232,7 +1232,7 @@ function AiMemorySection() {
           <button
             onClick={() => handleDelete(m.id)}
             disabled={deletingId === m.id}
-            className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 shrink-0 disabled:opacity-40"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-100 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40 sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100"
             title="Forget this">
             <X className="w-3 h-3" />
           </button>
@@ -1968,8 +1968,8 @@ function MergeDuplicateAdultsSection({ familyMembers }: { familyMembers: any[] }
       </AccordionSection>
 
       {isConfirmOpen && keepMember && legacyMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card w-full max-w-md rounded-2xl shadow-xl border border-destructive/30 animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/60 p-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] backdrop-blur-sm animate-in fade-in duration-200 sm:p-4">
+          <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-md flex-col overflow-y-auto rounded-2xl border border-destructive/30 bg-card shadow-xl animate-in zoom-in-95 duration-200">
             <div className="p-4 border-b border-border bg-destructive/5 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5 text-destructive" />

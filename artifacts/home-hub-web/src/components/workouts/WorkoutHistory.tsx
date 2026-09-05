@@ -53,9 +53,11 @@ function ExerciseRow({ exercise, onDelete }: { exercise: any; onDelete: () => vo
         {exercise.notes && <p className="text-xs text-muted-foreground mt-1 italic">{exercise.notes}</p>}
       </div>
       <button
+        type="button"
         onClick={onDelete}
-        className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-100 transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
         title="Delete exercise"
+        aria-label={`Delete ${exercise.name}`}
       >
         <Trash2 className="w-4 h-4" />
       </button>

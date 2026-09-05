@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { format, startOfWeek } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
-import { Send, User, Sparkles, Activity, CalendarDays } from "lucide-react";
+import { Send, User, Sparkles, Activity, CalendarDays, X } from "lucide-react";
 import {
   useGetWorkoutCoachConversation,
   useSendWorkoutCoachMessage,
@@ -22,11 +22,13 @@ import { EditableDraftWorkout } from "./EditableDraftWorkout";
 export function WorkoutCoach({
   participantIds,
   onWorkoutLogged,
+  onClose,
   libraryExercise,
   onLibraryExerciseAdded
 }: {
   participantIds: string[];
   onWorkoutLogged: () => void;
+  onClose: () => void;
   libraryExercise?: DraftExercise | null;
   onLibraryExerciseAdded?: () => void;
 }) {
@@ -47,10 +49,12 @@ export function WorkoutCoach({
   const [isLogging, setIsLogging] = useState(false);
   const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null);
   const [workoutDate, setWorkoutDate] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const messages = messagesRef.current;
+    if (!messages) return;
+    messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
   }, [conversation?.messages, draft, sendMessage.isPending]);
   useEffect(() => {
     if (preferences?.currentLocalDate && !workoutDate) setWorkoutDate(preferences.currentLocalDate);
@@ -149,18 +153,27 @@ export function WorkoutCoach({
   };
 
   return (
-    <div className="flex flex-col h-[600px] max-h-[80vh] bg-card border-2 border-border rounded-3xl overflow-hidden">
-      <div className="p-4 border-b border-border bg-muted/30 shrink-0 flex items-center gap-3">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-3xl border-2 border-border bg-card sm:h-[600px] sm:max-h-[80vh]">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-muted/30 p-3 sm:p-4">
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
           <Sparkles className="w-5 h-5" />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <h2 className="font-bold text-lg leading-tight">AI Workout Coach</h2>
           <p className="text-xs text-muted-foreground">Chat, ask for routines, or adjust plans</p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          data-testid="button-close-workout-coach"
+          className="flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-sm font-bold text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+          Done
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={messagesRef} className="min-h-[14rem] max-h-[42dvh] flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 sm:max-h-none sm:p-4">
         {isLoading ? (
           <div className="flex justify-center items-center h-full text-muted-foreground">
             Loading history...
@@ -242,10 +255,9 @@ export function WorkoutCoach({
           </div>
         )}
         
-        <div ref={endRef} />
       </div>
 
-      <div className="p-4 bg-background border-t border-border shrink-0">
+      <div className="shrink-0 border-t border-border bg-background p-3 sm:p-4">
         <form onSubmit={handleSend} className="relative">
           <input
             type="text"

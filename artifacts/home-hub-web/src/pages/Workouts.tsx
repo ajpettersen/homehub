@@ -96,10 +96,10 @@ export default function Workouts() {
   ] as const;
 
   return (
-    <main className="pb-12 animate-in fade-in duration-500 max-w-5xl mx-auto space-y-5" data-testid="workouts-page">
+    <main className="mx-auto max-w-5xl space-y-4 pb-4 animate-in fade-in duration-500 sm:space-y-5 sm:pb-12" data-testid="workouts-page">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="font-serif text-4xl md:text-5xl font-bold text-foreground tracking-tight">
+          <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
             Move together, <em className="text-primary font-medium">without the admin.</em>
           </h1>
           <p className="text-muted-foreground mt-1 font-medium">
@@ -107,8 +107,8 @@ export default function Workouts() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex flex-wrap gap-2"><button data-testid="button-review-workout-preferences" onClick={() => { setSetupStep(1); setSetupOpen(true); }} className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-primary font-bold hover:bg-primary/10 transition-colors text-sm"><WandSparkles className="w-4 h-4" />Review preferences</button><button data-testid="button-log-workout" onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background font-bold hover:bg-foreground/90 transition-colors shadow-md"><Plus className="w-5 h-5" />Log Workout</button></div>
+        <div className="flex w-full items-center gap-3 md:w-auto">
+          <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap"><button data-testid="button-review-workout-preferences" onClick={() => { setSetupStep(1); setSetupOpen(true); }} className="flex items-center justify-center gap-2 rounded-xl px-2 py-2.5 text-sm font-bold text-primary transition-colors hover:bg-primary/10 md:px-3"><WandSparkles className="w-4 h-4" />Preferences</button><button data-testid="button-log-workout" onClick={() => setShowCreateModal(true)} className="flex items-center justify-center gap-2 rounded-xl bg-foreground px-3 py-2.5 font-bold text-background shadow-md transition-colors hover:bg-foreground/90 md:px-5"><Plus className="w-5 h-5" />Log Workout</button></div>
         </div>
       </header>
 
@@ -184,7 +184,7 @@ export default function Workouts() {
         )}
         
         {activeTab === "coach" && (
-          <WorkoutCoach participantIds={selectedIds} onWorkoutLogged={() => setActiveTab("history")} libraryExercise={pendingLibraryExercise} onLibraryExerciseAdded={() => setPendingLibraryExercise(null)} />
+          <WorkoutCoach participantIds={selectedIds} onWorkoutLogged={() => setActiveTab("history")} onClose={() => setActiveTab("history")} libraryExercise={pendingLibraryExercise} onLibraryExerciseAdded={() => setPendingLibraryExercise(null)} />
         )}
         
         {activeTab === "library" && (

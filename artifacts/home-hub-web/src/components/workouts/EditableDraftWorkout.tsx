@@ -72,8 +72,10 @@ export function EditableDraftWorkout({
         {draft.exercises.map((ex, i) => (
           <div key={i} className="bg-background border border-border rounded-xl p-3 relative group">
             <button 
+              type="button"
               onClick={() => handleRemoveEx(i)}
-              className="absolute -right-2 -top-2 w-6 h-6 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+              aria-label={`Remove ${ex.name || `exercise ${i + 1}`}`}
+              className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-100 shadow-sm transition-opacity sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
             >
               <Trash2 className="w-3 h-3" />
             </button>

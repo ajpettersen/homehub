@@ -193,7 +193,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <div className={`flex-1 min-h-0 overflow-y-auto p-4 ${preferences.appearance.density === "compact" ? "md:p-5 pb-20 md:pb-5" : "md:p-8 pb-24 md:pb-8"}`}>
+        <div className={`flex-1 min-h-0 overflow-y-auto p-4 ${preferences.appearance.density === "compact" ? "md:p-5" : "md:p-8"}`}>
           <div className="max-w-6xl mx-auto">
             {location !== "/" && (
               <Link
@@ -207,13 +207,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
             )}
             {children}
           </div>
+          <div
+            className="h-[calc(5.5rem+env(safe-area-inset-bottom))] shrink-0 md:hidden"
+            aria-hidden="true"
+          />
         </div>
       </main>
 
       {/* ── Mobile bottom tab bar ── */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-border bg-card md:hidden"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
+        aria-label="Primary navigation"
       >
         {visibleNavItems.map((item) => {
           const isActive = location === item.href;

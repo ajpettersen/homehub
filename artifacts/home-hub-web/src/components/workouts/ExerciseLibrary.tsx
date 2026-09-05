@@ -264,13 +264,15 @@ export function ExerciseLibrary({ onUse }: { onUse?: (exercise: any) => void }) 
                             </p>
                           )}
                         </button>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                          <button onClick={() => { setEditingId(ex.id); setAdding(false); setErrorMsg(null); }}
-                            className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors">
+                        <div className="flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                          <button type="button" onClick={() => { setEditingId(ex.id); setAdding(false); setErrorMsg(null); }}
+                            aria-label={`Edit ${ex.name}`}
+                            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:h-8 sm:w-8">
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleDelete(ex.id, ex.name)}
-                            className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors">
+                          <button type="button" onClick={() => handleDelete(ex.id, ex.name)}
+                            aria-label={`Delete ${ex.name}`}
+                            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>

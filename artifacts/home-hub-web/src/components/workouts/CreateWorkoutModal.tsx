@@ -124,8 +124,8 @@ export function CreateWorkoutModal({ onClose, defaultMember, members }: { onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className={`bg-card w-full rounded-2xl shadow-xl overflow-hidden border border-border animate-in zoom-in-95 duration-200 flex flex-col ${draft ? 'max-w-2xl max-h-[90vh]' : 'max-w-md'}`}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/60 p-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] backdrop-blur-sm animate-in fade-in duration-200 sm:p-4">
+      <div className={`flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl animate-in zoom-in-95 duration-200 ${draft ? 'max-w-2xl' : 'max-w-md'}`}>
         <div className="flex items-center justify-between p-4 border-b border-border bg-muted/20 shrink-0">
           <h2 className="font-serif font-bold text-xl flex items-center gap-2">
             <Dumbbell className="w-5 h-5 text-primary" />

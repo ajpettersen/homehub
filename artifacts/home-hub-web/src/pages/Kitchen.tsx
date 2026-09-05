@@ -458,8 +458,8 @@ function MealSlot({
       title={`Add ${mealType.label} for ${dayLabel}`}
     >
       <Icon className="w-3.5 h-3.5 shrink-0 opacity-50" />
-      <span className="text-xs font-medium opacity-60 group-hover:opacity-100">{mealType.label}</span>
-      <Plus className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-60" />
+      <span className="text-xs font-medium opacity-100 sm:opacity-60 sm:group-hover:opacity-100">{mealType.label}</span>
+      <Plus className="ml-auto h-3 w-3 opacity-60 sm:opacity-0 sm:group-hover:opacity-60" />
     </button>
   );
 }
@@ -799,7 +799,7 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
                 />
                 <span className="flex-1 text-sm font-medium">{item.name}</span>
                 {item.quantity && <span className="text-xs text-muted-foreground font-medium">{item.quantity}</span>}
-                <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive rounded transition-all">
+                <button onClick={() => handleDelete(item.id)} aria-label={`Delete ${item.name}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted-foreground opacity-100 transition-all hover:text-destructive sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -823,7 +823,7 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
                 </button>
                 <span className="flex-1 text-sm font-medium line-through text-muted-foreground">{item.name}</span>
                 {item.quantity && <span className="text-xs text-muted-foreground">{item.quantity}</span>}
-                <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive rounded transition-all">
+                <button onClick={() => handleDelete(item.id)} aria-label={`Delete ${item.name}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted-foreground opacity-100 transition-all hover:text-destructive sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
