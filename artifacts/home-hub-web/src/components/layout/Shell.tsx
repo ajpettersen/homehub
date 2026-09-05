@@ -208,7 +208,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {children}
           </div>
           <div
-            className="h-[calc(5.5rem+env(safe-area-inset-bottom))] shrink-0 md:hidden"
+            className="h-[calc(6.5rem+env(safe-area-inset-bottom))] shrink-0 md:hidden"
             aria-hidden="true"
           />
         </div>
@@ -216,8 +216,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile bottom tab bar ── */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-border bg-card md:hidden"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
+        className="fixed inset-x-2 z-40 flex items-stretch overflow-hidden rounded-2xl border border-border bg-card shadow-lg md:hidden"
+        style={{ bottom: "max(env(safe-area-inset-bottom), 0.75rem)" }}
         aria-label="Primary navigation"
       >
         {visibleNavItems.map((item) => {

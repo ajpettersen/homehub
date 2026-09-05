@@ -18,7 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2, Clock, AlertTriangle, Plus, Trash2, X, Check,
   TreePine, Home, CalendarDays, Repeat, Wrench, Droplets,
-  Leaf, Filter, ChevronDown, ChevronUp, Sparkles, Loader2
+  Leaf, Filter, ChevronDown, ChevronUp, Sparkles, Loader2, Pencil
 } from "lucide-react";
 import { addDays, format, parseISO, differenceInDays } from "date-fns";
 import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
@@ -46,6 +46,7 @@ function TaskCard({
   members,
   onComplete,
   onDelete,
+  onEdit,
   onAssign,
   onDueDateChange,
   updatingDueDate,
@@ -55,6 +56,7 @@ function TaskCard({
   members: any[];
   onComplete: () => void;
   onDelete: () => void;
+  onEdit: () => void;
   onAssign: (assigneeId: string | null) => void;
   onDueDateChange: (nextDueDate: string) => void;
   updatingDueDate: boolean;
@@ -112,6 +114,20 @@ function TaskCard({
               {task.assigneeName.charAt(0).toUpperCase()}
             </span>
           )}
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation();
+              onEdit();
+            }}
+            disabled={busy}
+            aria-label={`Edit ${task.title}`}
+            title="Edit task"
+            data-testid={`button-edit-maintenance-${task.id}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:cursor-wait disabled:opacity-50"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
           <button
             onClick={e => { e.stopPropagation(); onComplete(); }}
             disabled={busy}
@@ -242,6 +258,7 @@ function AddTaskForm({
   onCancel,
   saving,
   defaultPropertyId,
+  initialTask,
 }: {
   properties: any[];
   members: any[];
@@ -249,16 +266,26 @@ function AddTaskForm({
   onCancel: () => void;
   saving: boolean;
   defaultPropertyId?: string;
+  initialTask?: any;
 }) {
-  const [title, setTitle] = useState("");
-  const [propertyId, setPropertyId] = useState(defaultPropertyId ?? properties[0]?.id ?? "");
-  const [category, setCategory] = useState("other");
-  const [assigneeId, setAssigneeId] = useState("");
-  const [scheduleType, setScheduleType] = useState<"recurring" | "one-time">("recurring");
-  const [freqDays, setFreqDays] = useState("30");
-  const [description, setDescription] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const editing = Boolean(initialTask);
+  const [title, setTitle] = useState(initialTask?.title ?? "");
+  const [propertyId, setPropertyId] = useState(initialTask?.propertyId ?? defaultPropertyId ?? properties[0]?.id ?? "");
+  const [category, setCategory] = useState(initialTask?.category ?? "other");
+  const [assigneeId, setAssigneeId] = useState(initialTask?.assigneeId ?? "");
+  const [scheduleType, setScheduleType] = useState<"recurring" | "one-time">(initialTask?.scheduleType ?? "recurring");
+  const [freqDays, setFreqDays] = useState(String(initialTask?.frequencyDays ?? 30));
+  const [description, setDescription] = useState(initialTask?.description ?? "");
+  const [startDate, setStartDate] = useState(
+    initialTask?.scheduleType === "recurring"
+      ? initialTask.startDate ?? initialTask.nextDueDate ?? getLocalDateOnly()
+      : getLocalDateOnly(),
+  );
+  const [dueDate, setDueDate] = useState(
+    initialTask?.scheduleType === "one-time"
+      ? initialTask.nextDueDate ?? getLocalDateOnly()
+      : getLocalDateOnly(),
+  );
 
   const handle = (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,6 +306,12 @@ function AddTaskForm({
 
   return (
     <form onSubmit={handle} className="bg-card border-2 border-primary/20 rounded-2xl p-5 space-y-4 shadow-md">
+      {editing && (
+        <div>
+          <p className="font-serif text-xl font-bold">Edit maintenance task</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">Update its details and schedule, then save your changes.</p>
+        </div>
+      )}
       <div>
         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Task Name</label>
         <input
@@ -297,7 +330,8 @@ function AddTaskForm({
           <select
             value={propertyId}
             onChange={e => setPropertyId(e.target.value)}
-            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary"
+            disabled={editing}
+            className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
@@ -420,7 +454,7 @@ function AddTaskForm({
           <X className="w-4 h-4" /> Cancel
         </button>
         <button type="submit" disabled={saving} className="flex-1 py-2.5 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-md shadow-primary/20 flex items-center justify-center gap-2">
-          <Check className="w-4 h-4" /> {saving ? "Saving…" : "Add Task"}
+          <Check className="w-4 h-4" /> {saving ? "Saving…" : editing ? "Save Changes" : "Add Task"}
         </button>
       </div>
     </form>
@@ -601,6 +635,7 @@ export default function Properties() {
 
   const [activePropertyId, setActivePropertyId] = useState(() => preferences.tabs.properties.defaultProperty);
   const [adding, setAdding] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [updatingDueDateId, setUpdatingDueDateId] = useState<string | null>(null);
@@ -644,6 +679,36 @@ export default function Properties() {
       onSuccess: () => { setAdding(false); invalidate(); },
       onError: () => setActionError("Could not create that maintenance task. Please try again."),
     });
+  };
+
+  const handleEdit = (task: any, data: any) => {
+    if (updateTask.isPending) return;
+    setActionError("");
+    setPendingTaskId(task.id);
+    updateTask.mutate(
+      {
+        id: task.id,
+        data: {
+          title: data.title,
+          category: data.category,
+          scheduleType: data.scheduleType,
+          frequencyDays: data.scheduleType === "recurring" ? data.frequencyDays : undefined,
+          startDate: data.scheduleType === "recurring" ? data.startDate : null,
+          nextDueDate: data.scheduleType === "one-time" ? data.nextDueDate : undefined,
+          description: data.description || null,
+          assigneeId: data.assigneeId || null,
+          ...(data.scheduleType === "recurring" && { timezone }),
+        },
+      },
+      {
+        onSuccess: () => {
+          setEditingTaskId(null);
+          void invalidate();
+        },
+        onError: () => setActionError("Could not update that maintenance task. Please try again."),
+        onSettled: () => setPendingTaskId(null),
+      },
+    );
   };
 
   const handleAssign = (id: string, assigneeId: string | null) => {
@@ -703,6 +768,45 @@ export default function Properties() {
 
   const usedCategories = [...new Set(propertyTasks.map(t => t.category))];
 
+  const renderTask = (task: any) => {
+    if (editingTaskId === task.id) {
+      return (
+        <AddTaskForm
+          key={task.id}
+          properties={properties ?? []}
+          members={members ?? []}
+          defaultPropertyId={task.propertyId}
+          initialTask={task}
+          onSubmit={data => handleEdit(task, data)}
+          onCancel={() => {
+            setEditingTaskId(null);
+            setActionError("");
+          }}
+          saving={updateTask.isPending}
+        />
+      );
+    }
+
+    return (
+      <TaskCard
+        key={task.id}
+        task={task}
+        members={members ?? []}
+        onComplete={() => handleComplete(task.id)}
+        onDelete={() => handleDelete(task.id)}
+        onEdit={() => {
+          setEditingTaskId(task.id);
+          setAdding(false);
+          setActionError("");
+        }}
+        onAssign={assigneeId => handleAssign(task.id, assigneeId)}
+        onDueDateChange={date => handleDueDateChange(task, date)}
+        updatingDueDate={updatingDueDateId === task.id}
+        busy={pendingTaskId === task.id}
+      />
+    );
+  };
+
   if (tasksFailed || propertiesFailed || (!isLoading && (!tasks || !properties))) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-destructive/30 bg-card px-5 py-12 text-center" role="alert">
@@ -750,7 +854,7 @@ export default function Properties() {
           return (
             <button
               key={key}
-              onClick={() => { setActivePropertyId(key); setCategoryFilter("all"); setAdding(false); }}
+              onClick={() => { setActivePropertyId(key); setCategoryFilter("all"); setAdding(false); setEditingTaskId(null); }}
               className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
                 currentProperty?.id === key
                   ? "bg-card border-primary/40 text-foreground shadow-md"
@@ -825,7 +929,7 @@ export default function Properties() {
                 <AlertTriangle className="w-3.5 h-3.5" /> Overdue ({overdue.length})
               </h2>
               <div className="space-y-2">
-                {overdue.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} busy={pendingTaskId === t.id} />)}
+                {overdue.map(renderTask)}
               </div>
             </section>
           )}
@@ -836,7 +940,7 @@ export default function Properties() {
                 <Clock className="w-3.5 h-3.5" /> Coming Up ({dueSoon.length})
               </h2>
               <div className="space-y-2">
-                {dueSoon.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} busy={pendingTaskId === t.id} />)}
+                {dueSoon.map(renderTask)}
               </div>
             </section>
           )}
@@ -847,7 +951,7 @@ export default function Properties() {
                 Scheduled ({upcoming.length})
               </h2>
               <div className="space-y-2">
-                {upcoming.map(t => <TaskCard key={t.id} task={t} members={members ?? []} onComplete={() => handleComplete(t.id)} onDelete={() => handleDelete(t.id)} onAssign={(a) => handleAssign(t.id, a)} onDueDateChange={(date) => handleDueDateChange(t, date)} updatingDueDate={updatingDueDateId === t.id} busy={pendingTaskId === t.id} />)}
+                {upcoming.map(renderTask)}
               </div>
             </section>
           )}
