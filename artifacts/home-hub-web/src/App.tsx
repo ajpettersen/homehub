@@ -15,7 +15,6 @@ import Chores from '@/pages/Chores';
 import Kitchen from '@/pages/Kitchen';
 import Tasks from '@/pages/Tasks';
 import Workouts from '@/pages/Workouts';
-import Maintenance from '@/pages/Maintenance';
 import Settings from '@/pages/Settings';
 import People from '@/pages/People';
 import NotFound from '@/pages/not-found';
@@ -226,7 +225,9 @@ function AuthenticatedApp() {
           <Route path="/meals" component={Kitchen} />
           <Route path="/tasks" component={Tasks} />
           <Route path="/workouts" component={Workouts} />
-          <Route path="/properties" component={Maintenance} />
+          <Route path="/properties">
+            <Redirect to="/tasks?view=maintenance" />
+          </Route>
           <Route path="/settings" component={Settings} />
           <Route path="/setup" component={SetupRerun} />
           <Route path="/people" component={People} />

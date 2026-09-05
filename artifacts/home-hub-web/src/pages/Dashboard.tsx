@@ -54,7 +54,7 @@ function ChatBubble({ msg }: { msg: Message }) {
           <div className="flex flex-wrap gap-1.5 mt-0.5">
             {msg.memorized.map((fact, i) => (
               <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/8 border border-primary/20 text-primary text-[10px] font-semibold rounded-full">
-                💭 Remembered: {fact}
+                <Brain className="w-3 h-3" /> Remembered: {fact}
               </span>
             ))}
           </div>
@@ -488,7 +488,7 @@ export default function Dashboard() {
       ) : null}
 
       {/* Summary cards */}
-      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 ${preferences.tabs.home.focus === "assistant" ? "order-2" : "order-1"}`}>
+      <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${preferences.tabs.home.focus === "assistant" ? "order-2" : "order-1"}`}>
         <Link href="/chores" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
           <Card className="bg-primary/10 border-primary/20 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
             <div className="absolute -right-4 -top-4 opacity-10"><CheckCircle2 className="w-32 h-32" /></div>
@@ -524,29 +524,18 @@ export default function Dashboard() {
           <Card className="bg-accent/20 border-accent/30 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
             <div className="absolute -right-4 -top-4 opacity-10 text-accent-foreground"><CheckSquare className="w-32 h-32" /></div>
             <CardHeader className="pb-2">
-              <CardTitle className="text-accent-foreground text-sm uppercase tracking-wider font-sans">Active Tasks</CardTitle>
+              <CardTitle className="text-accent-foreground text-sm uppercase tracking-wider font-sans">Tasks</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-5xl font-serif font-bold text-accent-foreground">{dashboard.activeTodoItems}</div>
-              <p className="text-xs font-semibold text-accent-foreground/70 mt-3">Open tasks →</p>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/properties" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
-          <Card className="bg-orange-100 border-orange-200 dark:bg-orange-950 dark:border-orange-900 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
-            <div className="absolute -right-4 -top-4 opacity-10 text-orange-600"><Clock className="w-32 h-32" /></div>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-orange-700 dark:text-orange-400 text-sm uppercase tracking-wider font-sans">Maintenance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-5xl font-serif font-bold text-orange-700 dark:text-orange-400">{dashboard.maintenanceDueSoon}</div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-5xl font-serif font-bold text-accent-foreground">{dashboard.activeTodoItems + dashboard.maintenanceDueSoon}</div>
+              </div>
               {dashboard.maintenanceOverdue > 0 && (
                 <p className="text-sm font-medium text-destructive mt-2 flex items-center gap-1">
-                  <AlertTriangle className="w-4 h-4" /> {dashboard.maintenanceOverdue} overdue
+                  <AlertTriangle className="w-4 h-4" /> {dashboard.maintenanceOverdue} maintenance overdue
                 </p>
               )}
-              <p className="text-xs font-semibold text-orange-700/70 dark:text-orange-400/70 mt-3">View maintenance →</p>
+              <p className="text-xs font-semibold text-accent-foreground/70 mt-3">View to-dos and maintenance →</p>
             </CardContent>
           </Card>
         </Link>
@@ -586,20 +575,41 @@ export default function Dashboard() {
         </div>
 
         <div className="space-y-6">
-          <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2 inline-block">Upcoming Maintenance</h2>
+          <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2 inline-block">Tasks & Maintenance</h2>
+
+          <Link href="/tasks?view=todos" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 mb-6">
+            <Card className="border-l-4 border-l-accent transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer bg-accent/5 border-border">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg leading-tight">General To-dos</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {dashboard.activeTodoItems === 0
+                      ? "All caught up on your to-do lists."
+                      : `${dashboard.activeTodoItems} active task${dashboard.activeTodoItems === 1 ? '' : 's'} across your lists`}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center shrink-0">
+                  <CheckSquare className="text-accent w-5 h-5" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
           {dashboard.upcomingMaintenance.length === 0 ? (
-            <Link href="/properties" className="block p-6 border-2 border-dashed border-border rounded-2xl text-center hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <Link href="/tasks?view=maintenance" className="block p-6 border-2 border-dashed border-border rounded-2xl text-center hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               <p className="text-muted-foreground">House is in top shape!</p>
-              <p className="text-xs font-semibold text-primary mt-2">View maintenance →</p>
+              <p className="text-xs font-semibold text-primary mt-2">View property maintenance →</p>
             </Link>
           ) : (
             <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Property Maintenance</h3>
               {dashboard.upcomingMaintenance.map(task => (
-                <Link key={task.id} href="/properties" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
-                  <Card className={`border-l-4 ${task.isOverdue ? "border-l-destructive" : "border-l-orange-500"} transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer`}>
+                <Link key={task.id} href="/tasks?view=maintenance" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+                  <Card className={`border-l-4 ${task.isOverdue ? "border-l-destructive" : "border-l-orange-500"} transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer border-border`}>
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-semibold text-lg leading-tight">{task.title}</h3>
+
                       {task.isOverdue && <Badge variant="destructive" className="ml-2 whitespace-nowrap text-[10px]">Overdue</Badge>}
                     </div>
                     <div className="flex gap-4 text-xs text-muted-foreground">

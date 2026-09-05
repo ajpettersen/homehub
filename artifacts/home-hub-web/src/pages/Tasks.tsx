@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import { 
   useGetTodoLists, getGetTodoListsQueryKey, 
   useGetTodoItems, getGetTodoItemsQueryKey, 
@@ -13,19 +14,29 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, Plus, Check, Trash2, ArrowUp, CalendarClock, X } from "lucide-react";
+import { CheckSquare, Plus, Check, Trash2, ArrowUp, CalendarClock, X, Clock } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import { formatDateOnly, getLocalDateOnly } from "@/lib/dateOnly";
+import Maintenance from "./Maintenance";
 
 export default function Tasks() {
   const queryClient = useQueryClient();
   const { preferences } = usePreferences();
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const searchParams = new URLSearchParams(searchString);
+  const activeTab = searchParams.get("view") === "maintenance" ? "maintenance" : "todos";
+
+  const handleTabChange = (tab: "todos" | "maintenance") => {
+    setLocation(`/tasks?view=${tab}`, { replace: true });
+  };
+
   const {
     data: lists,
     isLoading: loadingLists,
     isError: listsFailed,
     refetch: retryLists,
-  } = useGetTodoLists({ query: { queryKey: getGetTodoListsQueryKey(), retry: false } });
+  } = useGetTodoLists({ query: { queryKey: getGetTodoListsQueryKey(), retry: false, enabled: activeTab === "todos" } });
   
   const createList = useCreateTodoList();
   const [newListName, setNewListName] = useState("");
@@ -48,67 +59,99 @@ export default function Tasks() {
     );
   };
 
-  if (loadingLists) return <div className="p-8 font-serif text-xl text-muted-foreground animate-pulse">Loading tasks...</div>;
-  if (listsFailed || !lists) {
-    return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-destructive/30 bg-card px-5 py-12 text-center" role="alert">
-        <CheckSquare className="mb-3 h-10 w-10 text-destructive" />
-        <h1 className="font-serif text-2xl font-bold">Tasks couldn’t load</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
-        <Button type="button" className="mt-5 min-h-11" onClick={() => void retryLists()}>
-          Try again
-        </Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4 sm:space-y-8">
-      <div className="flex items-start justify-between gap-3 sm:items-center">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 font-serif text-3xl font-bold sm:gap-3 sm:text-4xl">
             <CheckSquare className="h-7 w-7 text-accent-foreground sm:h-8 sm:w-8" /> Tasks
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">Projects, packing lists, and to-dos.</p>
+          <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">To-dos, packing lists, and property maintenance.</p>
         </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="min-h-10 shrink-0 gap-1.5 px-3 shadow-md sm:gap-2 sm:px-4">
-              <Plus className="h-4 w-4"/><span className="hidden min-[360px]:inline">New List</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create a New List</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreateList} className="space-y-4 pt-4">
-              <div>
-                <label className="text-sm font-medium mb-1 block">List Name</label>
-                 <Input value={newListName} onChange={(e) => { setNewListName(e.target.value); setCreateListError(""); }} autoFocus required />
-              </div>
-               {createListError && <p className="text-sm text-destructive" role="alert">{createListError}</p>}
-              <div className="flex justify-end gap-2">
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit" disabled={createList.isPending}>
-                  {createList.isPending ? 'Creating...' : 'Create List'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+
+        {/* Tab switcher */}
+        <div className="flex bg-muted/30 p-1 rounded-xl border border-border/50 shadow-sm shrink-0 self-start sm:self-auto">
+          <button
+            data-testid="tab-todos"
+            onClick={() => handleTabChange("todos")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              activeTab === "todos" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <CheckSquare className="w-4 h-4" /> To-dos
+          </button>
+          <button
+            data-testid="tab-maintenance"
+            onClick={() => handleTabChange("maintenance")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              activeTab === "maintenance" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <Clock className="w-4 h-4" /> Property Maintenance
+          </button>
+        </div>
       </div>
 
-      <div className={`grid grid-cols-1 ${preferences.tabs.tasks.layout === "columns" ? "lg:grid-cols-2" : ""} gap-3 sm:gap-6`}>
-        {lists?.map((list, index) => (
-          <TodoListCard key={list.id} list={list} isFirst={index === 0} />
-        ))}
-        {lists?.length === 0 && (
-          <div className="col-span-full p-12 border-2 border-dashed border-border rounded-3xl text-center bg-card">
-            <h3 className="text-xl font-serif font-semibold mb-2">No lists yet!</h3>
-            <p className="text-muted-foreground">Create a list to start tracking tasks.</p>
+      {activeTab === "maintenance" ? (
+        <div className="pt-2 animate-in fade-in duration-300">
+          <Maintenance isEmbedded />
+        </div>
+      ) : (
+        <div className="animate-in fade-in duration-300">
+          <div className="flex justify-end mb-4">
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button className="min-h-10 shrink-0 gap-1.5 px-3 shadow-md sm:gap-2 sm:px-4">
+                  <Plus className="h-4 w-4"/><span className="hidden min-[360px]:inline">New List</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create a New List</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleCreateList} className="space-y-4 pt-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">List Name</label>
+                     <Input value={newListName} onChange={(e) => { setNewListName(e.target.value); setCreateListError(""); }} autoFocus required />
+                  </div>
+                   {createListError && <p className="text-sm text-destructive" role="alert">{createListError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                    <Button type="submit" disabled={createList.isPending}>
+                      {createList.isPending ? 'Creating...' : 'Create List'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
-        )}
-      </div>
+
+          {loadingLists ? (
+            <div className="p-8 font-serif text-xl text-muted-foreground animate-pulse">Loading tasks...</div>
+          ) : listsFailed || !lists ? (
+            <div className="flex min-h-[50vh] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-destructive/30 bg-card px-5 py-12 text-center" role="alert">
+              <CheckSquare className="mb-3 h-10 w-10 text-destructive" />
+              <h1 className="font-serif text-2xl font-bold">Tasks couldn’t load</h1>
+              <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
+              <Button type="button" className="mt-5 min-h-11" onClick={() => void retryLists()}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <div className={`grid grid-cols-1 ${preferences.tabs.tasks.layout === "columns" ? "lg:grid-cols-2" : ""} gap-3 sm:gap-6`}>
+              {lists?.map((list, index) => (
+                <TodoListCard key={list.id} list={list} isFirst={index === 0} />
+              ))}
+              {lists?.length === 0 && (
+                <div className="col-span-full p-12 border-2 border-dashed border-border rounded-3xl text-center bg-card">
+                  <h3 className="text-xl font-serif font-semibold mb-2">No lists yet!</h3>
+                  <p className="text-muted-foreground">Create a list to start tracking tasks.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

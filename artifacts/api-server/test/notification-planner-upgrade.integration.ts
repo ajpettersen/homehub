@@ -199,7 +199,7 @@ try {
   );
   assert.equal(
     webAfter.find((message) => message.delivery.kind === "maintenance")?.payload.url,
-    "/properties",
+    "/tasks?view=maintenance",
     "maintenance Web Push must open the current Properties route",
   );
   assert(

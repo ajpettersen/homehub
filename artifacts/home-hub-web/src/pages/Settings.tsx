@@ -211,10 +211,9 @@ function AppearanceAndTabsSection() {
   const canAdministerHousehold = me?.role === "family" && me.isAdmin;
   const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? ["home", "properties", "chores", "meals", "tasks", "workouts", "people", "settings"]);
   const optionalTabs: Array<{ key: HomeHubWebTab; label: string; description: string }> = [
-    { key: "properties", label: "Properties", description: "Maintenance schedules and home upkeep." },
     { key: "chores", label: "Chores", description: "Recurring household responsibilities." },
     { key: "meals", label: "Meals", description: "Meal plans, groceries, and recipes." },
-    { key: "tasks", label: "Tasks", description: "Shared household lists and projects." },
+    { key: "tasks", label: "Tasks", description: "Shared household lists, projects, and maintenance." },
     { key: "workouts", label: "Workouts", description: "Family exercise plans and progress." },
     { key: "people", label: "People", description: "Family and trusted service contacts." },
   ];

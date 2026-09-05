@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, Mountain, ArrowLeft, LogOut } from "lucide-react";
+import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, ArrowLeft, LogOut } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useHomeHubSignOut } from "@/hooks/useHomeHubSignOut";
 import {
@@ -17,7 +17,6 @@ const navItems = [
   { tab: "tasks" as const, href: "/tasks",      label: "Tasks",      icon: CheckSquare },
   { tab: "meals" as const, href: "/meals",      label: "Meals",      icon: Utensils },
   { tab: "workouts" as const, href: "/workouts",   label: "Workouts",   icon: Dumbbell },
-  { tab: "properties" as const, href: "/properties", label: "Properties", icon: Mountain },
   { tab: "settings" as const, href: "/settings",   label: "Settings",   icon: Settings },
 ];
 
@@ -37,7 +36,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   const selectableMembers = familyMembers ?? [];
   const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? navItems.map(item => item.tab));
-  const visibleNavItems = navItems.filter(item => visibleTabs.has(item.tab));
+  const visibleNavItems = navItems.filter(item =>
+    item.tab === "tasks"
+      ? visibleTabs.has("tasks") || visibleTabs.has("properties")
+      : visibleTabs.has(item.tab),
+  );
 
   return (
     <div className={`h-[100dvh] min-h-0 flex flex-col md:flex-row bg-background overflow-hidden ${preferences.appearance.density === "compact" ? "density-compact" : ""}`}>

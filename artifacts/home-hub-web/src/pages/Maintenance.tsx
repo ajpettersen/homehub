@@ -617,12 +617,13 @@ export function MaintenanceSuggestions({
 
 // ── main page ─────────────────────────────────────────────────────────────────
 
-export default function Properties() {
+export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
   const queryClient = useQueryClient();
   const { activeMember } = useActiveMember();
   const { preferences } = usePreferences();
   const timezone = getResolvedTimeZone();
   const maintenanceQuery = { timezone };
+
 
   const { data: tasks, isLoading, isError: tasksFailed, refetch: retryTasks } = useGetMaintenanceTasks(maintenanceQuery, { query: { queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery), retry: false } });
   const { data: properties, isError: propertiesFailed, refetch: retryProperties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey(), retry: false } });
@@ -825,51 +826,54 @@ export default function Properties() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className={`space-y-6 ${!isEmbedded ? "animate-in fade-in duration-300" : ""}`}>
       {actionError && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
           {actionError}
         </div>
       )}
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-4xl md:text-5xl font-bold text-foreground tracking-tight">Properties</h1>
-          <p className="text-muted-foreground mt-1 font-medium">Maintenance schedules for your properties</p>
+      {!isEmbedded && (
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-4xl md:text-5xl font-bold text-foreground tracking-tight">Properties</h1>
+            <p className="text-muted-foreground mt-1 font-medium">Maintenance schedules for your properties</p>
+          </div>
         </div>
+      )}
 
+      {/* Property tabs and Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex gap-2">
+          {(properties ?? []).map(prop => {
+            const key = prop.id;
+            const label = prop.name;
+            const propTasks = (tasks ?? []).filter(t => t.propertyId === prop?.id);
+            const urgent = propTasks.filter(t => t.isOverdue || t.isDueSoon).length;
+            return (
+              <button
+                key={key}
+                onClick={() => { setActivePropertyId(key); setCategoryFilter("all"); setAdding(false); setEditingTaskId(null); }}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+                  currentProperty?.id === key
+                    ? "bg-card border-primary/40 text-foreground shadow-md"
+                    : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground"
+                }`}
+              >
+                {label}
+                {urgent > 0 && (
+                  <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
+                    {urgent}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <div className="flex flex-wrap gap-2">
           {currentProperty && <button onClick={() => setSuggesting(true)} className="flex items-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-5 py-2.5 font-bold text-primary hover:bg-primary/10"><Sparkles className="h-5 w-5" /> Suggest maintenance</button>}
           {!adding && <button onClick={() => setAdding(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background font-bold hover:bg-foreground/90 transition-colors shadow-md"><Plus className="w-5 h-5" /> Add Task</button>}
         </div>
-      </div>
-
-      {/* Property tabs */}
-      <div className="flex gap-2">
-        {(properties ?? []).map(prop => {
-          const key = prop.id;
-          const label = prop.name;
-          const propTasks = (tasks ?? []).filter(t => t.propertyId === prop?.id);
-          const urgent = propTasks.filter(t => t.isOverdue || t.isDueSoon).length;
-          return (
-            <button
-              key={key}
-              onClick={() => { setActivePropertyId(key); setCategoryFilter("all"); setAdding(false); setEditingTaskId(null); }}
-              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
-                currentProperty?.id === key
-                  ? "bg-card border-primary/40 text-foreground shadow-md"
-                  : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground"
-              }`}
-            >
-              {label}
-              {urgent > 0 && (
-                <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
-                  {urgent}
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
 
       {suggesting && currentProperty && <MaintenanceSuggestions property={currentProperty} timezone={timezone} onClose={() => setSuggesting(false)} onCreated={invalidate} />}

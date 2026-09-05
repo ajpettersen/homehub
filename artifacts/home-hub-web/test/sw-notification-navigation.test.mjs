@@ -69,6 +69,11 @@ assert.equal(
   "notification routes should stay inside the artifact base path",
 );
 assert.equal(
+  await clickNotification("/tasks?view=maintenance"),
+  "https://example.test/home-hub-web/tasks?view=maintenance",
+  "maintenance notifications should open the maintenance view inside Tasks",
+);
+assert.equal(
   await clickNotification("https://example.test/home-hub-web/workouts#history"),
   "https://example.test/home-hub-web/workouts#history",
   "already-scoped notification URLs should remain intact",
