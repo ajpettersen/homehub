@@ -72,13 +72,6 @@ export async function runOneTimeProdCleanup(): Promise<void> {
   }
 
   try {
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS one_time_cleanups (
-        key text PRIMARY KEY,
-        executed_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-
     await db.transaction(async (tx) => {
       const claim = await tx.execute(sql`
         INSERT INTO one_time_cleanups (key) VALUES (${CLEANUP_KEY})
