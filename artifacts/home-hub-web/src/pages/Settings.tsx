@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useId } from "react";
 import {
   useGetFamilyMembers, useCreateFamilyMember, useUpdateFamilyMember, useDeleteFamilyMember,
   useGetProperties, useCreateProperty, useUpdateProperty, useDeleteProperty,
@@ -99,6 +99,12 @@ const defaultTaskForm = (): TaskFormState => ({
   description: "",
   assigneeId: "",
 });
+
+function dateFromToday(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return getLocalDateOnly(date);
+}
 
 // ── Accordion section wrapper ─────────────────────────────────────────────────
 function AccordionSection({
@@ -368,10 +374,11 @@ function AppearanceAndTabsSection() {
 }
 
 // ── TaskForm ──────────────────────────────────────────────────────────────────
-function TaskForm({ initial, members, onSave, onCancel, saving, creationOnly = false }: {
-  initial: TaskFormState; members: any[]; onSave: (d: TaskFormState) => void; onCancel: () => void; saving: boolean; creationOnly?: boolean;
+function TaskForm({ initial, members, onSave, onCancel, saving, creationOnly = false, error }: {
+  initial: TaskFormState; members: any[]; onSave: (d: TaskFormState) => void; onCancel: () => void; saving: boolean; creationOnly?: boolean; error?: string;
 }) {
   const [form, setForm] = useState<TaskFormState>(initial);
+  const formId = useId();
   const set = <K extends keyof TaskFormState>(k: K, v: TaskFormState[K]) => setForm(f => ({ ...f, [k]: v }));
 
   return (
@@ -417,38 +424,72 @@ function TaskForm({ initial, members, onSave, onCancel, saving, creationOnly = f
           ))}
         </div>
       </div>}
-      <div className="flex items-center gap-2">
+      <div>
         {(creationOnly || form.scheduleType === "recurring") ? (
-          <>
-            <Repeat className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <span className="text-xs text-muted-foreground">Every</span>
-            <input type="number" min={1} max={3650} value={form.frequencyDays}
-              onChange={e => set("frequencyDays", Number(e.target.value))}
-              className="w-16 bg-background border border-border rounded-lg px-2 py-1 text-sm font-bold text-center focus:outline-none focus:border-primary"
-            />
-            <span className="text-xs text-muted-foreground">days</span>
-            <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-              Start
+          <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-end">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground">Repeat</span>
+              <span className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-background px-3">
+                <Repeat className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Every</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={3650}
+                  value={form.frequencyDays}
+                  onChange={e => set("frequencyDays", Number(e.target.value))}
+                  data-testid="input-maintenance-frequency"
+                  className="w-16 border-x-0 border-b border-t-0 border-border bg-transparent px-1 py-0.5 text-center text-sm font-bold focus:border-primary focus:outline-none"
+                />
+                <span className="text-xs text-muted-foreground">days</span>
+              </span>
+            </label>
+            <div>
+              <label htmlFor={`${formId}-start-date`} className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Starts on
+              </label>
               <input
+                id={`${formId}-start-date`}
                 type="date"
+                required
                 value={form.dueDate}
                 onChange={e => set("dueDate", e.target.value)}
-                className="rounded-lg border border-border bg-background px-2 py-1 text-sm font-bold focus:outline-none focus:border-primary"
+                data-testid="input-maintenance-start-date"
+                className="min-h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-bold focus:border-primary focus:outline-none"
               />
-            </label>
-          </>
+              <div className="mt-1.5 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => set("dueDate", getLocalDateOnly())}
+                  data-testid="button-maintenance-start-today"
+                  className="rounded-md border border-border px-2.5 py-1 text-xs font-bold text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set("dueDate", dateFromToday(7))}
+                  data-testid="button-maintenance-start-next-week"
+                  className="rounded-md border border-border px-2.5 py-1 text-xs font-bold text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                >
+                  Next week
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
-          <>
-            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <span className="text-xs text-muted-foreground">Due</span>
+          <label className="block">
+            <span className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <CalendarDays className="h-3.5 w-3.5" /> Due
+            </span>
             <input
               type="date"
               required
               value={form.dueDate}
               onChange={e => set("dueDate", e.target.value)}
-              className="bg-background border border-border rounded-lg px-2 py-1 text-sm font-bold focus:outline-none focus:border-primary"
+              className="min-h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-bold focus:border-primary focus:outline-none"
             />
-          </>
+          </label>
         )}
       </div>
       <div>
@@ -473,6 +514,7 @@ function TaskForm({ initial, members, onSave, onCancel, saving, creationOnly = f
         placeholder="Notes (optional)…" rows={2}
         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-muted-foreground focus:outline-none focus:border-primary resize-none"
       />
+      {error && <p className="text-sm font-medium text-destructive" role="alert">{error}</p>}
       <div className="flex gap-2">
         <button type="button" onClick={onCancel}
           className="flex-1 py-1.5 rounded-lg border border-border text-sm font-bold hover:bg-muted transition-colors">
@@ -505,6 +547,7 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) });
 
@@ -525,7 +568,10 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
           timezone,
         },
       },
-      { onSuccess: () => { invalidate(); setAdding(false); } }
+      {
+        onSuccess: () => { invalidate(); setAdding(false); setSaveError(""); },
+        onError: () => setSaveError("Could not save this maintenance task. Please try again."),
+      }
     );
   };
 
@@ -538,13 +584,17 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
           category: data.category as UpdateMaintenanceTaskInputCategory,
           scheduleType: data.scheduleType,
           frequencyDays: data.scheduleType === "recurring" ? data.frequencyDays : undefined,
-          nextDueDate: data.dueDate,
+          startDate: data.scheduleType === "recurring" ? data.dueDate : null,
+          nextDueDate: data.scheduleType === "one-time" ? data.dueDate : undefined,
           description: data.description || undefined,
           assigneeId: data.assigneeId || null,
           ...(data.scheduleType === "recurring" && { timezone }),
         },
       },
-      { onSuccess: () => { invalidate(); setEditingId(null); } }
+      {
+        onSuccess: () => { invalidate(); setEditingId(null); setSaveError(""); },
+        onError: () => setSaveError("Could not update this maintenance task. Please try again."),
+      }
     );
   };
 
@@ -589,13 +639,16 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
                 category: task.category,
                 scheduleType: task.scheduleType ?? "recurring",
                 frequencyDays: task.frequencyDays ?? 30,
-                dueDate: task.nextDueDate,
+                dueDate: task.scheduleType === "recurring"
+                  ? task.startDate ?? task.nextDueDate
+                  : task.nextDueDate,
                 description: task.description ?? "",
                 assigneeId: task.assigneeId ?? "",
               }}
               onSave={data => handleEdit(task.id, data)}
-              onCancel={() => setEditingId(null)}
+              onCancel={() => { setEditingId(null); setSaveError(""); }}
               saving={updateTask.isPending}
+              error={saveError}
             />
           );
         }
@@ -622,14 +675,20 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
                 <><Repeat className="w-3 h-3" /> {task.frequencyDays}d</>
               )}
             </span>
-            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
-              <button onClick={() => setEditingId(task.id)}
-                className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors">
-                <Pencil className="w-3 h-3" />
+            <div className="flex shrink-0 gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+              <button
+                onClick={() => { setEditingId(task.id); setSaveError(""); }}
+                aria-label={`Edit ${task.title}`}
+                data-testid={`button-edit-maintenance-${task.id}`}
+                className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:h-7 sm:w-7">
+                <Pencil className="h-3.5 w-3.5" />
               </button>
-              <button onClick={() => handleDelete(task.id, task.title)}
-                className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors">
-                <Trash2 className="w-3 h-3" />
+              <button
+                onClick={() => handleDelete(task.id, task.title)}
+                aria-label={`Delete ${task.title}`}
+                data-testid={`button-delete-maintenance-${task.id}`}
+                className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7">
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
@@ -655,13 +714,16 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
                     category: task.category,
                     scheduleType: task.scheduleType,
                     frequencyDays: task.frequencyDays ?? 30,
-                    dueDate: task.nextDueDate,
+                    dueDate: task.scheduleType === "recurring"
+                      ? task.startDate ?? task.nextDueDate
+                      : task.nextDueDate,
                     description: task.description ?? "",
                     assigneeId: task.assigneeId ?? "",
                   }}
                   onSave={data => handleEdit(task.id, data)}
-                  onCancel={() => setEditingId(null)}
+                  onCancel={() => { setEditingId(null); setSaveError(""); }}
                   saving={updateTask.isPending}
+                  error={saveError}
                 />
               );
             }
@@ -674,14 +736,20 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
                 <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
                   <Check className="w-3 h-3" /> Completed
                 </span>
-                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
-                  <button onClick={() => setEditingId(task.id)}
-                    className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors">
-                    <Pencil className="w-3 h-3" />
+                <div className="flex shrink-0 gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                  <button
+                    onClick={() => { setEditingId(task.id); setSaveError(""); }}
+                    aria-label={`Edit ${task.title}`}
+                    data-testid={`button-edit-maintenance-${task.id}`}
+                    className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:h-7 sm:w-7">
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => handleDelete(task.id, task.title)}
-                    className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors">
-                    <Trash2 className="w-3 h-3" />
+                  <button
+                    onClick={() => handleDelete(task.id, task.title)}
+                    aria-label={`Delete ${task.title}`}
+                    data-testid={`button-delete-maintenance-${task.id}`}
+                    className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7">
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -695,13 +763,14 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
           members={members ?? []}
           initial={defaultTaskForm()}
           onSave={handleAdd}
-          onCancel={() => setAdding(false)}
+          onCancel={() => { setAdding(false); setSaveError(""); }}
           saving={createTask.isPending}
           creationOnly
+          error={saveError}
         />
       ) : (
         <button
-          onClick={() => setAdding(true)}
+          onClick={() => { setAdding(true); setSaveError(""); }}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 text-muted-foreground text-xs font-medium transition-all group">
           <Plus className="w-3.5 h-3.5 text-primary/60 group-hover:text-primary" />
            Add recurring maintenance

@@ -42,17 +42,19 @@ export default function Tasks() {
   if (loadingLists) return <div className="p-8 font-serif text-xl text-muted-foreground animate-pulse">Loading tasks...</div>;
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-4 sm:space-y-8">
+      <div className="flex items-start justify-between gap-3 sm:items-center">
         <div>
-          <h1 className="text-4xl font-serif font-bold flex items-center gap-3">
-            <CheckSquare className="w-8 h-8 text-accent-foreground" /> Tasks
+          <h1 className="flex items-center gap-2 font-serif text-3xl font-bold sm:gap-3 sm:text-4xl">
+            <CheckSquare className="h-7 w-7 text-accent-foreground sm:h-8 sm:w-8" /> Tasks
           </h1>
-          <p className="text-muted-foreground mt-2">Projects, packing lists, and to-dos.</p>
+          <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">Projects, packing lists, and to-dos.</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 shadow-md"><Plus className="w-4 h-4"/> New List</Button>
+            <Button className="min-h-10 shrink-0 gap-1.5 px-3 shadow-md sm:gap-2 sm:px-4">
+              <Plus className="h-4 w-4"/><span className="hidden min-[360px]:inline">New List</span>
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -74,7 +76,7 @@ export default function Tasks() {
         </Dialog>
       </div>
 
-      <div className={`grid grid-cols-1 ${preferences.tabs.tasks.layout === "columns" ? "lg:grid-cols-2" : ""} gap-6`}>
+      <div className={`grid grid-cols-1 ${preferences.tabs.tasks.layout === "columns" ? "lg:grid-cols-2" : ""} gap-3 sm:gap-6`}>
         {lists?.map((list, index) => (
           <TodoListCard key={list.id} list={list} isFirst={index === 0} />
         ))}
@@ -219,10 +221,10 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
   };
 
   return (
-    <Card className="bg-card/50 shadow-sm border-border flex flex-col max-h-[500px]">
-      <div className="p-4 border-b border-border bg-muted/20 flex justify-between items-center group">
+    <Card className="flex max-h-none flex-col border-border bg-card/50 shadow-sm sm:max-h-[500px]">
+      <div className="group flex items-center justify-between border-b border-border bg-muted/20 p-3 sm:p-4">
         <div className="flex flex-col">
-          <h3 className="font-serif text-xl font-bold">{list.name}</h3>
+          <h3 className="font-serif text-lg font-bold sm:text-xl">{list.name}</h3>
           {list.assigneeName && <Badge variant="secondary" className="w-fit mt-1">{list.assigneeName}</Badge>}
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -239,12 +241,12 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
               <ArrowUp className="w-4 h-4" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground transition-opacity hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100">
             <Trash2 className="w-4 h-4" />
           </Button>
         </div>
       </div>
-      <CardContent className="p-4 flex-1 overflow-y-auto space-y-2">
+      <CardContent className="flex-1 space-y-1 overflow-visible p-2 sm:space-y-2 sm:overflow-y-auto sm:p-4">
         {isLoading ? (
           <div className="animate-pulse space-y-2">
             {[1,2].map(i => <div key={i} className="h-10 bg-muted rounded-lg w-full"></div>)}
@@ -255,7 +257,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
           items?.map((item: any) => (
             <div
               key={item.id} 
-              className={`flex items-start gap-3 p-3 rounded-lg border transition-all group ${
+              className={`group flex items-start gap-2 rounded-lg border p-2 transition-all sm:gap-3 sm:p-3 ${
                 item.completed 
                   ? "bg-muted/30 border-transparent opacity-60" 
                   : "bg-background border-border hover:border-primary/50 shadow-sm"
@@ -284,12 +286,12 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                     {item.assigneeName && <span>• {item.assigneeName}</span>}
                   </div>
                 )}
-                <div className="mt-2 flex flex-wrap items-center gap-1">
+                <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2">
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-xs"
+                    className="hidden h-7 px-2 text-xs sm:inline-flex"
                     disabled={updateItem.isPending}
                     onClick={() => handleDueDateChange(item.id, relativeDateOnly(1))}
                   >
@@ -299,7 +301,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-xs"
+                    className="hidden h-7 px-2 text-xs sm:inline-flex"
                     disabled={updateItem.isPending}
                     onClick={() => handleDueDateChange(item.id, relativeDateOnly(7))}
                   >
@@ -318,7 +320,8 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                     aria-expanded={editingDueDateId === item.id}
                   >
                     <CalendarClock className="h-3 w-3" aria-hidden="true" />
-                    Pick date
+                    <span className="sm:hidden">Date</span>
+                    <span className="hidden sm:inline">Pick date</span>
                   </Button>
                   {item.dueDate && (
                     <Button
@@ -357,7 +360,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                 type="button" 
                 variant="ghost" 
                 size="icon" 
-                className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-7 w-7 shrink-0 text-muted-foreground transition-opacity hover:text-destructive sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100"
                 onClick={(e) => handleDeleteItem(item.id, e)}
               >
                 <Trash2 className="w-3 h-3" />
@@ -366,7 +369,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
           ))
         )}
       </CardContent>
-      <div className="p-4 border-t border-border bg-card">
+      <div className="border-t border-border bg-card p-3 sm:p-4">
         <form onSubmit={handleAdd} className="space-y-2">
           <div className="flex flex-col gap-2 sm:flex-row">
           <Input 
