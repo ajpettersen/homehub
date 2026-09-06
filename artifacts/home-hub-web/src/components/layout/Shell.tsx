@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, ArrowLeft, LogOut } from "lucide-react";
+import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, ArrowLeft, LogOut, BadgeDollarSign } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useHomeHubSignOut } from "@/hooks/useHomeHubSignOut";
 import {
@@ -15,6 +15,7 @@ import { usePreferences } from "@/context/PreferencesContext";
 const navItems = [
   { tab: "home" as const, href: "/",           label: "Home",       icon: Home },
   { tab: "tasks" as const, href: "/tasks",      label: "Tasks",      icon: CheckSquare },
+  { tab: "tasks" as const, href: "/chores",     label: "Chores",     icon: BadgeDollarSign },
   { tab: "meals" as const, href: "/meals",      label: "Meals",      icon: Utensils },
   { tab: "workouts" as const, href: "/workouts",   label: "Workouts",   icon: Dumbbell },
   { tab: "settings" as const, href: "/settings",   label: "Settings",   icon: Settings },
