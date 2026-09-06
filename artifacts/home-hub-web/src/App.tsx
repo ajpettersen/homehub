@@ -98,11 +98,7 @@ function SignInRedirect() {
 }
 
 function isDevelopmentPreviewMode(): boolean {
-  if (!import.meta.env.DEV || typeof window === "undefined") return false;
-  const requested = new URLSearchParams(window.location.search).get("preview");
-  if (requested === "1") window.sessionStorage.setItem("homehub-preview-mode", "1");
-  if (requested === "0") window.sessionStorage.removeItem("homehub-preview-mode");
-  return requested === "1" || window.sessionStorage.getItem("homehub-preview-mode") === "1";
+  return import.meta.env.DEV;
 }
 
 function ProfileInitializer() {
