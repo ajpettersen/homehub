@@ -1145,21 +1145,21 @@ export default function Meals() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Week navigation */}
-          <div className="flex items-center bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+          <div className="flex shrink-0 items-center bg-card border border-border rounded-xl overflow-hidden shadow-sm">
             <button
               onClick={() => setWeekOffset(w => w - 1)}
               className="px-3 py-2.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <button
-              onClick={() => setWeekOffset(0)}
-              className={`px-4 py-2.5 text-sm font-bold transition-colors ${isCurrentWeek ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            <span
+              className="min-w-[7.75rem] px-3 py-2.5 text-center text-sm font-bold text-foreground"
+              aria-label={`Viewing ${format(monday, "MMMM d")} through ${format(addDays(monday, 6), "MMMM d, yyyy")}`}
             >
-              This Week
-            </button>
+              {format(monday, "MMM d")}–{format(addDays(monday, 6), "MMM d")}
+            </span>
             <button
               onClick={() => setWeekOffset(w => w + 1)}
               className="px-3 py-2.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
@@ -1171,7 +1171,7 @@ export default function Meals() {
           {/* AI Plan */}
           <button
             onClick={() => setPlanWeekOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
+            className="flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
             data-testid="button-open-plan-week"
           >
             <Sparkles className="w-4 h-4" />
@@ -1184,7 +1184,7 @@ export default function Meals() {
               setDeleteWeekOpen(true);
             }}
             disabled={!meals?.length || isDeletingWeek}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-destructive/30 bg-card text-destructive font-bold text-sm hover:bg-destructive/5 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl border border-destructive/30 bg-card text-destructive font-bold text-sm hover:bg-destructive/5 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-delete-week"
           >
             <Trash2 className="w-4 h-4" />
