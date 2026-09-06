@@ -17,7 +17,7 @@ function normalizeCategory(category?: string) {
   return aliases[value] ?? (CATEGORY_OPTIONS.some(([key]) => key === value) ? value : "other");
 }
 
-export function RecipeImport({ propertyId, onSaved }: { propertyId: string; onSaved?: () => void }) {
+export function RecipeImport({ propertyId, onSaved }: { propertyId: string; onSaved?: (recipe: { id: string; name: string }) => void }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const extract = useExtractRecipeImage();
@@ -30,7 +30,7 @@ export function RecipeImport({ propertyId, onSaved }: { propertyId: string; onSa
   const save = () => {
     if (!draft || !draft.name.trim()) return;
     create.mutate({ data: { name: draft.name.trim(), propertyId, ingredients: draft.ingredients.filter(i => i.name.trim()), instructions: draft.instructions.filter(Boolean), servings: draft.servings ?? undefined, prepMinutes: draft.prepMinutes ?? undefined, cookMinutes: draft.cookMinutes ?? undefined, sourceType: "image", notes: null } }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetRecipesQueryKey({ propertyId }) }); setDraft(null); onSaved?.(); },
+      onSuccess: recipe => { queryClient.invalidateQueries({ queryKey: getGetRecipesQueryKey({ propertyId }) }); setDraft(null); onSaved?.(recipe); },
       onError: () => setError("That recipe could not be saved. Please try again."),
     });
   };

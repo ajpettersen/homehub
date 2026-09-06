@@ -26,10 +26,12 @@ import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
   ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown,
   Link, MessageSquare, ThumbsUp, ThumbsDown, Minus, Bookmark, BookOpen,
-  ExternalLink, Star, AlertTriangle,
+  ExternalLink, Star, AlertTriangle, Headphones,
 } from "lucide-react";
 import { addWeeks, format, addDays } from "date-fns";
 import { PlanWeekDialog } from "@/components/meals/PlanWeekDialog";
+import { GuidedCooking, IngredientShopping } from "@/components/meals/RecipeTools";
+import { RecipeImport } from "@/components/meals/RecipeImport";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,11 +97,20 @@ function cycleRating(current: RatingKey | undefined): RatingKey | undefined {
 
 // ── URL import modal ──────────────────────────────────────────────────────────
 
+type ImportedUrlRecipe = {
+  name: string;
+  ingredients: Array<{ name: string; quantity?: string | null; category?: string | null }>;
+  instructions: string[];
+  servings?: number | null;
+  prepMinutes?: number | null;
+  cookMinutes?: number | null;
+};
+
 function UrlImportForm({
   onImport,
   onCancel,
 }: {
-  onImport: (name: string, url: string) => void;
+  onImport: (recipe: ImportedUrlRecipe, url: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const [url, setUrl] = useState("");
@@ -122,7 +133,7 @@ function UrlImportForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
-      onImport(data.name, url.trim());
+      await onImport(data as ImportedUrlRecipe, url.trim());
     } catch (err: any) {
       setError(err.message ?? "Couldn't read that page. Try a direct recipe URL.");
       setLoading(false);
@@ -278,6 +289,8 @@ function MealSlot({
   onDelete,
   onNote,
   onSaveToCookbook,
+  onImportUrl,
+  propertyId,
   cookbookNames,
   pendingFill,
   members,
@@ -291,6 +304,8 @@ function MealSlot({
   onDelete: () => void;
   onNote: (id: string, notes: string) => void;
   onSaveToCookbook: (name: string, sourceUrl?: string) => void;
+  onImportUrl: (recipe: ImportedUrlRecipe, sourceUrl: string) => Promise<void>;
+  propertyId: string;
   cookbookNames: Set<string>;
   /** When set and the slot is empty, clicking directly adds this recipe name without opening the editor */
   pendingFill?: string;
@@ -303,6 +318,7 @@ function MealSlot({
   const [showNotes, setShowNotes] = useState(false);
   const [noteValue, setNoteValue] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
+  const [importingImage, setImportingImage] = useState(false);
   const [pendingUrl, setPendingUrl] = useState<string | undefined>();
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -423,15 +439,33 @@ function MealSlot({
   if (importingUrl) {
     return (
       <UrlImportForm
-        onImport={(name, url) => {
-          onAdd(name, url);
+        onImport={async (recipe, url) => {
+          await onImportUrl(recipe, url);
           setImportingUrl(false);
-          // After adding from URL, auto-prompt to save to cookbook
-          setPendingUrl(url);
-          setShowSavePrompt(true);
         }}
         onCancel={() => setImportingUrl(false)}
       />
+    );
+  }
+
+  if (importingImage) {
+    return (
+      <div>
+        <RecipeImport
+          propertyId={propertyId}
+          onSaved={recipe => {
+            onAdd(recipe.name);
+            setImportingImage(false);
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => setImportingImage(false)}
+          className="min-h-11 w-full rounded-xl border border-border text-sm font-semibold"
+        >
+          Cancel screenshot import
+        </button>
+      </div>
     );
   }
 
@@ -458,9 +492,14 @@ function MealSlot({
             <X className="w-4 h-4" />
           </button>
         </div>
-        <button type="button" onClick={() => { setEditing(false); setImportingUrl(true); }} className="text-xs text-primary/60 hover:text-primary flex items-center gap-1 px-1 transition-colors">
-          <Link className="w-3 h-3" /> From URL instead
-        </button>
+        <div className="flex flex-wrap gap-3 px-1">
+          <button type="button" onClick={() => { setEditing(false); setImportingUrl(true); }} className="text-xs text-primary/70 hover:text-primary flex min-h-8 items-center gap-1 transition-colors">
+            <Link className="w-3 h-3" /> From URL
+          </button>
+          <button type="button" onClick={() => { setEditing(false); setImportingImage(true); }} className="text-xs text-primary/70 hover:text-primary flex min-h-8 items-center gap-1 transition-colors">
+            <BookOpen className="w-3 h-3" /> From screenshot
+          </button>
+        </div>
       </div>
     );
   }
@@ -542,7 +581,11 @@ function resolveCategory(raw: string | null | undefined): string {
 }
 
 type MealForShopping = { dayName: string; mealType: string; meal: string };
-function GrocerySection({ propertyId, meals }: { propertyId: string; meals: MealForShopping[] }) {
+type RecipeForShopping = {
+  name: string;
+  ingredients: Array<{ name: string; quantity?: string | null }>;
+};
+function GrocerySection({ propertyId, meals, recipes }: { propertyId: string; meals: MealForShopping[]; recipes: RecipeForShopping[] }) {
   const queryClient = useQueryClient();
 
   const { data: lists } = useGetGroceryLists({ query: { queryKey: getGetGroceryListsQueryKey() } });
@@ -567,10 +610,10 @@ function GrocerySection({ propertyId, meals }: { propertyId: string; meals: Meal
     </div>
   );
 
-  return <GroceryListDetail list={mainList} meals={meals} />;
+  return <GroceryListDetail list={mainList} meals={meals} recipes={recipes} />;
 }
 
-function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[] }) {
+function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealForShopping[]; recipes: RecipeForShopping[] }) {
   const queryClient = useQueryClient();
   const { data: stores, isLoading: storesLoading } = useGetStores({ query: { queryKey: getGetStoresQueryKey() } });
   const updateStore = useUpdateGroceryListStore();
@@ -597,13 +640,18 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
     setAiShoppingLoading(true);
     setAiShoppingError(null);
     try {
+      const plannedMealNames = new Set(meals.map(meal => meal.meal.trim().toLowerCase()));
+      const plannedRecipes = recipes.filter(recipe => plannedMealNames.has(recipe.name.trim().toLowerCase()));
       const res = await fetch(`/api/ai/shopping-list`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ meals }),
+        body: JSON.stringify({ meals, recipes: plannedRecipes }),
       });
-      if (!res.ok) throw new Error("AI request failed");
-      const data = await res.json() as { items: Array<{ name: string; quantity: string | null; category: string }> };
+      const data = await res.json().catch(() => null) as {
+        items?: Array<{ name: string; quantity: string | null; category: string }>;
+        error?: string;
+      } | null;
+      if (!res.ok) throw new Error(data?.error || "The shopping list could not be generated.");
       if (!Array.isArray(data?.items)) return;
 
       const seenNames = new Set(
@@ -626,7 +674,7 @@ function GroceryListDetail({ list, meals }: { list: any; meals: MealForShopping[
       queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
     } catch (err) {
       console.error("Build from meals error:", err);
-      setAiShoppingError("Failed to build list — please try again.");
+      setAiShoppingError(err instanceof Error ? err.message : "Failed to build list — please try again.");
     } finally {
       setAiShoppingLoading(false);
     }
@@ -964,7 +1012,7 @@ export default function Meals() {
     {
       query: {
         queryKey: getGetRecipesQueryKey(recipesParams ?? undefined),
-        enabled: !!houseProperty && activeTab === "recipes",
+        enabled: !!houseProperty,
         staleTime: 30_000,
       },
     }
@@ -1028,6 +1076,54 @@ export default function Meals() {
       { data: { name, propertyId: String(houseProperty.id), sourceUrl: sourceUrl ?? null, notes: null } },
       { onSuccess: invalidateRecipes }
     );
+  };
+
+  const handleImportUrlRecipe = async (
+    dayIndex: number,
+    mealType: MealType,
+    recipe: ImportedUrlRecipe,
+    sourceUrl: string,
+  ) => {
+    if (!houseProperty) throw new Error("Add a home property before importing a recipe.");
+
+    const normalizedName = recipe.name.trim().toLowerCase();
+    const existingRecipe = (recipes ?? []).find(item => item.name.trim().toLowerCase() === normalizedName);
+    const structuredRecipe = {
+      name: recipe.name.trim(),
+      sourceUrl,
+      ingredients: recipe.ingredients
+        .filter(item => item.name.trim())
+        .map(item => ({
+          name: item.name.trim(),
+          quantity: item.quantity?.trim() || undefined,
+          category: resolveCategory(item.category),
+        })),
+      instructions: recipe.instructions.map(step => step.trim()).filter(Boolean),
+      servings: recipe.servings ?? undefined,
+      prepMinutes: recipe.prepMinutes ?? undefined,
+      cookMinutes: recipe.cookMinutes ?? undefined,
+      sourceType: "url" as const,
+      notes: null,
+    };
+
+    if (existingRecipe) {
+      await updateRecipe.mutateAsync({ id: existingRecipe.id, data: structuredRecipe });
+    } else {
+      await createRecipe.mutateAsync({
+        data: { ...structuredRecipe, propertyId: String(houseProperty.id) },
+      });
+    }
+
+    await createMeal.mutateAsync({
+      data: {
+        weekStart,
+        dayOfWeek: dayIndexToApi(dayIndex),
+        mealType,
+        meal: recipe.name.trim(),
+        propertyId: houseProperty.id,
+      },
+    });
+    await Promise.all([invalidateRecipes(), invalidateMeals()]);
   };
 
   const handleChat = async (messages: {role: 'user'|'assistant', content: string}[]) => {
@@ -1122,6 +1218,29 @@ export default function Meals() {
         )
       );
       invalidateMeals();
+
+      const existingRecipeNames = new Set((recipes ?? []).map(recipe => recipe.name.trim().toLowerCase()));
+      const suggestedRecipeNames = [...new Set(
+        newMeals
+          .map(meal => meal.text.trim())
+          .filter(name => !/eat(?:ing)? out|restaurant|takeout|leftovers?/i.test(name))
+      )];
+      await Promise.allSettled(
+        suggestedRecipeNames
+          .filter(name => !existingRecipeNames.has(name.toLowerCase()))
+          .map(name => createRecipe.mutateAsync({
+            data: {
+              name,
+              propertyId: String(houseProperty.id),
+              sourceUrl: null,
+              notes: null,
+              ingredients: [],
+              instructions: [],
+              sourceType: "ai",
+            },
+          }))
+      );
+      invalidateRecipes();
     }
   };
 
@@ -1319,6 +1438,8 @@ export default function Meals() {
                         }}
                         onNote={handleNote}
                         onSaveToCookbook={handleSaveToCookbook}
+                        onImportUrl={(recipe, sourceUrl) => handleImportUrlRecipe(idx, mt.type, recipe, sourceUrl)}
+                        propertyId={propertyIdStr}
                         cookbookNames={cookbookNames}
                         members={members}
                         activeMemberId={activeMember ? activeMember.id : null}
@@ -1352,6 +1473,9 @@ export default function Meals() {
                 mealType: m.mealType,
                 meal: m.meal,
               }))}
+              recipes={(recipes ?? [])
+                .filter(recipe => recipe.ingredients.length > 0)
+                .map(recipe => ({ name: recipe.name, ingredients: recipe.ingredients }))}
             />
           ) : (
             <div className="text-muted-foreground py-8 text-center animate-pulse">Loading…</div>
@@ -1398,6 +1522,9 @@ function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUs
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<Record<string, string>>({});
+  const [cookingRecipeId, setCookingRecipeId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetRecipesQueryKey(params) });
@@ -1425,6 +1552,66 @@ function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUs
     updateRecipe.mutate({ id, data: { notes: editNotes || null } }, {
       onSuccess: () => { setEditingId(null); invalidate(); },
     });
+  };
+
+  const generateRecipeDetails = async (recipe: NonNullable<typeof recipes>[number]) => {
+    if (generatingId || recipe.instructions.length > 0) return;
+    setGeneratingId(recipe.id);
+    setGenerationError(current => ({ ...current, [recipe.id]: "" }));
+    try {
+      const response = await fetch("/api/ai/meal-recipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meal: recipe.name, generateImage: false }),
+      });
+      const data = await response.json().catch(() => null) as {
+        recipe?: {
+          ingredients?: string[];
+          steps?: string[];
+          servings?: number;
+          prepTime?: string;
+          cookTime?: string;
+        };
+        error?: string;
+      } | null;
+      if (!response.ok || !data?.recipe) {
+        throw new Error(data?.error || "Could not create this recipe.");
+      }
+      const details = data.recipe;
+      const ingredients = (details.ingredients ?? [])
+        .filter(item => typeof item === "string" && item.trim())
+        .map(item => ({ name: item.trim(), category: "other" }));
+      const instructions = (details.steps ?? []).filter(step => typeof step === "string" && step.trim());
+      if (!ingredients.length || !instructions.length) throw new Error("The generated recipe was incomplete.");
+
+      await updateRecipe.mutateAsync({
+        id: recipe.id,
+        data: {
+          ingredients,
+          instructions,
+          servings: Number.isInteger(details.servings) ? details.servings : null,
+          prepMinutes: Number.parseInt(details.prepTime ?? "", 10) || null,
+          cookMinutes: Number.parseInt(details.cookTime ?? "", 10) || null,
+          sourceType: "ai",
+        },
+      });
+      await invalidate();
+    } catch (error) {
+      setGenerationError(current => ({
+        ...current,
+        [recipe.id]: error instanceof Error ? error.message : "Could not create this recipe.",
+      }));
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
+  const handleExpandRecipe = (recipe: NonNullable<typeof recipes>[number]) => {
+    const opening = expandedId !== recipe.id;
+    setExpandedId(opening ? recipe.id : null);
+    if (opening && recipe.sourceType === "ai" && recipe.instructions.length === 0) {
+      void generateRecipeDetails(recipe);
+    }
   };
 
   React.useEffect(() => {
@@ -1527,7 +1714,7 @@ function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUs
               {/* Top row */}
               <div
                 className="flex items-center gap-3 px-4 py-3 cursor-pointer"
-                onClick={() => setExpandedId(isExpanded ? null : recipe.id)}
+                onClick={() => handleExpandRecipe(recipe)}
               >
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                   <BookOpen className="w-4 h-4 text-primary" />
@@ -1570,6 +1757,62 @@ function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUs
               {/* Expanded detail */}
               {isExpanded && (
                 <div className="border-t border-border/50 px-4 py-3 space-y-3 bg-muted/20">
+                  {generatingId === recipe.id && (
+                    <div className="flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-3 text-sm text-primary">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Creating ingredients and cooking steps…
+                    </div>
+                  )}
+                  {generationError[recipe.id] && (
+                    <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+                      <p>{generationError[recipe.id]}</p>
+                      <button
+                        type="button"
+                        onClick={() => void generateRecipeDetails(recipe)}
+                        className="mt-2 font-bold underline"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  )}
+
+                  {recipe.ingredients.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Ingredients</p>
+                      <ul className="space-y-1 text-sm">
+                        {recipe.ingredients.map((ingredient, index) => (
+                          <li key={`${ingredient.name}-${index}`} className="flex gap-2">
+                            <span className="text-primary">•</span>
+                            <span>{ingredient.quantity ? `${ingredient.quantity} ` : ""}{ingredient.name}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {recipe.instructions.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Instructions</p>
+                      <ol className="space-y-2 text-sm">
+                        {recipe.instructions.map((step, index) => (
+                          <li key={index} className="flex gap-3">
+                            <span className="font-bold text-primary">{index + 1}</span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                      <button
+                        type="button"
+                        onClick={() => setCookingRecipeId(recipe.id)}
+                        className="mt-3 min-h-11 w-full rounded-xl bg-primary font-bold text-primary-foreground"
+                      >
+                        <Headphones className="mr-2 inline h-4 w-4" />
+                        Start Guided Cooking
+                      </button>
+                      <IngredientShopping propertyId={propertyId} recipe={recipe} />
+                    </div>
+                  )}
+
                   {/* Source URL */}
                   {recipe.sourceUrl && (() => {
                     // Defensively allow only http/https hrefs to block javascript: XSS
@@ -1647,6 +1890,12 @@ function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUs
           );
         })}
       </div>
+      {cookingRecipeId && (() => {
+        const cookingRecipe = recipes?.find(recipe => recipe.id === cookingRecipeId);
+        return cookingRecipe
+          ? <GuidedCooking recipe={cookingRecipe} onClose={() => setCookingRecipeId(null)} />
+          : null;
+      })()}
     </div>
   );
 }

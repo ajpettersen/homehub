@@ -931,7 +931,7 @@ router.post("/ai/meal-recipe", async (req, res) => {
 
     const { meal, generateImage } = req.body as { meal: string; generateImage?: boolean };
 
-    if (!meal || typeof meal !== "string") {
+    if (!meal || typeof meal !== "string" || meal.trim().length > 300) {
       res.status(400).json({ error: "meal is required" });
       return;
     }
@@ -940,7 +940,28 @@ router.post("/ai/meal-recipe", async (req, res) => {
 
     const recipeResp = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1500,
+      max_completion_tokens: 2_500,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "meal_recipe",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["prepTime", "cookTime", "servings", "difficulty", "ingredients", "steps", "tips"],
+            properties: {
+              prepTime: { type: "string" },
+              cookTime: { type: "string" },
+              servings: { type: "integer" },
+              difficulty: { type: "string" },
+              ingredients: { type: "array", maxItems: 100, items: { type: "string" } },
+              steps: { type: "array", maxItems: 100, items: { type: "string" } },
+              tips: { type: "string" },
+            },
+          },
+        },
+      },
       messages: [
         {
           role: "user",
@@ -949,7 +970,7 @@ Generate a complete recipe for: "${meal}"
 ${memoriesCtx}
 Make it approachable, kid-friendly where possible, and realistic for a weeknight dinner.
 
-Respond ONLY with valid JSON:
+Return a complete recipe in the required JSON format:
 {
   "prepTime": "15 mins",
   "cookTime": "30 mins",
@@ -969,13 +990,20 @@ Respond ONLY with valid JSON:
       ],
     });
 
-    const recipeContent = recipeResp.choices[0]?.message?.content ?? "";
-    const recipeMatch = recipeContent.match(/\{[\s\S]*\}/);
-    if (!recipeMatch) {
-      res.status(500).json({ error: "Failed to parse recipe" });
-      return;
+    const recipeContent = recipeResp.choices[0]?.message?.content;
+    if (!recipeContent) throw new Error("Meal-recipe AI response was empty");
+    const recipe = JSON.parse(recipeContent) as {
+      prepTime: string; cookTime: string; servings: number; difficulty: string;
+      ingredients: string[]; steps: string[]; tips: string;
+    };
+    if (
+      !Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0 ||
+      !Array.isArray(recipe.steps) || recipe.steps.length === 0 ||
+      !recipe.ingredients.every(item => typeof item === "string" && item.trim() && item.length <= 300) ||
+      !recipe.steps.every(step => typeof step === "string" && step.trim() && step.length <= 2_000)
+    ) {
+      throw new Error("Meal-recipe AI response was incomplete");
     }
-    const recipe = JSON.parse(recipeMatch[0]);
 
     let imageBase64: string | undefined;
     if (generateImage) {
@@ -993,8 +1021,8 @@ Respond ONLY with valid JSON:
 
     res.json({ recipe, ...(imageBase64 ? { imageBase64 } : {}) });
   } catch (err) {
-    console.error("Meal recipe error:", err);
-    res.status(500).json({ error: "Failed to get recipe" });
+    req.log.error({ err }, "Meal recipe generation failed");
+    res.status(500).json({ error: "Could not create recipe details. Please try again." });
   }
 });
 
@@ -1234,7 +1262,7 @@ Respond ONLY with valid JSON:
 });
 
 // ── POST /ai/extract-recipe-url ──────────────────────────────────────────────
-// Fetches a recipe page and uses AI to extract the meal name + summary
+// Fetches a recipe page and extracts a complete structured recipe.
 router.post("/ai/extract-recipe-url", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
@@ -1256,32 +1284,73 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 256,
+      max_completion_tokens: 2_500,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "url_recipe",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["isRecipe", "name", "ingredients", "instructions", "servings", "prepMinutes", "cookMinutes"],
+            properties: {
+              isRecipe: { type: "boolean" },
+              name: { type: "string" },
+              ingredients: {
+                type: "array",
+                maxItems: 100,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["name", "quantity", "category"],
+                  properties: {
+                    name: { type: "string" },
+                    quantity: { type: ["string", "null"] },
+                    category: { type: "string", enum: VALID_CATEGORIES },
+                  },
+                },
+              },
+              instructions: { type: "array", maxItems: 100, items: { type: "string" } },
+              servings: { type: ["integer", "null"] },
+              prepMinutes: { type: ["integer", "null"] },
+              cookMinutes: { type: ["integer", "null"] },
+            },
+          },
+        },
+      },
       messages: [
         {
+          role: "system",
+          content: "Extract a complete recipe faithfully from webpage text. Do not invent missing ingredients or instructions. Set isRecipe false when the page does not contain enough information to cook the dish. Use null for unavailable times or servings.",
+        },
+        {
           role: "user",
-          content: `Extract the recipe name from this webpage text. Respond ONLY with valid JSON: {"name": "Recipe Name Here"}. If it's not a recipe page, respond: {"error": "Not a recipe page"}\n\nPage text:\n${pageText.slice(0, 4000)}`,
+          content: `Extract this public recipe page into the required structured format.\n\nPage text:\n${pageText.slice(0, 12_000)}`,
         },
       ],
     });
 
-    const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      res.status(500).json({ error: "Failed to parse AI response" });
-      return;
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]) as { name?: string; error?: string };
-    if (parsed.error) {
-      res.status(422).json({ error: parsed.error });
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error("URL-recipe AI response was empty");
+    const parsed = JSON.parse(content) as {
+      isRecipe: boolean;
+      name: string;
+      ingredients: Array<{ name: string; quantity: string | null; category: string }>;
+      instructions: string[];
+      servings: number | null;
+      prepMinutes: number | null;
+      cookMinutes: number | null;
+    };
+    if (!parsed.isRecipe || !parsed.name.trim() || parsed.ingredients.length === 0 || parsed.instructions.length === 0) {
+      res.status(422).json({ error: "That page does not contain a complete recipe." });
       return;
     }
 
     res.json(parsed);
   } catch (err) {
-    console.error("Extract recipe URL error:", err);
-    res.status(500).json({ error: "Failed to extract recipe" });
+    req.log.error({ err }, "URL recipe extraction failed");
+    res.status(500).json({ error: "Could not read that recipe page. Please try again." });
   }
 });
 
@@ -1293,8 +1362,12 @@ router.post("/ai/shopping-list", async (req, res) => {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
 
-    const { meals } = req.body as {
+    const { meals, recipes } = req.body as {
       meals: Array<{ dayName: string; mealType: string; meal: string }>;
+      recipes?: Array<{
+        name: string;
+        ingredients: Array<{ name: string; quantity?: string | null }>;
+      }>;
     };
 
     if (!Array.isArray(meals) || meals.length === 0) {
@@ -1312,10 +1385,54 @@ router.post("/ai/shopping-list", async (req, res) => {
     const mealLines = meals
       .map((m) => `- ${m.dayName} ${m.mealType}: ${String(m.meal ?? "").slice(0, MAX_MEAL_NAME_LEN)}`)
       .join("\n");
+    const structuredRecipes = Array.isArray(recipes)
+      ? recipes.slice(0, MAX_MEALS).flatMap(recipe => {
+          if (typeof recipe?.name !== "string" || !Array.isArray(recipe.ingredients)) return [];
+          const ingredients = recipe.ingredients
+            .slice(0, 100)
+            .flatMap(item => typeof item?.name === "string" && item.name.trim()
+              ? [{
+                  name: item.name.trim().slice(0, 300),
+                  quantity: typeof item.quantity === "string" ? item.quantity.trim().slice(0, 100) : null,
+                }]
+              : []);
+          return ingredients.length
+            ? [{ name: recipe.name.trim().slice(0, MAX_MEAL_NAME_LEN), ingredients }]
+            : [];
+        })
+      : [];
 
     const shoppingResponse = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
+      max_completion_tokens: 2_500,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "weekly_shopping_list",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["items"],
+            properties: {
+              items: {
+                type: "array",
+                maxItems: 100,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["name", "quantity", "category"],
+                  properties: {
+                    name: { type: "string" },
+                    quantity: { type: ["string", "null"] },
+                    category: { type: "string", enum: VALID_CATEGORIES },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       messages: [
         {
           role: "user",
@@ -1324,7 +1441,11 @@ router.post("/ai/shopping-list", async (req, res) => {
 Meal plan:
 ${mealLines}
 
+Known cookbook recipes for some of those meals:
+${structuredRecipes.length ? JSON.stringify(structuredRecipes) : "None. Infer practical ingredients from the meal names."}
+
 Rules:
+- Treat known cookbook ingredients as authoritative; infer ingredients only for meals without a known recipe
 - Deduplicate ingredients (e.g. if chicken appears in multiple meals, list it once with combined quantity)
 - Categorize every item into one of these exact category keys: ${VALID_CATEGORIES.join(", ")}
 - Include realistic quantities (e.g. "2 lbs", "1 dozen", "1 bunch", "1 can")
@@ -1342,33 +1463,30 @@ Respond ONLY with valid JSON — no markdown, no extra text:
       ],
     });
 
-    const shoppingContent = shoppingResponse.choices[0]?.message?.content ?? "";
-    const jsonMatch = shoppingContent.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      res.status(500).json({ error: "Failed to parse AI response" });
-      return;
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]) as { items: Array<{ name: string; quantity: string; category: string }> };
+    const shoppingContent = shoppingResponse.choices[0]?.message?.content;
+    if (!shoppingContent) throw new Error("Shopping-list AI response was empty");
+    const parsed = JSON.parse(shoppingContent) as {
+      items?: Array<{ name?: unknown; quantity?: unknown; category?: unknown }>;
+    };
 
     const seen = new Set<string>();
     const items = (parsed.items ?? [])
       .filter((item) => {
-        if (typeof item.name !== "string" || !item.name.trim()) return false;
+        if (typeof item.name !== "string" || !item.name.trim() || item.name.length > 300) return false;
         const key = item.name.toLowerCase().trim();
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       })
       .map((item) => ({
-        name: item.name.trim(),
+        name: String(item.name).trim(),
         quantity: typeof item.quantity === "string" && item.quantity.trim() ? item.quantity.trim() : null,
-        category: VALID_CATEGORIES.includes(item.category) ? item.category : "other",
+        category: typeof item.category === "string" && VALID_CATEGORIES.includes(item.category) ? item.category : "other",
       }));
 
     res.json({ items });
   } catch (err) {
-    console.error("Shopping list error:", err);
+    req.log.error({ err }, "Shopping list generation failed");
     res.status(500).json({ error: "Failed to generate shopping list" });
   }
 });
