@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { and, eq } from "drizzle-orm";
 import { db, webPushSubscriptionsTable } from "@workspace/db";
 import {
@@ -7,6 +6,7 @@ import {
   requireApprovedLinkedAdult,
 } from "../middlewares/requireApprovedHousehold";
 import { vapidKeys } from "../lib/webPush";
+import { getEffectiveClerkId } from "../lib/effectiveClerkId";
 
 const router = Router();
 const MAX_ENDPOINT_LENGTH = 2048;
@@ -76,7 +76,7 @@ router.get("/web-push/public-key", (_req, res): void => {
 });
 
 router.post("/web-push/subscriptions", async (req, res): Promise<void> => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -126,7 +126,7 @@ router.post("/web-push/subscriptions", async (req, res): Promise<void> => {
 });
 
 router.delete("/web-push/subscriptions", async (req, res): Promise<void> => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return;

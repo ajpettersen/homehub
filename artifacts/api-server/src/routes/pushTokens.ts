@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { pushTokensTable } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -7,6 +6,7 @@ import {
   getApprovedHouseholdScope,
   requireApprovedLinkedAdult,
 } from "../middlewares/requireApprovedHousehold";
+import { getEffectiveClerkId } from "../lib/effectiveClerkId";
 
 const router = Router();
 
@@ -19,7 +19,7 @@ function isValidToken(token: unknown): token is string {
 
 // Register or refresh a push token
 router.post("/push-tokens", async (req, res) => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -70,7 +70,7 @@ router.post("/push-tokens", async (req, res) => {
 
 // Remove a push token (e.g. on logout) — only the owner may delete it
 router.delete("/push-tokens/:token", async (req, res) => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     return res.status(401).json({ error: "Unauthorized" });
   }

@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { textToSpeech } from "@workspace/integrations-openai-ai-server/audio";
-import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import {
   mealPlansTable,
@@ -23,6 +22,7 @@ import {
   type PropertyAuthorizationScope,
 } from "../lib/propertyAuthorization";
 import type { Request, Response } from "express";
+import { getEffectiveClerkId } from "../lib/effectiveClerkId";
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
 import http from "node:http";
@@ -51,7 +51,7 @@ async function requireAiScope(
   req: Request,
   res: Response,
 ): Promise<PropertyAuthorizationScope | null> {
-  const { userId } = getAuth(req);
+  const userId = getEffectiveClerkId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;

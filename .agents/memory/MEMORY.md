@@ -21,3 +21,4 @@
 - [Installed Web app freshness](installed-web-app-freshness.md) — logout activates pending Web updates and performs a base-scoped fresh launch without clearing Clerk or sibling-artifact state.
 - [Publish foreign-key staging](publish-foreign-key-staging.md) — when Publish orders a new composite FK before its unique prerequisite, ship the uniqueness first and the FK in a second publish.
 - [Paid chore wallets](paid-chore-wallets.md) — rewards are virtual ledger credits posted only after adult approval; recurring payouts are idempotent per occurrence.
+- [Development preview identity](development-preview-identity.md) — interactive previews use a synthetic demo household identity that must be impossible to activate in production.

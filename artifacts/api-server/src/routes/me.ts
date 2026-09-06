@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createHash, randomBytes } from "node:crypto";
-import { clerkClient, getAuth } from "@clerk/express";
+import { clerkClient } from "@clerk/express";
 import {
   choresTable,
   aiMemoriesTable,
@@ -29,6 +29,7 @@ import {
 } from "@workspace/api-zod";
 import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { isConfiguredBootstrapIdentity } from "../lib/bootstrapIdentity";
+import { getEffectiveClerkId } from "../lib/effectiveClerkId";
 
 const router = Router();
 
@@ -163,7 +164,7 @@ async function ensureBootstrapAdult(
 }
 
 async function requireFamilyAdmin(req: any, res: any): Promise<FamilyAdminScope | null> {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
@@ -185,7 +186,7 @@ async function requireFamilyAdmin(req: any, res: any): Promise<FamilyAdminScope 
 
 /** An approved family account may manage joining only when linked to its household's parent profile. */
 async function requireApprovedAdult(req: any, res: any): Promise<ApprovedAdultScope | null> {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
@@ -220,7 +221,7 @@ async function requireApprovedAdult(req: any, res: any): Promise<ApprovedAdultSc
 
 /** GET /api/me — get or auto-create the current user's profile */
 router.get("/me", async (req, res): Promise<void> => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -367,7 +368,7 @@ router.get("/me", async (req, res): Promise<void> => {
 
 /** GET /api/me/family-profile — get only the signed-in family account's linked adult */
 router.get("/me/family-profile", async (req, res): Promise<void> => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Authentication required" });
     return;
@@ -423,7 +424,7 @@ router.get("/me/family-profile", async (req, res): Promise<void> => {
 
 /** PATCH /api/me/family-profile — update only the signed-in family account's linked adult */
 router.patch("/me/family-profile", async (req, res): Promise<void> => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Authentication required" });
     return;
@@ -526,7 +527,7 @@ router.patch("/me/family-profile", async (req, res): Promise<void> => {
 
 /** POST /api/me/personal-setup — complete setup for only the caller's linked adult. */
 router.post("/me/personal-setup", async (req, res): Promise<void> => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Authentication required" });
     return;
@@ -646,7 +647,7 @@ async function padJoinResponse(startedAt: number): Promise<void> {
 /** POST /api/me/join-request — silently create a reviewable request when eligible */
 router.post("/me/join-request", async (req, res): Promise<void> => {
   const startedAt = Date.now();
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -875,7 +876,7 @@ router.post("/me/household-invites/validate", async (req, res): Promise<void> =>
 
 /** Redeem an invite once for the authenticated Clerk user and create its parent link if needed. */
 router.post("/me/household-invites/redeem", async (req, res): Promise<void> => {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   const token = typeof req.body?.token === "string" ? req.body.token : "";
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });

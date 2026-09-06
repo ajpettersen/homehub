@@ -1,9 +1,9 @@
-import { getAuth } from "@clerk/express";
 import type { NextFunction, Request, Response } from "express";
 import {
   getPropertyAuthorizationScope,
   type PropertyAuthorizationScope,
 } from "../lib/propertyAuthorization";
+import { getEffectiveClerkId } from "../lib/effectiveClerkId";
 
 const SCOPE_KEY = "homeHubScope";
 
@@ -12,7 +12,7 @@ export async function requireApprovedHousehold(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return;

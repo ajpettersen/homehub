@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import {
   aiMemoriesTable,
@@ -15,6 +14,7 @@ import {
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { getPropertyAuthorizationScope, type PropertyAuthorizationScope } from "../lib/propertyAuthorization";
+import { getEffectiveClerkId } from "../lib/effectiveClerkId";
 import { requireApprovedLinkedAdult as requireApprovedLinkedAdultScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
@@ -26,7 +26,7 @@ async function requireHouseholdScope(
   res: any,
   familyAdminOnly = false,
 ): Promise<PropertyAuthorizationScope | null> {
-  const clerkId = getAuth(req).userId;
+  const clerkId = getEffectiveClerkId(req);
   if (!clerkId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
