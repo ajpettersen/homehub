@@ -14,4 +14,7 @@ export interface UpdateChoreInput {
   frequency?: UpdateChoreInputFrequency;
   dueDate?: Date | null;
   points?: number;
+  /** @minimum 0 */
+  rewardCents?: number;
+  bundleItems?: string[];
 }

@@ -538,6 +538,10 @@ export const GetChoresQueryParams = zod.object({
   "propertyId": zod.coerce.string().optional()
 })
 
+export const getChoresResponseRewardCentsMin = 0;
+
+
+
 export const GetChoresResponseItem = zod.object({
   "id": zod.string(),
   "title": zod.string(),
@@ -551,7 +555,10 @@ export const GetChoresResponseItem = zod.object({
   "completedBy": zod.string().nullish(),
   "completionNote": zod.string().nullish(),
   "isOverdue": zod.boolean(),
-  "points": zod.number()
+  "points": zod.number(),
+  "rewardCents": zod.number().min(getChoresResponseRewardCentsMin),
+  "bundleItems": zod.array(zod.string()),
+  "status": zod.enum(['open', 'pending', 'approved'])
 })
 export const GetChoresResponse = zod.array(GetChoresResponseItem)
 
@@ -559,14 +566,25 @@ export const GetChoresResponse = zod.array(GetChoresResponseItem)
 /**
  * @summary Create a new chore
  */
+export const createChoreBodyRewardCentsDefault = 0;
+export const createChoreBodyRewardCentsMin = 0;
+
+
+
 export const CreateChoreBody = zod.object({
   "title": zod.string(),
   "assigneeId": zod.string().nullish(),
   "propertyId": zod.string(),
   "frequency": zod.enum(['daily', 'weekly', 'biweekly', 'monthly', 'custom']),
   "dueDate": zod.coerce.date().nullish(),
-  "points": zod.number().optional()
+  "points": zod.number().optional(),
+  "rewardCents": zod.number().min(createChoreBodyRewardCentsMin).default(createChoreBodyRewardCentsDefault),
+  "bundleItems": zod.array(zod.string()).optional()
 })
+
+export const createChoreResponseRewardCentsMin = 0;
+
+
 
 export const CreateChoreResponse = zod.object({
   "id": zod.string(),
@@ -581,7 +599,10 @@ export const CreateChoreResponse = zod.object({
   "completedBy": zod.string().nullish(),
   "completionNote": zod.string().nullish(),
   "isOverdue": zod.boolean(),
-  "points": zod.number()
+  "points": zod.number(),
+  "rewardCents": zod.number().min(createChoreResponseRewardCentsMin),
+  "bundleItems": zod.array(zod.string()),
+  "status": zod.enum(['open', 'pending', 'approved'])
 })
 
 
@@ -592,14 +613,24 @@ export const UpdateChoreParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const updateChoreBodyRewardCentsMin = 0;
+
+
+
 export const UpdateChoreBody = zod.object({
   "title": zod.string().optional(),
   "assigneeId": zod.string().nullish(),
   "propertyId": zod.string().optional(),
   "frequency": zod.enum(['daily', 'weekly', 'biweekly', 'monthly', 'custom']).optional(),
   "dueDate": zod.coerce.date().nullish(),
-  "points": zod.number().optional()
+  "points": zod.number().optional(),
+  "rewardCents": zod.number().min(updateChoreBodyRewardCentsMin).optional(),
+  "bundleItems": zod.array(zod.string()).optional()
 })
+
+export const updateChoreResponseRewardCentsMin = 0;
+
+
 
 export const UpdateChoreResponse = zod.object({
   "id": zod.string(),
@@ -614,7 +645,10 @@ export const UpdateChoreResponse = zod.object({
   "completedBy": zod.string().nullish(),
   "completionNote": zod.string().nullish(),
   "isOverdue": zod.boolean(),
-  "points": zod.number()
+  "points": zod.number(),
+  "rewardCents": zod.number().min(updateChoreResponseRewardCentsMin),
+  "bundleItems": zod.array(zod.string()),
+  "status": zod.enum(['open', 'pending', 'approved'])
 })
 
 
@@ -640,6 +674,10 @@ export const CompleteChoreBody = zod.object({
   "note": zod.string().nullish()
 })
 
+export const completeChoreResponseRewardCentsMin = 0;
+
+
+
 export const CompleteChoreResponse = zod.object({
   "id": zod.string(),
   "title": zod.string(),
@@ -653,7 +691,86 @@ export const CompleteChoreResponse = zod.object({
   "completedBy": zod.string().nullish(),
   "completionNote": zod.string().nullish(),
   "isOverdue": zod.boolean(),
-  "points": zod.number()
+  "points": zod.number(),
+  "rewardCents": zod.number().min(completeChoreResponseRewardCentsMin),
+  "bundleItems": zod.array(zod.string()),
+  "status": zod.enum(['open', 'pending', 'approved'])
+})
+
+
+/**
+ * @summary Approve a submitted paid chore and credit its child assignee
+ */
+export const ApproveChoreParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ApproveChoreResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['open', 'approved'])
+})
+
+
+/**
+ * @summary Reject a submitted paid chore and reopen it
+ */
+export const RejectChoreParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RejectChoreResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['open', 'approved'])
+})
+
+
+/**
+ * @summary List child wallet balances and recent ledger transactions
+ */
+export const GetWalletsResponseItem = zod.object({
+  "memberId": zod.string(),
+  "memberName": zod.string(),
+  "memberColor": zod.string(),
+  "balanceCents": zod.number(),
+  "recentTransactions": zod.array(zod.object({
+  "id": zod.string(),
+  "memberId": zod.string(),
+  "amountCents": zod.number().describe('Signed virtual-wallet amount in cents'),
+  "type": zod.enum(['chore_reward', 'manual_credit', 'manual_debit', 'adjustment']),
+  "description": zod.string(),
+  "choreId": zod.string().nullish(),
+  "createdBy": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+export const GetWalletsResponse = zod.array(GetWalletsResponseItem)
+
+
+/**
+ * @summary Add a manual child wallet credit, debit, or adjustment
+ */
+export const CreateWalletTransactionParams = zod.object({
+  "memberId": zod.coerce.string()
+})
+
+
+
+
+export const CreateWalletTransactionBody = zod.object({
+  "amountCents": zod.number().describe('Positive for credit, negative for debit; either sign for adjustment'),
+  "type": zod.enum(['manual_credit', 'manual_debit', 'adjustment']),
+  "description": zod.string().min(1)
+})
+
+export const CreateWalletTransactionResponse = zod.object({
+  "id": zod.string(),
+  "memberId": zod.string(),
+  "amountCents": zod.number().describe('Signed virtual-wallet amount in cents'),
+  "type": zod.enum(['chore_reward', 'manual_credit', 'manual_debit', 'adjustment']),
+  "description": zod.string(),
+  "choreId": zod.string().nullish(),
+  "createdBy": zod.string(),
+  "createdAt": zod.coerce.date()
 })
 
 

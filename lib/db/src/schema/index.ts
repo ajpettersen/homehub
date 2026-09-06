@@ -2,6 +2,7 @@ export * from "./familyMembers";
 export * from "./households";
 export * from "./properties";
 export * from "./chores";
+export * from "./walletTransactions";
 export * from "./groceryLists";
 export * from "./groceryItems";
 export * from "./groceryCatalogItems";

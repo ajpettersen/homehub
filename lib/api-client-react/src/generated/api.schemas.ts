@@ -1118,6 +1118,15 @@ export const ChoreFrequency = {
   custom: 'custom',
 } as const;
 
+export type ChoreStatus = typeof ChoreStatus[keyof typeof ChoreStatus];
+
+
+export const ChoreStatus = {
+  open: 'open',
+  pending: 'pending',
+  approved: 'approved',
+} as const;
+
 export interface Chore {
   id: string;
   title: string;
@@ -1132,6 +1141,10 @@ export interface Chore {
   completionNote?: string | null;
   isOverdue: boolean;
   points: number;
+  /** @minimum 0 */
+  rewardCents: number;
+  bundleItems: string[];
+  status: ChoreStatus;
 }
 
 export type CreateChoreInputFrequency = typeof CreateChoreInputFrequency[keyof typeof CreateChoreInputFrequency];
@@ -1152,6 +1165,9 @@ export interface CreateChoreInput {
   frequency: CreateChoreInputFrequency;
   dueDate?: string | null;
   points?: number;
+  /** @minimum 0 */
+  rewardCents?: number;
+  bundleItems?: string[];
 }
 
 export type UpdateChoreInputFrequency = typeof UpdateChoreInputFrequency[keyof typeof UpdateChoreInputFrequency];
@@ -1172,11 +1188,74 @@ export interface UpdateChoreInput {
   frequency?: UpdateChoreInputFrequency;
   dueDate?: string | null;
   points?: number;
+  /** @minimum 0 */
+  rewardCents?: number;
+  bundleItems?: string[];
 }
 
 export interface CompleteChoreInput {
   completedBy: string;
   note?: string | null;
+}
+
+export type ChoreStatusResultStatus = typeof ChoreStatusResultStatus[keyof typeof ChoreStatusResultStatus];
+
+
+export const ChoreStatusResultStatus = {
+  open: 'open',
+  approved: 'approved',
+} as const;
+
+export interface ChoreStatusResult {
+  id: string;
+  status: ChoreStatusResultStatus;
+}
+
+export type WalletTransactionType = typeof WalletTransactionType[keyof typeof WalletTransactionType];
+
+
+export const WalletTransactionType = {
+  chore_reward: 'chore_reward',
+  manual_credit: 'manual_credit',
+  manual_debit: 'manual_debit',
+  adjustment: 'adjustment',
+} as const;
+
+export interface WalletTransaction {
+  id: string;
+  memberId: string;
+  /** Signed virtual-wallet amount in cents */
+  amountCents: number;
+  type: WalletTransactionType;
+  description: string;
+  choreId?: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface ChildWallet {
+  memberId: string;
+  memberName: string;
+  memberColor: string;
+  balanceCents: number;
+  recentTransactions: WalletTransaction[];
+}
+
+export type CreateWalletTransactionInputType = typeof CreateWalletTransactionInputType[keyof typeof CreateWalletTransactionInputType];
+
+
+export const CreateWalletTransactionInputType = {
+  manual_credit: 'manual_credit',
+  manual_debit: 'manual_debit',
+  adjustment: 'adjustment',
+} as const;
+
+export interface CreateWalletTransactionInput {
+  /** Positive for credit, negative for debit; either sign for adjustment */
+  amountCents: number;
+  type: CreateWalletTransactionInputType;
+  /** @minLength 1 */
+  description: string;
 }
 
 export interface GroceryList {

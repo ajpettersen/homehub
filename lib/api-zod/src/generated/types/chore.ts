@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ChoreFrequency } from './choreFrequency';
+import type { ChoreStatus } from './choreStatus';
 
 export interface Chore {
   id: string;
@@ -21,4 +22,8 @@ export interface Chore {
   completionNote?: string | null;
   isOverdue: boolean;
   points: number;
+  /** @minimum 0 */
+  rewardCents: number;
+  bundleItems: string[];
+  status: ChoreStatus;
 }

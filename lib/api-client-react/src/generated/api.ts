@@ -20,7 +20,9 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ChildWallet,
   Chore,
+  ChoreStatusResult,
   CompleteChoreInput,
   CompleteMaintenanceTaskInput,
   Contractor,
@@ -39,6 +41,7 @@ import type {
   CreateRecipeInput,
   CreateTodoItemInput,
   CreateTodoListInput,
+  CreateWalletTransactionInput,
   CreateWorkoutInput,
   CreatedHouseholdInvite,
   DashboardSummary,
@@ -127,6 +130,7 @@ import type {
   UpdateWorkoutInput,
   UpsertMealRatingInput,
   UserProfile,
+  WalletTransaction,
   Workout,
   WorkoutCoachConversation,
   WorkoutCoachMessageInput,
@@ -2366,6 +2370,297 @@ export const useCompleteChore = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCompleteChoreMutationOptions(options));
+    }
+
+export const getApproveChoreUrl = (id: string,) => {
+
+
+
+
+  return `/api/chores/${id}/approve`
+}
+
+/**
+ * @summary Approve a submitted paid chore and credit its child assignee
+ */
+export const approveChore = async (id: string, options?: RequestInit): Promise<ChoreStatusResult> => {
+
+  return customFetch<ChoreStatusResult>(getApproveChoreUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getApproveChoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveChore>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveChore>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['approveChore'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveChore>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  approveChore(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveChoreMutationResult = NonNullable<Awaited<ReturnType<typeof approveChore>>>
+
+    export type ApproveChoreMutationError = ErrorType<void>
+
+    /**
+ * @summary Approve a submitted paid chore and credit its child assignee
+ */
+export const useApproveChore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveChore>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveChore>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getApproveChoreMutationOptions(options));
+    }
+
+export const getRejectChoreUrl = (id: string,) => {
+
+
+
+
+  return `/api/chores/${id}/reject`
+}
+
+/**
+ * @summary Reject a submitted paid chore and reopen it
+ */
+export const rejectChore = async (id: string, options?: RequestInit): Promise<ChoreStatusResult> => {
+
+  return customFetch<ChoreStatusResult>(getRejectChoreUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRejectChoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectChore>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectChore>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['rejectChore'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectChore>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  rejectChore(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectChoreMutationResult = NonNullable<Awaited<ReturnType<typeof rejectChore>>>
+
+    export type RejectChoreMutationError = ErrorType<void>
+
+    /**
+ * @summary Reject a submitted paid chore and reopen it
+ */
+export const useRejectChore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectChore>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectChore>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRejectChoreMutationOptions(options));
+    }
+
+export const getGetWalletsUrl = () => {
+
+
+
+
+  return `/api/wallets`
+}
+
+/**
+ * @summary List child wallet balances and recent ledger transactions
+ */
+export const getWallets = async ( options?: RequestInit): Promise<ChildWallet[]> => {
+
+  return customFetch<ChildWallet[]>(getGetWalletsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWalletsQueryKey = () => {
+    return [
+    `/api/wallets`
+    ] as const;
+    }
+
+
+export const getGetWalletsQueryOptions = <TData = Awaited<ReturnType<typeof getWallets>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWalletsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWallets>>> = ({ signal }) => getWallets({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWalletsQueryResult = NonNullable<Awaited<ReturnType<typeof getWallets>>>
+export type GetWalletsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List child wallet balances and recent ledger transactions
+ */
+
+export function useGetWallets<TData = Awaited<ReturnType<typeof getWallets>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWalletsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateWalletTransactionUrl = (memberId: string,) => {
+
+
+
+
+  return `/api/wallets/${memberId}/transactions`
+}
+
+/**
+ * @summary Add a manual child wallet credit, debit, or adjustment
+ */
+export const createWalletTransaction = async (memberId: string,
+    createWalletTransactionInput: CreateWalletTransactionInput, options?: RequestInit): Promise<WalletTransaction> => {
+
+  return customFetch<WalletTransaction>(getCreateWalletTransactionUrl(memberId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createWalletTransactionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateWalletTransactionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWalletTransaction>>, TError,{memberId: string;data: BodyType<CreateWalletTransactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWalletTransaction>>, TError,{memberId: string;data: BodyType<CreateWalletTransactionInput>}, TContext> => {
+
+const mutationKey = ['createWalletTransaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWalletTransaction>>, {memberId: string;data: BodyType<CreateWalletTransactionInput>}> = (props) => {
+          const {memberId,data} = props ?? {};
+
+          return  createWalletTransaction(memberId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWalletTransactionMutationResult = NonNullable<Awaited<ReturnType<typeof createWalletTransaction>>>
+    export type CreateWalletTransactionMutationBody = BodyType<CreateWalletTransactionInput>
+    export type CreateWalletTransactionMutationError = ErrorType<void>
+
+    /**
+ * @summary Add a manual child wallet credit, debit, or adjustment
+ */
+export const useCreateWalletTransaction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWalletTransaction>>, TError,{memberId: string;data: BodyType<CreateWalletTransactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWalletTransaction>>,
+        TError,
+        {memberId: string;data: BodyType<CreateWalletTransactionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateWalletTransactionMutationOptions(options));
     }
 
 export const getGetGroceryListsUrl = () => {

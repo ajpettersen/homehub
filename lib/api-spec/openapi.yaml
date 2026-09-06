@@ -22,6 +22,8 @@ tags:
     description: Properties (house and cabin)
   - name: chores
     description: Chore assignments and tracking
+  - name: wallets
+    description: Virtual child wallets and immutable ledger entries
   - name: grocery
     description: Grocery lists and items
   - name: stores
@@ -661,6 +663,94 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Chore"
+
+  /chores/{id}/approve:
+    post:
+      operationId: approveChore
+      tags: [chores]
+      summary: Approve a submitted paid chore and credit its child assignee
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Approved (also returned for an already-approved chore)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChoreStatusResult"
+        "403":
+          description: Approved linked adult required
+        "409":
+          description: Chore has not been submitted
+
+  /chores/{id}/reject:
+    post:
+      operationId: rejectChore
+      tags: [chores]
+      summary: Reject a submitted paid chore and reopen it
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reopened chore
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChoreStatusResult"
+        "403":
+          description: Approved linked adult required
+        "409":
+          description: Pending chore not found
+
+  /wallets:
+    get:
+      operationId: getWallets
+      tags: [wallets]
+      summary: List child wallet balances and recent ledger transactions
+      responses:
+        "200":
+          description: Child wallets in the current household
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChildWallet"
+
+  /wallets/{memberId}/transactions:
+    post:
+      operationId: createWalletTransaction
+      tags: [wallets]
+      summary: Add a manual child wallet credit, debit, or adjustment
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWalletTransactionInput"
+      responses:
+        "201":
+          description: Immutable ledger transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletTransaction"
+        "403":
+          description: Approved linked adult required
 
   /grocery-lists:
     get:
@@ -3506,6 +3596,16 @@ components:
           type: boolean
         points:
           type: integer
+        rewardCents:
+          type: integer
+          minimum: 0
+        bundleItems:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [open, pending, approved]
       required:
         - id
         - title
@@ -3514,6 +3614,9 @@ components:
         - frequency
         - isOverdue
         - points
+        - rewardCents
+        - bundleItems
+        - status
 
     CreateChoreInput:
       type: object
@@ -3534,6 +3637,14 @@ components:
           nullable: true
         points:
           type: integer
+        rewardCents:
+          type: integer
+          minimum: 0
+          default: 0
+        bundleItems:
+          type: array
+          items:
+            type: string
       required:
         - title
         - propertyId
@@ -3558,6 +3669,13 @@ components:
           nullable: true
         points:
           type: integer
+        rewardCents:
+          type: integer
+          minimum: 0
+        bundleItems:
+          type: array
+          items:
+            type: string
 
     CompleteChoreInput:
       type: object
@@ -3569,6 +3687,72 @@ components:
           nullable: true
       required:
         - completedBy
+
+    ChoreStatusResult:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [open, approved]
+      required: [id, status]
+
+    WalletTransaction:
+      type: object
+      properties:
+        id:
+          type: string
+        memberId:
+          type: string
+        amountCents:
+          type: integer
+          description: Signed virtual-wallet amount in cents
+        type:
+          type: string
+          enum: [chore_reward, manual_credit, manual_debit, adjustment]
+        description:
+          type: string
+        choreId:
+          type: string
+          nullable: true
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, memberId, amountCents, type, description, createdBy, createdAt]
+
+    ChildWallet:
+      type: object
+      properties:
+        memberId:
+          type: string
+        memberName:
+          type: string
+        memberColor:
+          type: string
+        balanceCents:
+          type: integer
+        recentTransactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WalletTransaction"
+      required: [memberId, memberName, memberColor, balanceCents, recentTransactions]
+
+    CreateWalletTransactionInput:
+      type: object
+      properties:
+        amountCents:
+          type: integer
+          description: Positive for credit, negative for debit; either sign for adjustment
+        type:
+          type: string
+          enum: [manual_credit, manual_debit, adjustment]
+        description:
+          type: string
+          minLength: 1
+      required: [amountCents, type, description]
 
     GroceryList:
       type: object
