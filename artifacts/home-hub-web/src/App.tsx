@@ -98,7 +98,9 @@ function SignInRedirect() {
 }
 
 function isDevelopmentPreviewMode(): boolean {
-  return import.meta.env.DEV;
+  // The API always requires a real household session. Rendering the app
+  // anonymously in development only produces a page full of 401 responses.
+  return false;
 }
 
 function ProfileInitializer() {
