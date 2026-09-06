@@ -9,7 +9,7 @@ import {
   getGetMeQueryKey,
   type HomeHubWebTab,
 } from "@workspace/api-client-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePreferences } from "@/context/PreferencesContext";
 
 const navItems = [
@@ -29,6 +29,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
   const signOut = useHomeHubSignOut();
+
+  useEffect(() => {
+    if (activeMember || !me?.linkedFamilyMemberId || !familyMembers?.length) return;
+    const linkedMember = familyMembers.find(member => member.id === me.linkedFamilyMemberId);
+    if (linkedMember) setActiveMember(linkedMember);
+  }, [activeMember, familyMembers, me?.linkedFamilyMemberId, setActiveMember]);
 
   const handleSignOut = async () => {
     setMemberPickerOpen(false);
