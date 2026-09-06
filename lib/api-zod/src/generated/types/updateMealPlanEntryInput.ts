@@ -8,6 +8,11 @@
 import type { UpdateMealPlanEntryInputRating } from './updateMealPlanEntryInputRating';
 
 export interface UpdateMealPlanEntryInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  meal?: string;
   rating?: UpdateMealPlanEntryInputRating;
   notes?: string | null;
 }

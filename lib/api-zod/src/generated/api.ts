@@ -1040,7 +1040,12 @@ export const UpdateMealPlanEntryParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const updateMealPlanEntryBodyMealMax = 100;
+
+
+
 export const UpdateMealPlanEntryBody = zod.object({
+  "meal": zod.string().min(1).max(updateMealPlanEntryBodyMealMax).optional(),
   "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
   "notes": zod.string().nullish()
 })

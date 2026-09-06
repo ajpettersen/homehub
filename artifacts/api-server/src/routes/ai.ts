@@ -1199,6 +1199,95 @@ router.post("/ai/suggest-week", async (req, res) => {
       message => `  - ${message.role === "user" ? "Family" : "Planner"}: ${message.content}`,
     );
 
+    let inventory: Array<{ name: string; quantity: string | null; category: string }> = [];
+    if (images.length >= 2) {
+      const inventoryResponse = await openai.chat.completions.create({
+        model: "gpt-5.6-luna",
+        max_completion_tokens: 1_500,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "kitchen_photo_inventory",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["inventory"],
+              properties: {
+                inventory: {
+                  type: "array",
+                  maxItems: 200,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["name", "quantity", "category"],
+                    properties: {
+                      name: { type: "string" },
+                      quantity: { type: ["string", "null"] },
+                      category: { type: "string", enum: VALID_CATEGORIES },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        messages: [
+          {
+            role: "system",
+            content: `You are a strict visual kitchen inventory transcriber.
+Record only food, drinks, and pantry ingredients that are visibly present in the attached photos.
+Never infer an item from a possible recipe, meal idea, common household habit, or another item in the photo.
+Do not turn visible ingredients into recipes or list ingredients that would be needed to make a meal.
+Use short canonical grocery names. Include a quantity only when it can be reasonably observed; otherwise use null.
+Omit uncertain, obscured, or unidentifiable items. Deduplicate the same item across photos.
+Categorize every item using exactly one of: ${VALID_CATEGORIES.join(", ")}.`,
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text" as const,
+                text: "Transcribe the visible kitchen inventory from these photos. Return an empty inventory if no food or pantry item can be identified confidently.",
+              },
+              ...images.map(image => ({
+                type: "image_url" as const,
+                image_url: { url: image, detail: "high" as const },
+              })),
+            ] as any,
+          },
+        ],
+      });
+
+      const inventoryContent = inventoryResponse.choices[0]?.message?.content;
+      if (!inventoryContent) throw new Error("Kitchen inventory AI response was empty");
+      const parsedInventory = JSON.parse(inventoryContent) as { inventory?: unknown };
+      if (!Array.isArray(parsedInventory.inventory)) {
+        throw new Error("Kitchen inventory AI response was incomplete");
+      }
+
+      const seenInventoryNames = new Set<string>();
+      inventory = parsedInventory.inventory.flatMap(rawItem => {
+        if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) return [];
+        const item = rawItem as Record<string, unknown>;
+        const name = typeof item.name === "string" ? item.name.trim().slice(0, 200) : "";
+        const category = typeof item.category === "string" && VALID_CATEGORIES.includes(item.category as any)
+          ? item.category
+          : "";
+        const quantity = typeof item.quantity === "string"
+          ? item.quantity.trim().slice(0, 100) || null
+          : null;
+        const canonicalName = name.toLowerCase();
+        if (!name || !category || seenInventoryNames.has(canonicalName)) return [];
+        seenInventoryNames.add(canonicalName);
+        return [{ name, quantity, category }];
+      });
+    }
+
+    const inventoryContext = inventory.length > 0
+      ? inventory.map(item => `  - ${item.name}${item.quantity ? ` (${item.quantity})` : ""}`).join("\n")
+      : "  - No confidently identified photographed ingredients";
+
     const SYSTEM = `You are a practical family meal planner.
 ${memoriesCtx}
 
@@ -1212,8 +1301,10 @@ ${existingMealLines.join("\n") || "  - None yet"}
 Meal-planning conversation and schedule constraints:
 ${planningConversationLines.join("\n") || "  - No special requests"}
 
-Create a varied, family-friendly week with simple breakfasts, lunches, and dinners. Use ingredients visible in the attached fridge or pantry photos when practical. Treat the family's schedule constraints and requests as priorities. If they say they are eating out, use a short entry such as "Eating out after basketball" for that slot. Return suggestions for all days, but repeat the exact existing meal in any occupied slot so the client can safely preserve it.
-If at least two kitchen photos are attached, also identify the visible food ingredients and pantry staples. Use short canonical ingredient names, quantities only when clearly visible, and one valid grocery category. Do not include cookware, appliances, or uncertain guesses. If fewer than two photos are attached, return an empty inventory array.
+Kitchen inventory transcribed separately from this week's photos:
+${inventoryContext}
+
+Create a varied, family-friendly week with simple breakfasts, lunches, and dinners. Use the separately transcribed kitchen inventory when practical, but do not change it or invent additional inventory. Treat the family's schedule constraints and requests as priorities. If they say they are eating out, use a short entry such as "Eating out after basketball" for that slot. Return suggestions for all days, but repeat the exact existing meal in any occupied slot so the client can safely preserve it.
 Respond ONLY with valid JSON:
 {
   "days": [
@@ -1223,24 +1314,8 @@ Respond ONLY with valid JSON:
       "lunch": "PB&J Sandwiches",
       "dinner": "Spaghetti Bolognese"
     }
-  ],
-  "inventory": [
-    { "name": "Eggs", "quantity": "1 dozen", "category": "dairy" }
   ]
 }`;
-
-    const userContent = [
-      {
-        type: "text" as const,
-        text: images.length > 0
-          ? `Fill the remaining meal slots for our week using these ${images.length} kitchen photo${images.length === 1 ? "" : "s"} as additional context.`
-          : "Fill the remaining meal slots for our week.",
-      },
-      ...images.map(image => ({
-        type: "image_url" as const,
-        image_url: { url: image, detail: "low" as const },
-      })),
-    ];
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
@@ -1248,12 +1323,12 @@ Respond ONLY with valid JSON:
       response_format: {
         type: "json_schema",
         json_schema: {
-          name: "weekly_meal_plan_with_inventory",
+          name: "weekly_meal_plan",
           strict: true,
           schema: {
             type: "object",
             additionalProperties: false,
-            required: ["days", "inventory"],
+            required: ["days"],
             properties: {
               days: {
                 type: "array",
@@ -1271,34 +1346,20 @@ Respond ONLY with valid JSON:
                   },
                 },
               },
-              inventory: {
-                type: "array",
-                maxItems: 200,
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: ["name", "quantity", "category"],
-                  properties: {
-                    name: { type: "string" },
-                    quantity: { type: ["string", "null"] },
-                    category: { type: "string", enum: VALID_CATEGORIES },
-                  },
-                },
-              },
             },
           },
         },
       },
       messages: [
         { role: "system", content: SYSTEM },
-        { role: "user", content: userContent as any },
+        { role: "user", content: "Fill the remaining meal slots for our week." },
       ],
     });
 
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error("Weekly meal-plan AI response was empty");
-    const parsed = JSON.parse(content) as { days: unknown[]; inventory: unknown[] };
-    res.json({ days: parsed.days, inventory: images.length >= 2 ? parsed.inventory : [] });
+    const parsed = JSON.parse(content) as { days: unknown[] };
+    res.json({ days: parsed.days, inventory });
   } catch (err) {
     req.log.error({ err }, "Suggest week failed");
     res.status(500).json({ error: "Failed to suggest week" });

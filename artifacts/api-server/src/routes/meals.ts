@@ -95,10 +95,17 @@ router.patch("/meal-plans/:id", async (req, res) => {
       return;
     }
 
-    const { rating, notes } = req.body ?? {};
+    const { meal, rating, notes } = req.body ?? {};
     const VALID_PLAN_RATINGS = ["love", "ok", "skip", null];
 
     const updates: Record<string, unknown> = {};
+    if (meal !== undefined) {
+      if (typeof meal !== "string" || !meal.trim() || meal.trim().length > 100) {
+        res.status(400).json({ error: "meal must be between 1 and 100 characters" });
+        return;
+      }
+      updates.meal = meal.trim();
+    }
     if (rating !== undefined) {
       if (!VALID_PLAN_RATINGS.includes(rating)) {
         res.status(400).json({ error: "rating must be love | ok | skip | null" });

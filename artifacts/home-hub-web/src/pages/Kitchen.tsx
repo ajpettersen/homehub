@@ -30,7 +30,7 @@ import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
   ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown,
   Link, MessageSquare, ThumbsUp, ThumbsDown, Minus, Bookmark, BookOpen,
-  ExternalLink, Star, AlertTriangle, Headphones, CheckCircle2,
+  ExternalLink, Star, AlertTriangle, Headphones, CheckCircle2, Pencil,
 } from "lucide-react";
 import { addWeeks, format, addDays } from "date-fns";
 import { PlanWeekDialog } from "@/components/meals/PlanWeekDialog";
@@ -290,6 +290,7 @@ function MealSlot({
   mealType,
   dayLabel,
   onAdd,
+  onEdit,
   onDelete,
   onNote,
   onSaveToCookbook,
@@ -307,6 +308,7 @@ function MealSlot({
   mealType: { type: MealType; label: string; Icon: React.ComponentType<any>; color: string; bg: string };
   dayLabel: string;
   onAdd: (text: string, sourceUrl?: string) => void;
+  onEdit: (id: string, text: string) => void;
   onDelete: () => void;
   onNote: (id: string, notes: string) => void;
   onSaveToCookbook: (name: string, sourceUrl?: string) => void;
@@ -329,7 +331,6 @@ function MealSlot({
   const [importingImage, setImportingImage] = useState(false);
   const [pendingUrl, setPendingUrl] = useState<string | undefined>();
   const [showSavePrompt, setShowSavePrompt] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const startEdit = () => {
@@ -345,7 +346,10 @@ function MealSlot({
   };
 
   const commit = () => {
-    if (value.trim()) onAdd(value.trim());
+    if (value.trim()) {
+      if (meal) onEdit(meal.id, value.trim());
+      else onAdd(value.trim());
+    }
     setEditing(false);
     setValue("");
   };
@@ -360,9 +364,65 @@ function MealSlot({
   }, [meal?.notes]);
 
   const { Icon, color, bg } = mealType;
+  const searchableMeals = [...new Map(
+    (suggestions ?? []).map(suggestion => [suggestion.trim().toLowerCase(), suggestion.trim()])
+  ).values()].filter(Boolean);
+  const matchingMeals = searchableMeals
+    .filter(suggestion => !value.trim() || suggestion.toLowerCase().includes(value.trim().toLowerCase()))
+    .slice(0, 8);
 
   // Whether this meal is already in the cookbook (case-insensitive)
   const inCookbook = meal ? cookbookNames.has(meal.meal.toLowerCase().trim()) : false;
+
+  if (meal && editing) {
+    return (
+      <div className={`space-y-1 rounded-xl border p-2 ${bg}`}>
+        <div className="flex min-h-[2.75rem] items-center gap-1">
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={event => setValue(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === "Enter") commit();
+              if (event.key === "Escape") {
+                setEditing(false);
+                setValue("");
+              }
+            }}
+            placeholder={`Search past ${mealType.label.toLowerCase()}s or enter a new meal…`}
+            className="min-w-0 flex-1 rounded-xl border-2 border-primary/40 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+          />
+          <button type="button" onClick={commit} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Check className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => { setEditing(false); setValue(""); }} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {matchingMeals.filter(suggestion => suggestion.toLowerCase() !== meal.meal.toLowerCase()).length > 0 && (
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-sm">
+            {matchingMeals
+              .filter(suggestion => suggestion.toLowerCase() !== meal.meal.toLowerCase())
+              .map(suggestion => (
+                <button
+                  key={suggestion.toLowerCase()}
+                  type="button"
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => {
+                    onEdit(meal.id, suggestion);
+                    setEditing(false);
+                    setValue("");
+                  }}
+                  className="w-full rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-primary/10 hover:text-primary"
+                >
+                  {suggestion}
+                </button>
+              ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (meal) {
     return (
@@ -395,6 +455,19 @@ function MealSlot({
             }`}
           >
             <Bookmark className={`w-3 h-3 ${inCookbook ? "fill-current" : ""}`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setValue(meal.meal);
+              setEditing(true);
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }}
+            title="Edit meal"
+            aria-label={`Edit ${meal.meal}`}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:text-primary"
+          >
+            <Pencil className="h-3 w-3" />
           </button>
           <button onClick={onDelete} className="w-5 h-5 flex items-center justify-center text-muted-foreground/40 hover:text-destructive transition-all rounded-md shrink-0">
             <X className="w-3 h-3" />
@@ -513,7 +586,7 @@ function MealSlot({
               if (e.key === "Escape") { setEditing(false); setValue(""); }
             }}
             onBlur={e => { if (!e.relatedTarget) commit(); }}
-            placeholder={`${mealType.label}…`}
+            placeholder={`Search past ${mealType.label.toLowerCase()}s or add a new one…`}
             className="flex-1 text-sm bg-background border-2 border-primary/40 rounded-xl px-3 py-2 focus:outline-none focus:border-primary min-w-0"
           />
           <button onClick={commit} className="w-8 h-8 flex items-center justify-center bg-primary text-primary-foreground rounded-lg shrink-0">
@@ -523,6 +596,26 @@ function MealSlot({
             <X className="w-4 h-4" />
           </button>
         </div>
+        {matchingMeals.length > 0 && (
+          <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-sm">
+            <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Past meals & cookbook</p>
+            {matchingMeals.map(suggestion => (
+              <button
+                key={suggestion.toLowerCase()}
+                type="button"
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => {
+                  onAdd(suggestion);
+                  setEditing(false);
+                  setValue("");
+                }}
+                className="w-full rounded-lg px-2 py-2 text-left text-xs font-semibold text-foreground hover:bg-primary/10 hover:text-primary"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap gap-3 px-1">
           <button type="button" onClick={() => { setEditing(false); setImportingUrl(true); }} className="text-xs text-primary/70 hover:text-primary flex min-h-8 items-center gap-1 transition-colors">
             <Link className="w-3 h-3" /> From URL
@@ -546,32 +639,6 @@ function MealSlot({
         <span className="text-xs font-medium opacity-100 sm:opacity-60 sm:group-hover:opacity-100">{mealType.label}</span>
         <Plus className="ml-auto h-3 w-3 opacity-60 sm:opacity-0 sm:group-hover:opacity-60" />
       </button>
-
-      {suggestions && suggestions.length > 0 && (
-        <div className="px-1 flex flex-wrap gap-1 items-center mt-0.5">
-          {!showSuggestions ? (
-            <button
-              onClick={() => setShowSuggestions(true)}
-              className="text-[10px] font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-              data-testid={`button-show-suggestions-${mealType.type}-${dayLabel}`}
-            >
-              <Sparkles className="w-2.5 h-2.5" /> Previously planned...
-            </button>
-          ) : (
-            suggestions.map((sugg, i) => (
-              <button
-                key={i}
-                onClick={() => onAdd(sugg)}
-                className="text-[10px] font-medium bg-muted hover:bg-primary/10 hover:text-primary text-muted-foreground px-2 py-0.5 rounded-full transition-colors truncate max-w-full border border-transparent hover:border-primary/20 shadow-sm"
-                title={`Add ${sugg}`}
-                data-testid={`button-use-suggestion-${mealType.type}-${dayLabel}-${i}`}
-              >
-                + {sugg}
-              </button>
-            ))
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -668,6 +735,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
   const [storePicker, setStorePicker] = useState(false);
   const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
   const [aiShoppingError, setAiShoppingError] = useState<string | null>(null);
+  const [generatedInventoryMatches, setGeneratedInventoryMatches] = useState<Array<{ name: string; quantity?: string | null }>>([]);
   const [deleteListOpen, setDeleteListOpen] = useState(false);
   const [deleteListError, setDeleteListError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -687,6 +755,11 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
       },
     },
   );
+  const mealPlanSignature = meals.map(meal => `${meal.dayName}:${meal.mealType}:${meal.meal}`).join("|");
+  const inventorySignature = inventory.map(item => `${item.id}:${item.name}:${item.quantity ?? ""}`).join("|");
+  React.useEffect(() => {
+    setGeneratedInventoryMatches([]);
+  }, [mealPlanSignature, inventorySignature]);
 
   const handleBuildFromMeals = async () => {
     if (meals.length === 0) return;
@@ -707,12 +780,23 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
       if (!res.ok) throw new Error(data?.error || "The shopping list could not be generated.");
       if (!Array.isArray(data?.items)) return;
 
+      const inventoryMatches = new Map<string, { name: string; quantity?: string | null }>();
       const seenNames = new Set(
         (items ?? []).filter(i => !i.checked).map(i => i.name.toLowerCase().trim())
       );
 
       for (const item of data.items) {
-        if (getMatchedInventoryNames([{ name: item.name }], inventory).length > 0) continue;
+        const matchedNames = getMatchedInventoryNames([{ name: item.name }], inventory);
+        if (matchedNames.length > 0) {
+          for (const matchedName of matchedNames) {
+            const inventoryItem = inventory.find(candidate => candidate.name.trim().toLowerCase() === matchedName.trim().toLowerCase());
+            inventoryMatches.set(matchedName.trim().toLowerCase(), {
+              name: matchedName,
+              quantity: inventoryItem?.quantity,
+            });
+          }
+          continue;
+        }
         const key = item.name.toLowerCase().trim();
         if (seenNames.has(key)) continue;
         seenNames.add(key);
@@ -723,6 +807,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
           );
         });
       }
+      setGeneratedInventoryMatches([...inventoryMatches.values()]);
 
       queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(list.id) });
       queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
@@ -881,6 +966,16 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
           meals: new Set([recipe.name]),
         });
       }
+    }
+  }
+  for (const matchedItem of generatedInventoryMatches) {
+    const key = matchedItem.name.trim().toLowerCase();
+    if (!availableForMeals.has(key)) {
+      availableForMeals.set(key, {
+        name: matchedItem.name,
+        quantity: matchedItem.quantity,
+        meals: new Set(),
+      });
     }
   }
   const availableMealIngredients = [...availableForMeals.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -1141,7 +1236,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
               <div key={item.name.toLowerCase()} className="flex items-start justify-between gap-3 rounded-xl border border-primary/10 bg-card px-3 py-2">
                 <div>
                   <p className="text-sm font-semibold text-foreground">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{[...item.meals].join(", ")}</p>
+                  <p className="text-xs text-muted-foreground">{item.meals.size > 0 ? [...item.meals].join(", ") : "Used in this week’s meal plan"}</p>
                 </div>
                 {item.quantity && <span className="shrink-0 text-xs font-medium text-primary">{item.quantity}</span>}
               </div>
@@ -1203,13 +1298,19 @@ export default function Meals() {
     }
   );
 
-  const historicalBreakfasts: string[] = [];
-  const historicalLunches: string[] = [];
+  const historicalMealsByType: Record<MealType, string[]> = {
+    breakfast: [],
+    lunch: [],
+    dinner: [],
+  };
 
   if (allMeals) {
     const currentWeekMealNames = new Set((meals ?? []).map(m => m.meal.toLowerCase().trim()));
-    const seenB = new Set<string>();
-    const seenL = new Set<string>();
+    const seenByType: Record<MealType, Set<string>> = {
+      breakfast: new Set(),
+      lunch: new Set(),
+      dinner: new Set(),
+    };
     const sorted = [...allMeals].sort((a, b) => {
       const dateA = a.weekStart ? new Date(a.weekStart).getTime() : 0;
       const dateB = b.weekStart ? new Date(b.weekStart).getTime() : 0;
@@ -1222,14 +1323,11 @@ export default function Meals() {
       const lower = name.toLowerCase();
       if (currentWeekMealNames.has(lower)) continue;
 
-      if (m.mealType === "breakfast" && !seenB.has(lower) && historicalBreakfasts.length < 3) {
-        seenB.add(lower);
-        historicalBreakfasts.push(name);
-      }
-      if (m.mealType === "lunch" && !seenL.has(lower) && historicalLunches.length < 3) {
-        seenL.add(lower);
-        historicalLunches.push(name);
-      }
+      if (!["breakfast", "lunch", "dinner"].includes(m.mealType)) continue;
+      const type = m.mealType as MealType;
+      if (seenByType[type].has(lower) || historicalMealsByType[type].length >= 40) continue;
+      seenByType[type].add(lower);
+      historicalMealsByType[type].push(name);
     }
   }
 
@@ -1298,6 +1396,10 @@ export default function Meals() {
 
   const handleNote = (id: string, notes: string) => {
     updateMeal.mutate({ id, data: { notes } }, { onSuccess: invalidateMeals });
+  };
+
+  const handleEditMeal = (id: string, meal: string) => {
+    updateMeal.mutate({ id, data: { meal } }, { onSuccess: invalidateMeals });
   };
 
   const handleSaveToCookbook = (name: string, sourceUrl?: string) => {
@@ -1674,7 +1776,10 @@ export default function Meals() {
                   {/* Meal slots */}
                   {MEAL_TYPES.map(mt => {
                     const existing = getMeal(idx, mt.type);
-                    const suggestions = mt.type === "breakfast" ? historicalBreakfasts : mt.type === "lunch" ? historicalLunches : undefined;
+                    const suggestions = [
+                      ...historicalMealsByType[mt.type],
+                      ...(recipes ?? []).map(recipe => recipe.name),
+                    ];
                     return (
                       <MealSlot
                         key={mt.type}
@@ -1687,6 +1792,7 @@ export default function Meals() {
                           // Clear pending recipe after any successful add
                           if (pendingRecipeName) setPendingRecipeName(null);
                         }}
+                        onEdit={handleEditMeal}
                         onDelete={() => {
                           if (existing) handleDelete(existing.id);
                         }}
