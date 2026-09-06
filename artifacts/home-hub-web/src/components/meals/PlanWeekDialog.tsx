@@ -162,8 +162,11 @@ export function PlanWeekDialog({ open, onOpenChange, onChat, onPlan }: PlanWeekD
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                Kitchen Photos (Optional)
+                Fridge & Pantry Photos (Optional)
               </label>
+              <p className="text-xs text-muted-foreground">
+                Add at least two photos to refresh your kitchen inventory for the week. Photos are analyzed temporarily and are not saved.
+              </p>
             </div>
             <ImagePicker multiple onPick={addImages} />
             {images.length > 0 && (

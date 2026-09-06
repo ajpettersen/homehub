@@ -1277,6 +1277,12 @@ export interface GroceryItem {
   createdAt: string;
 }
 
+export interface GroceryCatalogItem {
+  id: string;
+  name: string;
+  category: GroceryCategoryKey;
+}
+
 export interface CreateGroceryItemInput {
   name: string;
   quantity?: string | null;
@@ -1960,6 +1966,19 @@ export type GetMealRecipeBody = {
 export type GetChoresParams = {
 assigneeId?: string;
 propertyId?: string;
+};
+
+export type SearchGroceryCatalogParams = {
+/**
+ * @maxLength 80
+ */
+query?: string;
+category?: GroceryCategoryKey;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
 };
 
 export type GetMealPlansParams = {

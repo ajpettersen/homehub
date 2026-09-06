@@ -1213,6 +1213,7 @@ Meal-planning conversation and schedule constraints:
 ${planningConversationLines.join("\n") || "  - No special requests"}
 
 Create a varied, family-friendly week with simple breakfasts, lunches, and dinners. Use ingredients visible in the attached fridge or pantry photos when practical. Treat the family's schedule constraints and requests as priorities. If they say they are eating out, use a short entry such as "Eating out after basketball" for that slot. Return suggestions for all days, but repeat the exact existing meal in any occupied slot so the client can safely preserve it.
+If at least two kitchen photos are attached, also identify the visible food ingredients and pantry staples. Use short canonical ingredient names, quantities only when clearly visible, and one valid grocery category. Do not include cookware, appliances, or uncertain guesses. If fewer than two photos are attached, return an empty inventory array.
 Respond ONLY with valid JSON:
 {
   "days": [
@@ -1222,6 +1223,9 @@ Respond ONLY with valid JSON:
       "lunch": "PB&J Sandwiches",
       "dinner": "Spaghetti Bolognese"
     }
+  ],
+  "inventory": [
+    { "name": "Eggs", "quantity": "1 dozen", "category": "dairy" }
   ]
 }`;
 
@@ -1240,21 +1244,61 @@ Respond ONLY with valid JSON:
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
+      max_completion_tokens: 1800,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "weekly_meal_plan_with_inventory",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["days", "inventory"],
+            properties: {
+              days: {
+                type: "array",
+                minItems: 7,
+                maxItems: 7,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["dayName", "breakfast", "lunch", "dinner"],
+                  properties: {
+                    dayName: { type: "string", enum: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] },
+                    breakfast: { type: "string" },
+                    lunch: { type: "string" },
+                    dinner: { type: "string" },
+                  },
+                },
+              },
+              inventory: {
+                type: "array",
+                maxItems: 200,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["name", "quantity", "category"],
+                  properties: {
+                    name: { type: "string" },
+                    quantity: { type: ["string", "null"] },
+                    category: { type: "string", enum: VALID_CATEGORIES },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       messages: [
         { role: "system", content: SYSTEM },
         { role: "user", content: userContent as any },
       ],
     });
 
-    const content = response.choices[0]?.message?.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      res.status(500).json({ error: "Failed to parse AI response" });
-      return;
-    }
-
-    res.json(JSON.parse(jsonMatch[0]));
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error("Weekly meal-plan AI response was empty");
+    const parsed = JSON.parse(content) as { days: unknown[]; inventory: unknown[] };
+    res.json({ days: parsed.days, inventory: images.length >= 2 ? parsed.inventory : [] });
   } catch (err) {
     req.log.error({ err }, "Suggest week failed");
     res.status(500).json({ error: "Failed to suggest week" });

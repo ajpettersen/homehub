@@ -13,6 +13,7 @@
 - [AI memory ownership](ai-memory-ownership.md) — direct-chat memories belong to the speaking adult; shared context includes household facts plus only that adult’s memories.
 - [Post-merge database setup](post-merge-database-setup.md) — use the idempotent SQL migration runner; schema push can hang when merge setup has closed stdin.
 - [Photo recipe workflow](photo-recipe-workflow.md) — AI image extraction is review-only; structured recipes drive cookbook, property-scoped groceries, and guided audio.
+- [Weekly kitchen inventory](weekly-kitchen-inventory.md) — two or more planning photos replace the property’s current ingredient snapshot; photos stay transient.
 - [AI meal-to-recipe continuity](ai-meal-recipe-continuity.md) — AI-planned meals become cookbook recipes whose structured data drives shopping and guided cooking.
 - [Notification delivery contract](notification-delivery-contract.md) — household-local schedules; assigned reminders never broaden to other adults when a device is unavailable.
 - [Store-aware shopping lists](store-aware-shopping-lists.md) — stores belong to households, but each property’s grocery list keeps its own selected store and walking order.

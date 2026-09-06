@@ -5,6 +5,7 @@ import {
   useGetGroceryLists, getGetGroceryListsQueryKey,
   useCreateGroceryList, useDeleteGroceryList,
   useGetGroceryItems, getGetGroceryItemsQueryKey,
+  useSearchGroceryCatalog, getSearchGroceryCatalogQueryKey,
   useUpdateGroceryItem, useAddGroceryItem, useDeleteGroceryItem,
   useGetProperties, getGetPropertiesQueryKey,
   useGetRecipes, getGetRecipesQueryKey,
@@ -19,6 +20,9 @@ import {
   type GroceryCategoryKey
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
+import { useGetInventory, KitchenInventoryItem } from "@/hooks/useKitchenInventory";
+import { InventorySection } from "@/components/meals/InventorySection";
+import { getMatchedInventoryNames } from "@/lib/inventory-utils";
 import { Link as RouterLink } from "wouter";
 import { usePreferences } from "@/context/PreferencesContext";
 import { useQueryClient } from "@tanstack/react-query";
@@ -26,7 +30,7 @@ import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
   ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown,
   Link, MessageSquare, ThumbsUp, ThumbsDown, Minus, Bookmark, BookOpen,
-  ExternalLink, Star, AlertTriangle, Headphones,
+  ExternalLink, Star, AlertTriangle, Headphones, CheckCircle2,
 } from "lucide-react";
 import { addWeeks, format, addDays } from "date-fns";
 import { PlanWeekDialog } from "@/components/meals/PlanWeekDialog";
@@ -296,6 +300,8 @@ function MealSlot({
   members,
   activeMemberId,
   suggestions,
+  matchedInventory,
+  onOpenRecipe,
 }: {
   meal?: any;
   mealType: { type: MealType; label: string; Icon: React.ComponentType<any>; color: string; bg: string };
@@ -312,6 +318,8 @@ function MealSlot({
   members: FamilyMember[];
   activeMemberId: string | null;
   suggestions?: string[];
+  matchedInventory?: string[];
+  onOpenRecipe?: (name: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -362,7 +370,17 @@ function MealSlot({
         {/* Meal name row */}
         <div className="flex items-center gap-2 px-3 py-2">
           <Icon className={`w-3.5 h-3.5 shrink-0 ${color}`} />
-          <span className="text-sm font-medium text-foreground flex-1 leading-snug">{meal.meal}</span>
+          {inCookbook && onOpenRecipe ? (
+            <button
+              onClick={() => onOpenRecipe(meal.meal)}
+              className="text-sm font-semibold text-primary flex-1 text-left leading-snug hover:underline truncate"
+              title="Open recipe"
+            >
+              {meal.meal}
+            </button>
+          ) : (
+            <span className="text-sm font-medium text-foreground flex-1 leading-snug">{meal.meal}</span>
+          )}
           {/* Bookmark button */}
           <button
             onClick={() => {
@@ -386,6 +404,19 @@ function MealSlot({
         {/* Per-member ratings */}
         {members.length > 0 && (
           <MemberRatingRow mealId={meal.id} members={members} activeMemberId={activeMemberId} />
+        )}
+
+        {/* Matched Inventory */}
+        {matchedInventory && matchedInventory.length > 0 && (
+          <div className="px-3 pb-1">
+            <div className="flex flex-wrap gap-1">
+              {matchedInventory.map(item => (
+                <span key={item} className="text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
+                  Have {item}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Notes toggle */}
@@ -585,7 +616,7 @@ type RecipeForShopping = {
   name: string;
   ingredients: Array<{ name: string; quantity?: string | null }>;
 };
-function GrocerySection({ propertyId, meals, recipes }: { propertyId: string; meals: MealForShopping[]; recipes: RecipeForShopping[] }) {
+function GrocerySection({ propertyId, meals, recipes, inventory }: { propertyId: string; meals: MealForShopping[]; recipes: RecipeForShopping[]; inventory: KitchenInventoryItem[] }) {
   const queryClient = useQueryClient();
 
   const { data: lists } = useGetGroceryLists({ query: { queryKey: getGetGroceryListsQueryKey() } });
@@ -610,10 +641,10 @@ function GrocerySection({ propertyId, meals, recipes }: { propertyId: string; me
     </div>
   );
 
-  return <GroceryListDetail list={mainList} meals={meals} recipes={recipes} />;
+  return <GroceryListDetail list={mainList} meals={meals} recipes={recipes} inventory={inventory} />;
 }
 
-function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealForShopping[]; recipes: RecipeForShopping[] }) {
+function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; meals: MealForShopping[]; recipes: RecipeForShopping[]; inventory: KitchenInventoryItem[] }) {
   const queryClient = useQueryClient();
   const { data: stores, isLoading: storesLoading } = useGetStores({ query: { queryKey: getGetStoresQueryKey() } });
   const updateStore = useUpdateGroceryListStore();
@@ -625,15 +656,37 @@ function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealFor
   const addItem = useAddGroceryItem();
   const updateItem = useUpdateGroceryItem();
   const deleteItem = useDeleteGroceryItem();
+  const deleteList = useDeleteGroceryList();
 
   const [newItem, setNewItem] = useState("");
   const [newCategory, setNewCategory] = useState("produce");
   const [newQty, setNewQty] = useState("");
   const [addingOpen, setAddingOpen] = useState(false);
+  const [catalogCategory, setCatalogCategory] = useState<GroceryCategoryKey | "">("");
+  const [addItemMessage, setAddItemMessage] = useState("");
+  const [addItemError, setAddItemError] = useState("");
   const [storePicker, setStorePicker] = useState(false);
   const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
   const [aiShoppingError, setAiShoppingError] = useState<string | null>(null);
+  const [deleteListOpen, setDeleteListOpen] = useState(false);
+  const [deleteListError, setDeleteListError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const deferredCatalogQuery = React.useDeferredValue(newItem.trim());
+  const catalogParams = {
+    query: deferredCatalogQuery || undefined,
+    category: catalogCategory || undefined,
+    limit: 60,
+  };
+  const { data: catalogItems, isFetching: catalogLoading } = useSearchGroceryCatalog(
+    catalogParams,
+    {
+      query: {
+        queryKey: getSearchGroceryCatalogQueryKey(catalogParams),
+        enabled: addingOpen,
+        staleTime: 5 * 60_000,
+      },
+    },
+  );
 
   const handleBuildFromMeals = async () => {
     if (meals.length === 0) return;
@@ -659,6 +712,7 @@ function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealFor
       );
 
       for (const item of data.items) {
+        if (getMatchedInventoryNames([{ name: item.name }], inventory).length > 0) continue;
         const key = item.name.toLowerCase().trim();
         if (seenNames.has(key)) continue;
         seenNames.add(key);
@@ -685,13 +739,40 @@ function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealFor
     queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
   };
 
+  const getMutationError = (error: unknown) => {
+    const apiError = error as { data?: { error?: string }; message?: string };
+    return apiError.data?.error || apiError.message || "That item could not be added. Please try again.";
+  };
+
+  const addNamedItem = async (name: string, category: GroceryCategoryKey | string) => {
+    const normalized = name.trim().toLowerCase();
+    if (!normalized) return;
+    const existing = (items ?? []).find(item => item.name.trim().toLowerCase() === normalized);
+    setAddItemError("");
+    setAddItemMessage("");
+    try {
+      await addItem.mutateAsync({
+        id: list.id,
+        data: { name: name.trim(), quantity: newQty.trim() || null, category },
+      });
+      setNewItem("");
+      setNewQty("");
+      setAddItemMessage(
+        existing?.checked
+          ? `${name.trim()} moved back to your active list.`
+          : existing
+            ? `${name.trim()} is already on your list.`
+            : `${name.trim()} added.`,
+      );
+      await invalidate();
+    } catch (error) {
+      setAddItemError(getMutationError(error));
+    }
+  };
+
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItem.trim()) return;
-    addItem.mutate(
-      { id: list.id, data: { name: newItem.trim(), quantity: newQty || null, category: newCategory } },
-      { onSuccess: () => { setNewItem(""); setNewQty(""); invalidate(); } }
-    );
+    void addNamedItem(newItem, newCategory);
   };
 
   const handleCheck = (item: any) => {
@@ -711,6 +792,18 @@ function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealFor
       }}
     );
     setStorePicker(false);
+  };
+
+  const handleDeleteList = async () => {
+    setDeleteListError("");
+    try {
+      await deleteList.mutateAsync({ id: list.id });
+      setDeleteListOpen(false);
+      await queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
+      queryClient.removeQueries({ queryKey: getGetGroceryItemsQueryKey(list.id) });
+    } catch (error) {
+      setDeleteListError(getMutationError(error));
+    }
   };
 
   if (storesLoading) {
@@ -771,6 +864,27 @@ function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealFor
     };
   });
 
+  const plannedMealNames = new Set(meals.map(meal => meal.meal.trim().toLowerCase()));
+  const availableForMeals = new Map<string, { name: string; quantity?: string | null; meals: Set<string> }>();
+  for (const recipe of recipes) {
+    if (!plannedMealNames.has(recipe.name.trim().toLowerCase())) continue;
+    for (const matchedName of getMatchedInventoryNames(recipe.ingredients, inventory)) {
+      const key = matchedName.trim().toLowerCase();
+      const existing = availableForMeals.get(key);
+      if (existing) {
+        existing.meals.add(recipe.name);
+      } else {
+        const inventoryItem = inventory.find(item => item.name.trim().toLowerCase() === key);
+        availableForMeals.set(key, {
+          name: matchedName,
+          quantity: inventoryItem?.quantity,
+          meals: new Set([recipe.name]),
+        });
+      }
+    }
+  }
+  const availableMealIngredients = [...availableForMeals.values()].sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="space-y-4">
       {/* Build from meal plan */}
@@ -821,43 +935,134 @@ function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealFor
             </>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => { setDeleteListError(""); setDeleteListOpen(true); }}
+          className="flex min-h-10 items-center gap-1.5 rounded-xl border border-destructive/25 px-3 text-xs font-bold text-destructive hover:bg-destructive/5"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete list
+        </button>
       </div>
+
+      <AlertDialog open={deleteListOpen} onOpenChange={setDeleteListOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this shopping list?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes every active and checked item. HomeHub will create a fresh empty Weekly Shopping list afterward.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteListError && <p role="alert" className="text-sm font-medium text-destructive">{deleteListError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteList.isPending}>Keep list</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteList.isPending}
+              onClick={event => {
+                event.preventDefault();
+                void handleDeleteList();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteList.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Delete Shopping List
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add form */}
       {addingOpen ? (
         <form onSubmit={handleAdd} className="bg-card p-3 rounded-2xl border-2 border-primary/20 shadow-sm space-y-3">
-          <input
-            ref={inputRef}
-            autoFocus
-            value={newItem}
-            onChange={e => setNewItem(e.target.value)}
-            placeholder="Item name (e.g. Apples)"
-            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary font-medium"
-          />
+          <div>
+            <label htmlFor="grocery-catalog-search" className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              Find an item
+            </label>
+            <div className="relative">
+              <input
+                id="grocery-catalog-search"
+                ref={inputRef}
+                autoFocus
+                value={newItem}
+                onChange={e => { setNewItem(e.target.value); setAddItemError(""); setAddItemMessage(""); }}
+                placeholder="Search groceries and household items"
+                autoComplete="off"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 pr-9 text-sm focus:outline-none focus:border-primary font-medium"
+              />
+              {catalogLoading && <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setCatalogCategory("")}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold ${catalogCategory === "" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
+            >
+              All
+            </button>
+            {categoryOptions.map(cat => (
+              <button
+                key={`catalog-${cat.key}`}
+                type="button"
+                onClick={() => setCatalogCategory(cat.key as GroceryCategoryKey)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold ${catalogCategory === cat.key ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+          <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-border bg-background p-1">
+            {(catalogItems ?? []).map(item => (
+              <button
+                key={item.id}
+                type="button"
+                disabled={addItem.isPending}
+                onClick={() => void addNamedItem(item.name, item.category)}
+                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 text-left text-sm font-semibold hover:bg-primary/10 disabled:opacity-50"
+              >
+                <span>{item.name}</span>
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  {ALL_CATEGORIES[item.category]?.label ?? "Other"}
+                </span>
+              </button>
+            ))}
+            {!catalogLoading && (catalogItems ?? []).length === 0 && (
+              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                No catalog match. You can still add it as a custom item below.
+              </p>
+            )}
+          </div>
           <input
             value={newQty}
             onChange={e => setNewQty(e.target.value)}
             placeholder="Quantity or note (e.g. 3 lbs, optional)"
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary font-medium"
           />
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {categoryOptions.map(cat => (
-              <button
-                key={cat.key}
-                type="button"
-                onClick={() => setNewCategory(cat.key as GroceryCategoryKey)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors ${newCategory === cat.key ? "bg-primary text-primary-foreground border-primary" : "bg-muted/50 border-border/50 text-muted-foreground hover:bg-muted"}`}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
+          <details>
+            <summary className="min-h-9 cursor-pointer text-xs font-semibold text-muted-foreground">
+              Custom item category: {ALL_CATEGORIES[newCategory]?.label ?? "Other"}
+            </summary>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {categoryOptions.map(cat => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => setNewCategory(cat.key as GroceryCategoryKey)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors ${newCategory === cat.key ? "bg-primary text-primary-foreground border-primary" : "bg-muted/50 border-border/50 text-muted-foreground hover:bg-muted"}`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </details>
+          {addItemError && <p role="alert" className="text-sm font-medium text-destructive">{addItemError}</p>}
+          {addItemMessage && <p role="status" className="text-sm font-medium text-primary">{addItemMessage}</p>}
           <div className="flex gap-2">
-            <button type="button" onClick={() => setAddingOpen(false)} className="flex-1 py-2 rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors">
+            <button type="button" onClick={() => { setAddingOpen(false); setAddItemError(""); setAddItemMessage(""); }} className="flex-1 py-2 rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors">
               Cancel
             </button>
             <button type="submit" disabled={addItem.isPending} className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50">
-              Add to List
+              Add custom item
             </button>
           </div>
         </form>
@@ -921,6 +1126,29 @@ function GroceryListDetail({ list, meals, recipes }: { list: any; meals: MealFor
           </div>
         </div>
       )}
+
+      {availableMealIngredients.length > 0 && (
+        <section className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="mb-3 flex items-start gap-2">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div>
+              <h3 className="text-sm font-bold text-foreground">Already in your kitchen</h3>
+              <p className="text-xs text-muted-foreground">These ingredients are included in this week’s planned recipes. Check what remains before buying more.</p>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {availableMealIngredients.map(item => (
+              <div key={item.name.toLowerCase()} className="flex items-start justify-between gap-3 rounded-xl border border-primary/10 bg-card px-3 py-2">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">{[...item.meals].join(", ")}</p>
+                </div>
+                {item.quantity && <span className="shrink-0 text-xs font-medium text-primary">{item.quantity}</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -945,6 +1173,8 @@ export default function Meals() {
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
   const houseProperty = properties?.find(p => p.type === "house") ?? properties?.[0];
 
+  const { data: inventory } = useGetInventory(houseProperty ? String(houseProperty.id) : "");
+
   const { data: meals, isLoading } = useGetMealPlans(
     { weekStart },
     { query: { queryKey: getGetMealPlansQueryKey({ weekStart }) } }
@@ -958,8 +1188,9 @@ export default function Meals() {
   const [deleteWeekOpen, setDeleteWeekOpen] = useState(false);
   const [isDeletingWeek, setIsDeletingWeek] = useState(false);
   const [deleteWeekError, setDeleteWeekError] = useState("");
-  const [activeTab, setActiveTab] = useState<"meals" | "shopping" | "recipes">(() => preferences.tabs.meals.defaultView);
+  const [activeTab, setActiveTab] = useState<"meals" | "shopping" | "recipes" | "inventory">(() => preferences.tabs.meals.defaultView as any);
   const [pendingRecipeName, setPendingRecipeName] = useState<string | null>(null);
+  const [openRecipeName, setOpenRecipeName] = useState<string | null>(null);
 
   // Historical meals for suggestions
   const { data: allMeals } = useGetMealPlans(
@@ -1171,6 +1402,28 @@ export default function Meals() {
       body: JSON.stringify({ plannerMessages, imagesBase64, existingMeals }),
     });
 
+    // Save inventory snapshot if at least 2 photos were provided
+    if (res.ok) {
+      const cloned = res.clone();
+      try {
+        const data = await cloned.json();
+        if (imagesBase64.length >= 2 && Array.isArray(data.inventory)) {
+          const inventoryResponse = await fetch(`/api/kitchen-inventory`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ propertyId: String(houseProperty.id), items: data.inventory })
+          });
+          if (!inventoryResponse.ok) {
+            const errorBody = await inventoryResponse.json().catch(() => null);
+            throw new Error(errorBody?.error || "The kitchen inventory could not be updated.");
+          }
+          queryClient.invalidateQueries({ queryKey: ["kitchen-inventory", String(houseProperty.id)] });
+        }
+      } catch (error) {
+        throw error instanceof Error ? error : new Error("The kitchen inventory could not be updated.");
+      }
+    }
+
     if (!res.ok) {
       const errorBody = await res.json().catch(() => null);
       throw new Error(errorBody?.error || "We couldn't build that meal plan. Please try again.");
@@ -1354,16 +1607,17 @@ export default function Meals() {
       </AlertDialog>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-muted/50 rounded-xl p-1 mb-6 w-fit">
+      <div className="grid w-full max-w-2xl grid-cols-4 gap-1 rounded-xl bg-muted/50 p-1 mb-6">
         {[
           { key: "meals",    label: "Meal Plan" },
           { key: "shopping", label: "Shopping List" },
+          { key: "inventory",label: "Inventory" },
           { key: "recipes",  label: "Cookbook" },
         ].map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as any)}
-            className={`px-5 py-2 rounded-lg font-bold text-sm transition-all ${activeTab === tab.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            className={`min-w-0 px-1.5 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all ${activeTab === tab.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             {tab.label}
           </button>
@@ -1444,6 +1698,19 @@ export default function Meals() {
                         members={members}
                         activeMemberId={activeMember ? activeMember.id : null}
                         suggestions={suggestions}
+                        onOpenRecipe={(name) => {
+                          setPendingRecipeName(null);
+                          setActiveTab("recipes");
+                          setOpenRecipeName(name);
+                        }}
+                        matchedInventory={
+                          existing
+                            ? getMatchedInventoryNames(
+                                recipes?.find(r => r.name.toLowerCase() === existing.meal.toLowerCase())?.ingredients ?? [],
+                                inventory ?? []
+                              )
+                            : undefined
+                        }
                       />
                     );
                   })}
@@ -1468,6 +1735,7 @@ export default function Meals() {
           {houseProperty ? (
             <GrocerySection
               propertyId={houseProperty.id}
+              inventory={inventory ?? []}
               meals={(meals ?? []).map(m => ({
                 dayName: DAYS[apiDayToIndex(m.dayOfWeek)] ?? "Day",
                 mealType: m.mealType,
@@ -1493,7 +1761,7 @@ export default function Meals() {
               <p className="text-sm text-muted-foreground">Your saved family favorites</p>
             </div>
           </div>
-          <CookbookSection propertyId={propertyIdStr} onUseRecipe={handleUseRecipe} />
+          <CookbookSection propertyId={propertyIdStr} onUseRecipe={handleUseRecipe} inventory={inventory ?? []} focusRecipeName={openRecipeName} onClearFocus={() => setOpenRecipeName(null)} />
         </div>
       )}
 
@@ -1507,7 +1775,7 @@ export default function Meals() {
   );
 }
 
-function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUseRecipe?: (name: string) => void }) {
+function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, onClearFocus }: { propertyId: string; onUseRecipe?: (name: string) => void; inventory?: KitchenInventoryItem[]; focusRecipeName?: string | null; onClearFocus?: () => void }) {
   const queryClient = useQueryClient();
   const params = { propertyId };
   const { data: recipes, isLoading } = useGetRecipes(params, { query: { queryKey: getGetRecipesQueryKey(params) } });
@@ -1526,6 +1794,19 @@ function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUs
   const [generationError, setGenerationError] = useState<Record<string, string>>({});
   const [cookingRecipeId, setCookingRecipeId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (focusRecipeName && recipes) {
+      const found = recipes.find(r => r.name.toLowerCase() === focusRecipeName.toLowerCase());
+      if (found) {
+        setExpandedId(found.id);
+        if (found.sourceType === "ai" && found.instructions.length === 0) {
+          void generateRecipeDetails(found);
+        }
+      }
+      onClearFocus?.();
+    }
+  }, [focusRecipeName, recipes]); // onClearFocus omitted to prevent loops
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetRecipesQueryKey(params) });
 
@@ -1780,12 +2061,24 @@ function CookbookSection({ propertyId, onUseRecipe }: { propertyId: string; onUs
                     <div>
                       <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Ingredients</p>
                       <ul className="space-y-1 text-sm">
-                        {recipe.ingredients.map((ingredient, index) => (
-                          <li key={`${ingredient.name}-${index}`} className="flex gap-2">
-                            <span className="text-primary">•</span>
-                            <span>{ingredient.quantity ? `${ingredient.quantity} ` : ""}{ingredient.name}</span>
-                          </li>
-                        ))}
+                        {recipe.ingredients.map((ingredient, index) => {
+                          const isMatched = inventory && getMatchedInventoryNames([ingredient], inventory).length > 0;
+                          return (
+                            <li key={`${ingredient.name}-${index}`} className="flex gap-2 items-start">
+                              <span className={`mt-0.5 ${isMatched ? "text-primary" : "text-muted-foreground"}`}>•</span>
+                              <div className="flex-1 flex flex-wrap items-center gap-2">
+                                <span className={isMatched ? "font-medium" : ""}>
+                                  {ingredient.quantity ? `${ingredient.quantity} ` : ""}{ingredient.name}
+                                </span>
+                                {isMatched && (
+                                  <span className="text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20 leading-none">
+                                    Have it
+                                  </span>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   )}

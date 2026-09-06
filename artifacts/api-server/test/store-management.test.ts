@@ -6,6 +6,7 @@ import {
   deterministicReplacementStoreId,
   normalizeStorePayload,
 } from "../src/routes/stores";
+import { GROCERY_CATALOG_SEED } from "../src/lib/groceryCatalog";
 
 const departments = GROCERY_CATEGORY_KEYS.map(categoryKey => ({
   categoryKey,
@@ -69,5 +70,13 @@ assert.equal(canAssignStoreToList(4, [4, 5], 20, 20), true);
 assert.equal(canAssignStoreToList(4, [5], 20, 20), false, "the list must be in property scope");
 assert.equal(canAssignStoreToList(4, [4], 20, 21), false, "cross-household stores are rejected");
 assert.equal(canAssignStoreToList(4, [4], null, 20), false, "ambiguous legacy property ownership is rejected");
+
+assert.ok(GROCERY_CATALOG_SEED.length >= 300, "the shared catalog should cover a broad set of common store items");
+assert.equal(new Set(GROCERY_CATALOG_SEED.map(item => item.normalizedName)).size, GROCERY_CATALOG_SEED.length);
+assert.deepEqual(
+  new Set(GROCERY_CATALOG_SEED.map(item => item.categoryKey)),
+  new Set(GROCERY_CATEGORY_KEYS),
+  "the catalog should cover every store department",
+);
 
 console.log("Store normalization, category, promotion, and authorization tests passed");

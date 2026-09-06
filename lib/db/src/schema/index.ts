@@ -4,6 +4,8 @@ export * from "./properties";
 export * from "./chores";
 export * from "./groceryLists";
 export * from "./groceryItems";
+export * from "./groceryCatalogItems";
+export * from "./kitchenInventoryItems";
 export * from "./householdStores";
 export * from "./mealPlans";
 export * from "./todoLists";

@@ -694,6 +694,30 @@ export const CreateGroceryListResponse = zod.object({
 
 
 /**
+ * @summary Search or browse the shared grocery item catalog
+ */
+export const searchGroceryCatalogQueryQueryMax = 80;
+
+export const searchGroceryCatalogQueryLimitDefault = 40;
+export const searchGroceryCatalogQueryLimitMax = 100;
+
+
+
+export const SearchGroceryCatalogQueryParams = zod.object({
+  "query": zod.coerce.string().max(searchGroceryCatalogQueryQueryMax).optional(),
+  "category": zod.enum(['produce', 'deli', 'meat', 'dairy', 'bread', 'grains', 'canned', 'snacks', 'frozen', 'beverages', 'household', 'other']).optional(),
+  "limit": zod.coerce.number().min(1).max(searchGroceryCatalogQueryLimitMax).default(searchGroceryCatalogQueryLimitDefault)
+})
+
+export const SearchGroceryCatalogResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "category": zod.enum(['produce', 'deli', 'meat', 'dairy', 'bread', 'grains', 'canned', 'snacks', 'frozen', 'beverages', 'household', 'other'])
+})
+export const SearchGroceryCatalogResponse = zod.array(SearchGroceryCatalogResponseItem)
+
+
+/**
  * @summary Delete a grocery list
  */
 export const DeleteGroceryListParams = zod.object({

@@ -1,8 +1,16 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { groceryListsTable, groceryItemsTable, householdStoresTable, propertiesTable } from "@workspace/db";
+import {
+  groceryCatalogItemsTable,
+  groceryListsTable,
+  groceryItemsTable,
+  householdStoresTable,
+  propertiesTable,
+  GROCERY_CATEGORY_KEYS,
+} from "@workspace/db";
 import { and, eq, sql, inArray } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
+import { ensureGroceryCatalogSeeded } from "../lib/groceryCatalog";
 
 const router = Router();
 
@@ -21,6 +29,51 @@ export function canAssignStoreToList(
     && propertyHouseholdId !== null
     && propertyHouseholdId === storeHouseholdId;
 }
+
+router.get("/grocery-catalog", async (req, res) => {
+  try {
+    getApprovedHouseholdScope(res);
+    await ensureGroceryCatalogSeeded();
+    const query = typeof req.query.query === "string" ? req.query.query.trim().toLocaleLowerCase().slice(0, 80) : "";
+    const category = typeof req.query.category === "string" ? req.query.category : "";
+    const requestedLimit = Number(req.query.limit ?? 40);
+    const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 40;
+
+    if (category && !GROCERY_CATEGORY_KEYS.includes(category as (typeof GROCERY_CATEGORY_KEYS)[number])) {
+      res.status(400).json({ error: "Invalid grocery category" });
+      return;
+    }
+
+    const match = `%${query}%`;
+    const rows = await db
+      .select()
+      .from(groceryCatalogItemsTable)
+      .where(and(
+        category ? eq(groceryCatalogItemsTable.categoryKey, category as (typeof GROCERY_CATEGORY_KEYS)[number]) : sql`true`,
+        query ? sql`${groceryCatalogItemsTable.searchTerms} ILIKE ${match}` : sql`true`,
+      ))
+      .orderBy(
+        query
+          ? sql`CASE
+              WHEN ${groceryCatalogItemsTable.normalizedName} = ${query} THEN 0
+              WHEN ${groceryCatalogItemsTable.normalizedName} LIKE ${`${query}%`} THEN 1
+              ELSE 2
+            END`
+          : sql`0`,
+        groceryCatalogItemsTable.name,
+      )
+      .limit(limit);
+
+    res.json(rows.map(item => ({
+      id: String(item.id),
+      name: item.name,
+      category: item.categoryKey,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "Failed to search grocery catalog");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.get("/grocery-lists", async (req, res) => {
   try {
@@ -279,7 +332,19 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
           sql`lower(btrim(${groceryItemsTable.name})) = ${normalizeGroceryItemName(trimmedName)}`,
         ))
         .limit(1);
-      if (existing) return { item: existing, created: false };
+      if (existing) {
+        if (!existing.checked) return { item: existing, created: false };
+        const [reactivated] = await tx
+          .update(groceryItemsTable)
+          .set({
+            checked: false,
+            quantity: quantity ?? existing.quantity,
+            category: category ?? existing.category,
+          })
+          .where(eq(groceryItemsTable.id, existing.id))
+          .returning();
+        return { item: reactivated, created: false };
+      }
 
       const [item] = await tx
         .insert(groceryItemsTable)

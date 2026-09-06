@@ -58,6 +58,7 @@ import type {
   GetRecipesParams,
   GetWorkoutSessionsParams,
   GetWorkoutsParams,
+  GroceryCatalogItem,
   GroceryItem,
   GroceryList,
   HealthStatus,
@@ -99,6 +100,7 @@ import type {
   RedeemedHouseholdInvite,
   SaveWorkoutWeekPlanInput,
   ScanPantryBody,
+  SearchGroceryCatalogParams,
   SelfFamilyProfile,
   SelfFamilyProfileUpdate,
   StoreInput,
@@ -2513,6 +2515,90 @@ export const useCreateGroceryList = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateGroceryListMutationOptions(options));
     }
+
+export const getSearchGroceryCatalogUrl = (params?: SearchGroceryCatalogParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/grocery-catalog?${stringifiedParams}` : `/api/grocery-catalog`
+}
+
+/**
+ * @summary Search or browse the shared grocery item catalog
+ */
+export const searchGroceryCatalog = async (params?: SearchGroceryCatalogParams, options?: RequestInit): Promise<GroceryCatalogItem[]> => {
+
+  return customFetch<GroceryCatalogItem[]>(getSearchGroceryCatalogUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchGroceryCatalogQueryKey = (params?: SearchGroceryCatalogParams,) => {
+    return [
+    `/api/grocery-catalog`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchGroceryCatalogQueryOptions = <TData = Awaited<ReturnType<typeof searchGroceryCatalog>>, TError = ErrorType<unknown>>(params?: SearchGroceryCatalogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchGroceryCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchGroceryCatalogQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchGroceryCatalog>>> = ({ signal }) => searchGroceryCatalog(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchGroceryCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchGroceryCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof searchGroceryCatalog>>>
+export type SearchGroceryCatalogQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Search or browse the shared grocery item catalog
+ */
+
+export function useSearchGroceryCatalog<TData = Awaited<ReturnType<typeof searchGroceryCatalog>>, TError = ErrorType<unknown>>(
+ params?: SearchGroceryCatalogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchGroceryCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchGroceryCatalogQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getDeleteGroceryListUrl = (id: string,) => {
 

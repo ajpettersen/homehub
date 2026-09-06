@@ -694,6 +694,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/GroceryList"
 
+  /grocery-catalog:
+    get:
+      operationId: searchGroceryCatalog
+      tags: [groceries]
+      summary: Search or browse the shared grocery item catalog
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 80
+        - name: category
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/GroceryCategoryKey"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 40
+      responses:
+        "200":
+          description: Matching grocery catalog items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroceryCatalogItem"
+
   /grocery-lists/{id}:
     delete:
       operationId: deleteGroceryList
@@ -3692,6 +3727,17 @@ components:
         - name
         - checked
         - createdAt
+
+    GroceryCatalogItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        category:
+          $ref: "#/components/schemas/GroceryCategoryKey"
+      required: [id, name, category]
 
     CreateGroceryItemInput:
       type: object

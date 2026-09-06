@@ -19,6 +19,7 @@ import recipesRouter from "./recipes";
 import peopleRouter from "./people";
 import notificationPreferencesRouter from "./notificationPreferences";
 import storesRouter from "./stores";
+import inventoryRouter from "./inventory";
 import { requireApprovedHousehold } from "../middlewares/requireApprovedHousehold";
 
 const router: IRouter = Router();
@@ -34,6 +35,7 @@ router.use(propertiesRouter);
 router.use(choresRouter);
 router.use(groceryRouter);
 router.use(storesRouter);
+router.use(inventoryRouter);
 router.use(mealsRouter);
 router.use(todosRouter);
 router.use(maintenanceRouter);
