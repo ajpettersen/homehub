@@ -29,6 +29,7 @@ import {
   ExternalLink, Star, AlertTriangle,
 } from "lucide-react";
 import { addWeeks, format, addDays } from "date-fns";
+import { PlanWeekDialog } from "@/components/meals/PlanWeekDialog";
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -271,6 +272,7 @@ function MealSlot({
   pendingFill,
   members,
   activeMemberId,
+  suggestions,
 }: {
   meal?: any;
   mealType: { type: MealType; label: string; Icon: React.ComponentType<any>; color: string; bg: string };
@@ -284,6 +286,7 @@ function MealSlot({
   pendingFill?: string;
   members: FamilyMember[];
   activeMemberId: string | null;
+  suggestions?: string[];
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -292,6 +295,7 @@ function MealSlot({
   const [importingUrl, setImportingUrl] = useState(false);
   const [pendingUrl, setPendingUrl] = useState<string | undefined>();
   const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const startEdit = () => {
@@ -452,15 +456,43 @@ function MealSlot({
   }
 
   return (
-    <button
-      onClick={startEdit}
-      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 transition-all text-muted-foreground min-h-[2.75rem] group"
-      title={`Add ${mealType.label} for ${dayLabel}`}
-    >
-      <Icon className="w-3.5 h-3.5 shrink-0 opacity-50" />
-      <span className="text-xs font-medium opacity-100 sm:opacity-60 sm:group-hover:opacity-100">{mealType.label}</span>
-      <Plus className="ml-auto h-3 w-3 opacity-60 sm:opacity-0 sm:group-hover:opacity-60" />
-    </button>
+    <div className="flex flex-col gap-1 w-full">
+      <button
+        onClick={startEdit}
+        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-border/60 hover:border-primary/40 hover:bg-muted/30 transition-all text-muted-foreground min-h-[2.75rem] group"
+        title={`Add ${mealType.label} for ${dayLabel}`}
+      >
+        <Icon className="w-3.5 h-3.5 shrink-0 opacity-50" />
+        <span className="text-xs font-medium opacity-100 sm:opacity-60 sm:group-hover:opacity-100">{mealType.label}</span>
+        <Plus className="ml-auto h-3 w-3 opacity-60 sm:opacity-0 sm:group-hover:opacity-60" />
+      </button>
+
+      {suggestions && suggestions.length > 0 && (
+        <div className="px-1 flex flex-wrap gap-1 items-center mt-0.5">
+          {!showSuggestions ? (
+            <button
+              onClick={() => setShowSuggestions(true)}
+              className="text-[10px] font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+              data-testid={`button-show-suggestions-${mealType.type}-${dayLabel}`}
+            >
+              <Sparkles className="w-2.5 h-2.5" /> Previously planned...
+            </button>
+          ) : (
+            suggestions.map((sugg, i) => (
+              <button
+                key={i}
+                onClick={() => onAdd(sugg)}
+                className="text-[10px] font-medium bg-muted hover:bg-primary/10 hover:text-primary text-muted-foreground px-2 py-0.5 rounded-full transition-colors truncate max-w-full border border-transparent hover:border-primary/20 shadow-sm"
+                title={`Add ${sugg}`}
+                data-testid={`button-use-suggestion-${mealType.type}-${dayLabel}-${i}`}
+              >
+                + {sugg}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -864,9 +896,50 @@ export default function Meals() {
   const updateMeal = useUpdateMealPlanEntry();
 
   // Tab + UI state — declared before the recipe query so `activeTab` is in scope
-  const [aiLoading, setAiLoading] = useState(false);
+  const [planWeekOpen, setPlanWeekOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"meals" | "shopping" | "recipes">(() => preferences.tabs.meals.defaultView);
   const [pendingRecipeName, setPendingRecipeName] = useState<string | null>(null);
+
+  // Historical meals for suggestions
+  const { data: allMeals } = useGetMealPlans(
+    {},
+    {
+      query: {
+        queryKey: getGetMealPlansQueryKey({}),
+        enabled: activeTab === "meals",
+      },
+    }
+  );
+
+  const historicalBreakfasts: string[] = [];
+  const historicalLunches: string[] = [];
+
+  if (allMeals) {
+    const currentWeekMealNames = new Set((meals ?? []).map(m => m.meal.toLowerCase().trim()));
+    const seenB = new Set<string>();
+    const seenL = new Set<string>();
+    const sorted = [...allMeals].sort((a, b) => {
+      const dateA = a.weekStart ? new Date(a.weekStart).getTime() : 0;
+      const dateB = b.weekStart ? new Date(b.weekStart).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    for (const m of sorted) {
+      if (houseProperty && String(m.propertyId) !== String(houseProperty.id)) continue;
+      const name = m.meal.trim();
+      const lower = name.toLowerCase();
+      if (currentWeekMealNames.has(lower)) continue;
+
+      if (m.mealType === "breakfast" && !seenB.has(lower) && historicalBreakfasts.length < 3) {
+        seenB.add(lower);
+        historicalBreakfasts.push(name);
+      }
+      if (m.mealType === "lunch" && !seenL.has(lower) && historicalLunches.length < 3) {
+        seenL.add(lower);
+        historicalLunches.push(name);
+      }
+    }
+  }
 
   // Recipes (cookbook) — scoped to house property.
   // Only fetched when the Cookbook tab is active so that the Clerk session
@@ -929,40 +1002,98 @@ export default function Meals() {
     );
   };
 
-  const handleAISuggestWeek = async () => {
-    setAiLoading(true);
-    try {
-      const res = await fetch(`/api/ai/suggest-week`, { method: "POST" });
-      if (!res.ok) throw new Error("AI request failed");
-      const data = await res.json();
-
-      if (!Array.isArray(data?.days)) return;
-
-      const dayNameToIndex: Record<string, number> = {
-        monday: 0, tuesday: 1, wednesday: 2, thursday: 3,
-        friday: 4, saturday: 5, sunday: 6,
+  const handleChat = async (messages: {role: 'user'|'assistant', content: string}[]) => {
+    if (!houseProperty) throw new Error("Add a home property before planning meals.");
+    const existingMeals = (meals ?? []).map(m => {
+      const idx = apiDayToIndex(m.dayOfWeek);
+      return {
+        dayName: DAYS[idx],
+        mealType: m.mealType,
+        meal: m.meal,
       };
+    });
 
-      for (const day of data.days) {
-        const idx = dayNameToIndex[day.dayName?.toLowerCase()] ?? -1;
-        if (idx === -1) continue;
+    const res = await fetch(`/api/ai/meal-plan-chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages,
+        existingMeals
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to chat. Please try again.");
+    return data.message;
+  };
 
-        for (const [mType, value] of [
-          ["breakfast", day.breakfast],
-          ["lunch", day.lunch],
-          ["dinner", day.dinner],
-        ] as [MealType, string][]) {
-          if (!value) continue;
-          if (getMeal(idx, mType)) continue; // don't overwrite existing entries
-          handleAdd(idx, mType, value);
-        }
+  const handleAISuggestWeek = async (plannerMessages: {role: 'user'|'assistant', content: string}[], imagesBase64: string[]) => {
+    if (!houseProperty) {
+      throw new Error("Add a home property before planning meals.");
+    }
+
+    // Collect existing meals to guide AI
+    const existingMeals = (meals ?? []).map(m => {
+      const idx = apiDayToIndex(m.dayOfWeek);
+      return {
+        dayName: DAYS[idx],
+        mealType: m.mealType,
+        meal: m.meal,
+      };
+    });
+
+    const res = await fetch(`/api/ai/suggest-week`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plannerMessages, imagesBase64, existingMeals }),
+    });
+
+    if (!res.ok) {
+      const errorBody = await res.json().catch(() => null);
+      throw new Error(errorBody?.error || "We couldn't build that meal plan. Please try again.");
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data?.days)) {
+      throw new Error("The meal plan response was incomplete. Please try again.");
+    }
+
+    const dayNameToIndex: Record<string, number> = {
+      monday: 0, tuesday: 1, wednesday: 2, thursday: 3,
+      friday: 4, saturday: 5, sunday: 6,
+    };
+
+    const newMeals: Array<{ dayIndex: number; type: MealType; text: string }> = [];
+    for (const day of data.days) {
+      const idx = dayNameToIndex[day.dayName?.toLowerCase()] ?? -1;
+      if (idx === -1) continue;
+
+      for (const [mType, value] of [
+        ["breakfast", day.breakfast],
+        ["lunch", day.lunch],
+        ["dinner", day.dinner],
+      ] as [MealType, string][]) {
+        if (typeof value !== "string" || !value.trim()) continue;
+        if (getMeal(idx, mType)) continue; // don't overwrite existing entries
+
+        newMeals.push({ dayIndex: idx, type: mType, text: value.trim() });
       }
+    }
 
-      setTimeout(invalidateMeals, 2000);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setAiLoading(false);
+    if (newMeals.length > 0) {
+      await Promise.all(
+        newMeals.map(m =>
+          createMeal.mutateAsync({
+            data: {
+              weekStart,
+              dayOfWeek: dayIndexToApi(m.dayIndex),
+              mealType: m.type,
+              meal: m.text,
+              propertyId: houseProperty.id,
+            },
+          })
+        )
+      );
+      invalidateMeals();
     }
   };
 
@@ -1011,12 +1142,12 @@ export default function Meals() {
 
           {/* AI Plan */}
           <button
-            onClick={handleAISuggestWeek}
-            disabled={aiLoading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors shadow-md shadow-primary/20 disabled:opacity-60"
+            onClick={() => setPlanWeekOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
+            data-testid="button-open-plan-week"
           >
-            {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {aiLoading ? "Planning…" : "Plan Week"}
+            <Sparkles className="w-4 h-4" />
+            Plan My Week
           </button>
         </div>
       </div>
@@ -1088,6 +1219,7 @@ export default function Meals() {
                   {/* Meal slots */}
                   {MEAL_TYPES.map(mt => {
                     const existing = getMeal(idx, mt.type);
+                    const suggestions = mt.type === "breakfast" ? historicalBreakfasts : mt.type === "lunch" ? historicalLunches : undefined;
                     return (
                       <MealSlot
                         key={mt.type}
@@ -1108,6 +1240,7 @@ export default function Meals() {
                         cookbookNames={cookbookNames}
                         members={members}
                         activeMemberId={activeMember ? activeMember.id : null}
+                        suggestions={suggestions}
                       />
                     );
                   })}
@@ -1157,6 +1290,13 @@ export default function Meals() {
           <CookbookSection propertyId={propertyIdStr} onUseRecipe={handleUseRecipe} />
         </div>
       )}
+
+      <PlanWeekDialog
+        open={planWeekOpen}
+        onOpenChange={setPlanWeekOpen}
+        onChat={handleChat}
+        onPlan={handleAISuggestWeek}
+      />
     </div>
   );
 }

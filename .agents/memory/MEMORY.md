@@ -15,5 +15,6 @@
 - [Photo recipe workflow](photo-recipe-workflow.md) — AI image extraction is review-only; structured recipes drive cookbook, property-scoped groceries, and guided audio.
 - [Notification delivery contract](notification-delivery-contract.md) — household-local schedules; assigned reminders never broaden to other adults when a device is unavailable.
 - [Store-aware shopping lists](store-aware-shopping-lists.md) — stores belong to households, but each property’s grocery list keeps its own selected store and walking order.
+- [Meal suggestion provenance](meal-suggestion-provenance.md) — reuse suggestions come from prior meal plans; never label them as grocery-order history without explicit provenance.
 - [Installed Web app freshness](installed-web-app-freshness.md) — logout activates pending Web updates and performs a base-scoped fresh launch without clearing Clerk or sibling-artifact state.
 - [Publish foreign-key staging](publish-foreign-key-staging.md) — when Publish orders a new composite FK before its unique prerequisite, ship the uniqueness first and the FK in a second publish.

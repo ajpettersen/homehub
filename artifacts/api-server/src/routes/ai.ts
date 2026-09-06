@@ -101,6 +101,72 @@ export function parseRecipeImage(image: unknown): { dataUrl?: string; error?: st
   return { dataUrl: `data:${mimeType};base64,${base64}` };
 }
 
+type PlannerMessage = { role: "user" | "assistant"; content: string };
+type ExistingMealContext = { dayName: string; mealType: string; meal: string };
+
+export function validatePlannerMessages(
+  rawMessages: unknown,
+): { messages?: PlannerMessage[]; error?: string } {
+  if (!Array.isArray(rawMessages) || rawMessages.length === 0 || rawMessages.length > 12) {
+    return { error: "Meal-planning chat must contain between 1 and 12 messages." };
+  }
+
+  const messages: PlannerMessage[] = [];
+  let totalCharacters = 0;
+  for (const rawMessage of rawMessages) {
+    if (!rawMessage || typeof rawMessage !== "object" || Array.isArray(rawMessage)) {
+      return { error: "Meal-planning chat contains an invalid message." };
+    }
+    const message = rawMessage as Record<string, unknown>;
+    if (
+      (message.role !== "user" && message.role !== "assistant") ||
+      typeof message.content !== "string" ||
+      !message.content.trim() ||
+      message.content.length > 2_000
+    ) {
+      return { error: "Each meal-planning message must have a valid role and up to 2,000 characters." };
+    }
+    totalCharacters += message.content.length;
+    messages.push({ role: message.role, content: message.content.trim() });
+  }
+
+  if (totalCharacters > 12_000) {
+    return { error: "The meal-planning conversation is too long. Start a new plan and try again." };
+  }
+  return { messages };
+}
+
+export function validateExistingMealContext(
+  rawMeals: unknown,
+): { meals?: ExistingMealContext[]; error?: string } {
+  if (!Array.isArray(rawMeals) || rawMeals.length > 21) {
+    return { error: "The existing meal plan is invalid." };
+  }
+
+  const validDays = new Set(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]);
+  const validMealTypes = new Set(["breakfast", "lunch", "dinner"]);
+  const meals: ExistingMealContext[] = [];
+  for (const value of rawMeals) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { error: "The existing meal plan is invalid." };
+    }
+    const meal = value as Record<string, unknown>;
+    if (
+      typeof meal.dayName !== "string" || !validDays.has(meal.dayName) ||
+      typeof meal.mealType !== "string" || !validMealTypes.has(meal.mealType) ||
+      typeof meal.meal !== "string" || !meal.meal.trim() || meal.meal.length > 200
+    ) {
+      return { error: "The existing meal plan is invalid." };
+    }
+    meals.push({
+      dayName: meal.dayName,
+      mealType: meal.mealType,
+      meal: meal.meal.trim(),
+    });
+  }
+  return { meals };
+}
+
 export function validateReadRecipeStep(body: unknown): { value?: { recipeName?: string; stepNumber?: number; text: string }; error?: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "request body must be an object" };
   const { recipeName, stepNumber, text } = body as Record<string, unknown>;
@@ -932,12 +998,119 @@ Respond ONLY with valid JSON:
   }
 });
 
+// ── POST /ai/meal-plan-chat ──────────────────────────────────────────────────
+// Temporary, planning-only conversation. Nothing from this endpoint is persisted.
+router.post("/ai/meal-plan-chat", async (req, res) => {
+  try {
+    const scope = await requireAiScope(req, res);
+    if (!scope) return;
+
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+      ? req.body as Record<string, unknown>
+      : {};
+    const messageValidation = validatePlannerMessages(body.messages);
+    if (!messageValidation.messages) {
+      res.status(400).json({ error: messageValidation.error });
+      return;
+    }
+    if (messageValidation.messages.at(-1)?.role !== "user") {
+      res.status(400).json({ error: "The latest meal-planning message must be from the user." });
+      return;
+    }
+
+    const mealValidation = validateExistingMealContext(body.existingMeals ?? []);
+    if (!mealValidation.meals) {
+      res.status(400).json({ error: mealValidation.error });
+      return;
+    }
+    const existingMealLines = mealValidation.meals.map(
+      meal => `- ${meal.dayName} ${meal.mealType}: ${meal.meal}`,
+    );
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.6-luna",
+      max_completion_tokens: 300,
+      messages: [
+        {
+          role: "system",
+          content: `You are a concise meal-planning assistant for a busy family. Only discuss this week's meal plan.
+Help the user express schedule constraints, meals out, leftovers, cravings, easy nights, and ingredients to use.
+Acknowledge concrete constraints clearly. Ask at most one useful follow-up question when clarification would materially improve the plan.
+Do not claim to save anything, do not call tools, and do not discuss unrelated household information.
+
+Meals already planned and protected:
+${existingMealLines.join("\n") || "- None yet"}`,
+        },
+        ...messageValidation.messages,
+      ],
+    });
+
+    const message = response.choices[0]?.message?.content?.trim();
+    if (!message) {
+      res.status(502).json({ error: "The meal-planning assistant did not return a response." });
+      return;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ message });
+  } catch (err) {
+    req.log.error({ err }, "Meal-plan chat failed");
+    res.status(500).json({ error: "Meal-planning chat failed." });
+  }
+});
+
 // ── POST /ai/suggest-week ────────────────────────────────────────────────────
 // Returns Mon–Sun meal suggestions, informed by per-member ratings + stored memories
 router.post("/ai/suggest-week", async (req, res) => {
   try {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
+
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+      ? req.body as Record<string, unknown>
+      : {};
+    const legacyMealIdeas = typeof body.mealIdeas === "string" ? body.mealIdeas.trim() : "";
+    const rawImages = body.imagesBase64 === undefined ? [] : body.imagesBase64;
+    const rawExistingMeals = body.existingMeals === undefined ? [] : body.existingMeals;
+
+    if (legacyMealIdeas.length > 2_000) {
+      res.status(400).json({ error: "Meal requests must be 2,000 characters or fewer." });
+      return;
+    }
+    const plannerMessageValidation = body.plannerMessages === undefined
+      ? { messages: [] as PlannerMessage[] }
+      : validatePlannerMessages(body.plannerMessages);
+    if (!plannerMessageValidation.messages) {
+      res.status(400).json({ error: plannerMessageValidation.error });
+      return;
+    }
+    if (!Array.isArray(rawImages) || rawImages.length > 6) {
+      res.status(400).json({ error: "Choose no more than 6 fridge or pantry photos." });
+      return;
+    }
+
+    const images: string[] = [];
+    let totalImageBytes = 0;
+    for (const rawImage of rawImages) {
+      const parsed = parseRecipeImage(rawImage);
+      if (!parsed.dataUrl) {
+        res.status(400).json({ error: parsed.error ?? "One of the photos could not be read." });
+        return;
+      }
+      const encoded = parsed.dataUrl.slice(parsed.dataUrl.indexOf(",") + 1);
+      totalImageBytes += Buffer.from(encoded, "base64").length;
+      images.push(parsed.dataUrl);
+    }
+    if (totalImageBytes > 10 * 1024 * 1024) {
+      res.status(400).json({ error: "Fridge and pantry photos must be 10 MiB or less combined." });
+      return;
+    }
+
+    const existingMealValidation = validateExistingMealContext(rawExistingMeals);
+    if (!existingMealValidation.meals) {
+      res.status(400).json({ error: existingMealValidation.error });
+      return;
+    }
+    const existingMeals = existingMealValidation.meals;
 
     const [recentMeals, familyMembers, allMealPlans, memoriesCtx] = await Promise.all([
       db.select({ meal: mealPlansTable.meal }).from(mealPlansTable).where(inArray(mealPlansTable.propertyId, scope.propertyIds)).orderBy(desc(mealPlansTable.createdAt)).limit(60),
@@ -987,6 +1160,16 @@ router.post("/ai/suggest-week", async (req, res) => {
     }
 
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
+    const existingMealLines = existingMeals.map(
+      meal => `  - ${meal.dayName} ${meal.mealType}: ${meal.meal}`,
+    );
+    const planningConversation = [
+      ...plannerMessageValidation.messages,
+      ...(legacyMealIdeas ? [{ role: "user" as const, content: legacyMealIdeas }] : []),
+    ];
+    const planningConversationLines = planningConversation.map(
+      message => `  - ${message.role === "user" ? "Family" : "Planner"}: ${message.content}`,
+    );
 
     const SYSTEM = `You are a practical family meal planner.
 ${memoriesCtx}
@@ -995,7 +1178,13 @@ Recent meals to avoid repeating: ${mealHistory.slice(0, 30).join(", ") || "none"
 Family meal preferences from past ratings:
 ${memberPreferenceLines.join("\n") || "  - No ratings yet"}
 
-Create a varied, family-friendly week with simple breakfasts, lunches, and dinners.
+Meals already planned for this week (never replace these):
+${existingMealLines.join("\n") || "  - None yet"}
+
+Meal-planning conversation and schedule constraints:
+${planningConversationLines.join("\n") || "  - No special requests"}
+
+Create a varied, family-friendly week with simple breakfasts, lunches, and dinners. Use ingredients visible in the attached fridge or pantry photos when practical. Treat the family's schedule constraints and requests as priorities. If they say they are eating out, use a short entry such as "Eating out after basketball" for that slot. Return suggestions for all days, but repeat the exact existing meal in any occupied slot so the client can safely preserve it.
 Respond ONLY with valid JSON:
 {
   "days": [
@@ -1008,12 +1197,25 @@ Respond ONLY with valid JSON:
   ]
 }`;
 
+    const userContent = [
+      {
+        type: "text" as const,
+        text: images.length > 0
+          ? `Fill the remaining meal slots for our week using these ${images.length} kitchen photo${images.length === 1 ? "" : "s"} as additional context.`
+          : "Fill the remaining meal slots for our week.",
+      },
+      ...images.map(image => ({
+        type: "image_url" as const,
+        image_url: { url: image, detail: "low" as const },
+      })),
+    ];
+
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
       max_completion_tokens: 1024,
       messages: [
         { role: "system", content: SYSTEM },
-        { role: "user", content: "Please suggest a full week of meals for our family." },
+        { role: "user", content: userContent as any },
       ],
     });
 
@@ -1026,7 +1228,7 @@ Respond ONLY with valid JSON:
 
     res.json(JSON.parse(jsonMatch[0]));
   } catch (err) {
-    console.error("Suggest week error:", err);
+    req.log.error({ err }, "Suggest week failed");
     res.status(500).json({ error: "Failed to suggest week" });
   }
 });
