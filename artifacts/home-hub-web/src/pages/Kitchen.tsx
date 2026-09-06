@@ -30,6 +30,16 @@ import {
 } from "lucide-react";
 import { addWeeks, format, addDays } from "date-fns";
 import { PlanWeekDialog } from "@/components/meals/PlanWeekDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -897,6 +907,9 @@ export default function Meals() {
 
   // Tab + UI state — declared before the recipe query so `activeTab` is in scope
   const [planWeekOpen, setPlanWeekOpen] = useState(false);
+  const [deleteWeekOpen, setDeleteWeekOpen] = useState(false);
+  const [isDeletingWeek, setIsDeletingWeek] = useState(false);
+  const [deleteWeekError, setDeleteWeekError] = useState("");
   const [activeTab, setActiveTab] = useState<"meals" | "shopping" | "recipes">(() => preferences.tabs.meals.defaultView);
   const [pendingRecipeName, setPendingRecipeName] = useState<string | null>(null);
 
@@ -987,6 +1000,21 @@ export default function Meals() {
 
   const handleDelete = (id: string) => {
     deleteMeal.mutate({ id }, { onSuccess: invalidateMeals });
+  };
+
+  const handleDeleteWeek = async () => {
+    if (!meals?.length || isDeletingWeek) return;
+    setIsDeletingWeek(true);
+    setDeleteWeekError("");
+    try {
+      await Promise.all(meals.map(meal => deleteMeal.mutateAsync({ id: meal.id })));
+      await invalidateMeals();
+      setDeleteWeekOpen(false);
+    } catch {
+      setDeleteWeekError("Some meals could not be deleted. Please try again.");
+    } finally {
+      setIsDeletingWeek(false);
+    }
   };
 
   const handleNote = (id: string, notes: string) => {
@@ -1130,7 +1158,7 @@ export default function Meals() {
               onClick={() => setWeekOffset(0)}
               className={`px-4 py-2.5 text-sm font-bold transition-colors ${isCurrentWeek ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
             >
-              Today
+              This Week
             </button>
             <button
               onClick={() => setWeekOffset(w => w + 1)}
@@ -1149,8 +1177,62 @@ export default function Meals() {
             <Sparkles className="w-4 h-4" />
             Plan My Week
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteWeekError("");
+              setDeleteWeekOpen(true);
+            }}
+            disabled={!meals?.length || isDeletingWeek}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-destructive/30 bg-card text-destructive font-bold text-sm hover:bg-destructive/5 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            data-testid="button-delete-week"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Week
+          </button>
         </div>
       </div>
+
+      <AlertDialog
+        open={deleteWeekOpen}
+        onOpenChange={open => {
+          if (!isDeletingWeek) setDeleteWeekOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this week’s meal plan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes all {meals?.length ?? 0} planned meals for {format(monday, "MMM d")}–{format(addDays(monday, 6), "MMM d")}. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteWeekError && (
+            <p role="alert" className="text-sm text-destructive">
+              {deleteWeekError}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingWeek}>Keep Week</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={event => {
+                event.preventDefault();
+                void handleDeleteWeek();
+              }}
+              disabled={isDeletingWeek}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingWeek ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                "Delete Week"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-muted/50 rounded-xl p-1 mb-6 w-fit">

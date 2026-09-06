@@ -97,6 +97,14 @@ function SignInRedirect() {
   );
 }
 
+function isDevelopmentPreviewMode(): boolean {
+  if (!import.meta.env.DEV || typeof window === "undefined") return false;
+  const requested = new URLSearchParams(window.location.search).get("preview");
+  if (requested === "1") window.sessionStorage.setItem("homehub-preview-mode", "1");
+  if (requested === "0") window.sessionStorage.removeItem("homehub-preview-mode");
+  return requested === "1" || window.sessionStorage.getItem("homehub-preview-mode") === "1";
+}
+
 function ProfileInitializer() {
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -203,8 +211,9 @@ function SetupRerun() {
 }
 function AuthenticatedApp() {
   const { isLoaded, isSignedIn } = useAuth();
+  const previewMode = isDevelopmentPreviewMode();
 
-  if (!isLoaded) {
+  if (!isLoaded && !previewMode) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <p className="text-sm text-muted-foreground">Loading HomeHub…</p>
@@ -212,8 +221,28 @@ function AuthenticatedApp() {
     );
   }
 
-  if (!isSignedIn) {
+  if (!isSignedIn && !previewMode) {
     return <SignInRedirect />;
+  }
+
+  if (previewMode) {
+    return (
+      <Shell>
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/chores" component={Chores} />
+          <Route path="/meals" component={Kitchen} />
+          <Route path="/tasks" component={Tasks} />
+          <Route path="/workouts" component={Workouts} />
+          <Route path="/properties">
+            <Redirect to="/tasks?view=maintenance&preview=1" />
+          </Route>
+          <Route path="/settings" component={Settings} />
+          <Route path="/people" component={People} />
+          <Route component={NotFound} />
+        </Switch>
+      </Shell>
+    );
   }
 
   return (
@@ -240,8 +269,9 @@ function AuthenticatedApp() {
 
 function RootPage() {
   const { isLoaded, isSignedIn } = useAuth();
+  const previewMode = isDevelopmentPreviewMode();
 
-  if (!isLoaded) {
+  if (!isLoaded && !previewMode) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <p className="text-sm text-muted-foreground">Loading HomeHub…</p>
@@ -249,7 +279,7 @@ function RootPage() {
     );
   }
 
-  return isSignedIn ? <AuthenticatedApp /> : <Landing />;
+  return isSignedIn || previewMode ? <AuthenticatedApp /> : <Landing />;
 }
 
 function Router() {
