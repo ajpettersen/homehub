@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Pencil, Search, BookOpen } from "lucide-react";
+import { Plus, Trash2, Pencil, Search, BookOpen, Sparkles } from "lucide-react";
 import {
   useListExerciseLibrary,
   useCreateLibraryExercise,
@@ -277,7 +277,14 @@ export function ExerciseLibrary({ onUse }: { onUse?: (exercise: any) => void }) 
                           </button>
                         </div>
                         </div>
-                        {expandedId === ex.id && <ExerciseHistory exerciseId={ex.id} onUse={exercise => onUse?.(exercise)} />}
+                        {expandedId === ex.id && (
+                          <div className="border-t border-border/60 mt-3 pt-3">
+                            <button onClick={() => onUse?.({ name: ex.name, muscleGroups: ex.muscleGroups, sets: null, reps: null, weightLbs: null, durationSeconds: null, notes: null })} className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 py-2 text-sm font-bold text-primary hover:bg-primary/20">
+                              <Sparkles className="w-4 h-4" /> Add to Coach Draft
+                            </button>
+                            <ExerciseHistory exerciseId={ex.id} onUse={onUse || (() => {})} />
+                          </div>
+                        )}
                       </div>
                     )
                   ))}

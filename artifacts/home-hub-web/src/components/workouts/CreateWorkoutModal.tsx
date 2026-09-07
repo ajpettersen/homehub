@@ -155,7 +155,7 @@ export function CreateWorkoutModal({ onClose, defaultMember, members }: { onClos
           {members.length > 1 && (
             <div className="mb-4">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Logging For</label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 overflow-x-auto pb-1 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {members.map(m => {
                   const active = selectedMemberIds.includes(m.id);
                   return (
@@ -163,7 +163,7 @@ export function CreateWorkoutModal({ onClose, defaultMember, members }: { onClos
                       key={m.id}
                       type="button"
                       onClick={() => toggleMember(m.id)}
-                      className={`flex-1 py-2 rounded-xl font-bold text-sm transition-all border-2 ${
+                      className={`shrink-0 flex-1 px-4 py-2 rounded-xl font-bold text-sm transition-all border-2 ${
                         active ? "border-transparent text-white shadow-sm" : "border-border text-muted-foreground bg-background hover:border-border/80"
                       }`}
                       style={active ? { backgroundColor: m.color || "var(--color-primary)" } : {}}

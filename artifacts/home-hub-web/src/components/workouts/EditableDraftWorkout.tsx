@@ -107,7 +107,7 @@ export function EditableDraftWorkout({
                 })}
               </div>
 
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
                   <label className="text-[10px] text-muted-foreground font-bold uppercase mb-0.5 block">Sets</label>
                   <input type="number" value={ex.sets || ""} onChange={e => handleExChange(i, "sets", parseInt(e.target.value) || null)}

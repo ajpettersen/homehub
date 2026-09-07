@@ -155,7 +155,7 @@ export function WorkoutCoach({
   };
 
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-3xl border-2 border-border bg-card sm:h-[600px] sm:max-h-[80vh]">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-3xl border-2 border-border bg-card h-[calc(100dvh-14rem)] sm:h-[600px] sm:max-h-[80vh]">
       <div className="flex shrink-0 items-center gap-3 border-b border-border bg-muted/30 p-3 sm:p-4">
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
           <Sparkles className="w-5 h-5" />

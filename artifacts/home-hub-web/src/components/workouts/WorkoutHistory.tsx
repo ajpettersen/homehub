@@ -2,15 +2,19 @@ import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, Clock, ChevronDown, ChevronUp, Trash2, Plus, Flame, X
+  Activity, Clock, ChevronDown, ChevronUp, Trash2, Plus, Flame, X, Pencil
 } from "lucide-react";
 import {
   useGetWorkout,
   useDeleteWorkout,
+  useUpdateWorkout,
+  useRescheduleWorkoutSession,
   useAddExercise,
   useDeleteExercise,
   getGetWorkoutQueryKey,
   getGetWorkoutsQueryKey,
+  getGetWorkoutSessionsQueryKey,
+  getGetOverdueWorkoutSessionsQueryKey,
   MuscleGroup
 } from "@workspace/api-client-react";
 
@@ -196,10 +200,18 @@ function AddExerciseForm({ workoutId, onAdded, onCancel }: { workoutId: string; 
 function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [addingExercise, setAddingExercise] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(workout.title);
+  const [editDate, setEditDate] = useState(workout.scheduledDate || workout.workoutDate);
+  const [editDuration, setEditDuration] = useState(workout.durationMinutes?.toString() || "");
+  const [editNotes, setEditNotes] = useState(workout.notes || "");
   
   const queryClient = useQueryClient();
   const deleteWorkout = useDeleteWorkout();
+  const updateWorkout = useUpdateWorkout();
+  const rescheduleWorkout = useRescheduleWorkoutSession();
   const deleteExercise = useDeleteExercise();
+  const isScheduledWorkout = workout.sessionStatus === "scheduled";
 
   const { data: detail, isLoading } = useGetWorkout(workout.id, {
     query: {
@@ -208,9 +220,44 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
     }
   });
 
+  const handleUpdateWorkout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (isScheduledWorkout) {
+        await rescheduleWorkout.mutateAsync({
+          id: workout.id,
+          data: {
+            scheduledDate: editDate,
+            scheduledTime: workout.scheduledTime || null,
+            scheduledTimezone: workout.scheduledTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          }
+        });
+        queryClient.invalidateQueries({ queryKey: getGetWorkoutSessionsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetOverdueWorkoutSessionsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+        setIsEditing(false);
+        return;
+      }
+      await updateWorkout.mutateAsync({
+        id: workout.id,
+        data: {
+          title: editTitle,
+          workoutDate: editDate,
+          durationMinutes: editDuration ? parseInt(editDuration) : null,
+          notes: editNotes || null
+        }
+      });
+      queryClient.invalidateQueries({ queryKey: getGetWorkoutQueryKey(workout.id) });
+      queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+      setIsEditing(false);
+    } catch {
+      // The generated mutations expose errors through their hook state below.
+    }
+  };
+
   const handleDeleteWorkout = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("Are you sure you want to delete this workout?")) {
+    if (confirm(`Delete "${workout.title}" and all of its exercises? This cannot be undone.`)) {
       deleteWorkout.mutate(
         { id: workout.id },
         { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() }) }
@@ -275,19 +322,58 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pt-1 shrink-0">
-          <button onClick={handleDeleteWorkout} className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors">
-            <Trash2 className="w-4 h-4" />
-          </button>
-          <div className="text-muted-foreground">
-            {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-          </div>
+        <div className="flex items-center pt-1 text-muted-foreground shrink-0">
+          {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
         </div>
       </div>
 
       {expanded && (
         <div className="border-t border-border bg-muted/10 p-4 pt-2">
-          {workout.notes && (
+          <div className="mb-3 mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setIsEditing(!isEditing)} className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-foreground hover:border-primary/40 hover:text-primary">
+              <Pencil className="w-4 h-4" /> {isEditing ? "Close editor" : isScheduledWorkout ? "Edit session" : "Edit workout"}
+            </button>
+            <button type="button" onClick={handleDeleteWorkout} className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-card px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/10">
+              <Trash2 className="w-4 h-4" /> {isScheduledWorkout ? "Delete session" : "Delete workout"}
+            </button>
+          </div>
+          {isEditing ? (
+            <form onSubmit={handleUpdateWorkout} className="mb-4 mt-2 space-y-3 bg-card p-3 rounded-xl border border-primary/30 shadow-sm">
+              {isScheduledWorkout ? (
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Scheduled date</label>
+                  <input type="date" required value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+                  <p className="mt-2 text-xs text-muted-foreground">This reschedules the session. Log it as completed before editing its title, duration, or notes.</p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Title</label>
+                    <input type="text" required value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Date</label>
+                      <input type="date" required value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Duration (mins)</label>
+                      <input type="number" min="1" max="1440" value={editDuration} onChange={e => setEditDuration(e.target.value)} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Notes</label>
+                    <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-h-[60px]" />
+                  </div>
+                </>
+              )}
+              <div className="flex gap-2 justify-end pt-1">
+                <button type="button" onClick={() => setIsEditing(false)} className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted">Cancel</button>
+                <button type="submit" disabled={updateWorkout.isPending || rescheduleWorkout.isPending} className="px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-lg disabled:opacity-50">{isScheduledWorkout ? "Reschedule session" : "Save changes"}</button>
+              </div>
+              {(updateWorkout.isError || rescheduleWorkout.isError) && <p className="text-sm font-medium text-destructive" role="alert">This {isScheduledWorkout ? "session" : "workout"} could not be updated. Check the details and try again.</p>}
+            </form>
+          ) : workout.notes && (
             <p className="text-sm text-foreground/80 italic mb-4 mt-2 border-l-2 border-primary/40 pl-3 py-1">
               "{workout.notes}"
             </p>

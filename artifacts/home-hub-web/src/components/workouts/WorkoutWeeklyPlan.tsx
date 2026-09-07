@@ -31,7 +31,7 @@ function isMondayWeekStart(value: string) {
   return !Number.isNaN(date.getTime()) && format(date, "yyyy-MM-dd") === value && date.getDay() === 1;
 }
 
-export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participantIds: string[], onPlanSaved: () => void }) {
+export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, onLogWorkout }: { participantIds: string[], onPlanSaved: () => void, onOpenCoach?: () => void, onLogWorkout?: () => void }) {
   const queryClient = useQueryClient();
   const { data: prefData, isLoading: prefLoading } = useGetWorkoutPreferences({
     query: { queryKey: getGetWorkoutPreferencesQueryKey() }
@@ -58,6 +58,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
   const [saving, setSaving] = useState(false);
   const [weekStart, setWeekStart] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (prefData) {
@@ -100,17 +101,24 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
     await updatePref.mutateAsync({ data: preferences });
     queryClient.invalidateQueries({ queryKey: getGetWorkoutPreferencesQueryKey() });
     setShowSettings(false);
+    setActionMessage("Preferences saved. You can generate the week now.");
   };
 
   const handleGenerate = async () => {
-    if (participantIds.length === 0) return;
-    // The API derives this from the saved household IANA timezone, not the browser clock.
-    const weekStart = prefData?.currentWeekStart;
-    if (!weekStart) return;
+    if (participantIds.length === 0) {
+      setActionMessage("Select at least one adult above before generating a plan.");
+      return;
+    }
+    if (preferences.daysOfWeek.length === 0) {
+      setShowSettings(true);
+      setActionMessage("Choose at least one workout day, then save your preferences.");
+      return;
+    }
+    setActionMessage(null);
     try {
       const data = await generatePlan.mutateAsync({
         data: {
-          weekStart,
+          weekStart: validWeekStart,
           participantIds,
           preferences
         }
@@ -118,6 +126,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
       setPlanItems(data.items);
     } catch (e) {
       console.error(e);
+      setActionMessage("The plan could not be generated. Please try again.");
     }
   };
 
@@ -134,9 +143,11 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
       });
       invalidateSessions();
       setPlanItems(null);
+      setActionMessage("Your workout schedule has been saved.");
       onPlanSaved();
     } catch (e) {
       console.error(e);
+      setActionMessage("The schedule could not be saved. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -167,14 +178,41 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
           <div><p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Shared schedule</p><h2 className="font-serif font-bold text-2xl">Make room for moving.</h2><p className="text-sm text-muted-foreground">Planned sessions and completed history, side by side.</p></div>
           <div className="flex items-center gap-2"><button data-testid="button-previous-workout-week" onClick={() => setWeekStart(format(addWeeks(new Date(`${validWeekStart}T12:00:00`), -1), "yyyy-MM-dd"))} className="p-2 border border-border rounded-lg"><ChevronLeft className="w-4 h-4" /></button><strong className="text-xs min-w-36 text-center">{`${format(new Date(`${validWeekStart}T12:00:00`), "MMM d")} – ${format(addDays(new Date(`${validWeekStart}T12:00:00`), 6), "MMM d")}`}</strong><button data-testid="button-next-workout-week" onClick={() => setWeekStart(format(addWeeks(new Date(`${validWeekStart}T12:00:00`), 1), "yyyy-MM-dd"))} className="p-2 border border-border rounded-lg"><ChevronRight className="w-4 h-4" /></button></div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto pb-2 snap-x">
+        <div className="mt-5 flex gap-2 overflow-x-auto pb-2 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {Array.from({ length: 7 }, (_, day) => {
             const date = format(addDays(new Date(`${validWeekStart}T12:00:00`), day), "yyyy-MM-dd");
             const daySessions = sessionsQuery.data?.filter(item => (item.scheduledDate || item.workoutDate) === date) ?? [];
             return <div data-testid={`plan-day-${date}`} key={date} className="snap-start shrink-0 w-32 min-h-28 p-3 text-left rounded-xl border border-border bg-background"><span className="block text-[10px] uppercase text-muted-foreground">{format(new Date(`${date}T12:00:00`), "EEE")}</span><strong className="font-serif text-xl">{format(new Date(`${date}T12:00:00`), "d")}</strong>{daySessions.length ? <div className="mt-2 space-y-1">{daySessions.map(session => <button data-testid={`button-plan-session-${session.id}`} key={session.id} onClick={() => setSelectedSessionId(session.id)} className={`block w-full rounded p-1 text-left text-[10px] font-bold ${selectedSessionId === session.id ? "bg-primary text-primary-foreground" : session.sessionStatus === "completed" ? "bg-green-100 text-green-800" : session.sessionStatus === "scheduled" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}><span className="block uppercase">{session.sessionStatus === "missed" ? "Needs confirmation" : session.sessionStatus}</span><span className="line-clamp-2">{session.title}</span></button>)}</div> : <span className="mt-4 block text-[10px] text-muted-foreground">Rest / open</span>}</div>;
           })}
         </div>
-        {sessionsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading this week…</p> : selectedSession ? <div className="mt-3 p-4 rounded-xl bg-muted/50" data-testid="workout-session-detail"><div className="flex justify-between gap-3"><div><span className="text-xs font-bold text-primary uppercase">{selectedSession.sessionStatus}</span><h3 className="font-serif font-bold text-xl">{selectedSession.title}</h3><p className="text-sm text-muted-foreground">{selectedSession.participants.map(p => p.name).join(" + ")} · {selectedSession.durationMinutes ?? "—"} min</p></div><Clock3 className="w-5 h-5 text-muted-foreground" /></div><div className="mt-3 flex flex-wrap gap-2">{selectedSession.sessionStatus === "scheduled" && <><button data-testid="button-complete-session" onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Complete</button><button data-testid="button-reschedule-session" onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button data-testid="button-skip-session" onClick={() => resolve(selectedSession.id, "skipped")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Skip</button></>}{selectedSession.sessionStatus === "missed" && <><button onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Yes, completed it</button><button onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button onClick={() => resolve(selectedSession.id, "dismissed")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Dismiss</button></>}</div></div> : <p className="mt-3 text-sm text-muted-foreground">Select a day to see its workout details.</p>}
+        {sessionsQuery.isLoading ? <p className="text-sm text-muted-foreground mt-3">Loading this week…</p> : selectedSession ? <div className="mt-3 p-4 rounded-xl bg-muted/50" data-testid="workout-session-detail"><div className="flex justify-between gap-3"><div><span className="text-xs font-bold text-primary uppercase">{selectedSession.sessionStatus}</span><h3 className="font-serif font-bold text-xl">{selectedSession.title}</h3><p className="text-sm text-muted-foreground">{selectedSession.participants.map(p => p.name).join(" + ")} · {selectedSession.durationMinutes ?? "—"} min</p></div><Clock3 className="w-5 h-5 text-muted-foreground" /></div><div className="mt-3 flex flex-wrap gap-2">{selectedSession.sessionStatus === "scheduled" && <><button data-testid="button-complete-session" onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Complete</button><button data-testid="button-reschedule-session" onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button data-testid="button-skip-session" onClick={() => resolve(selectedSession.id, "skipped")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Skip</button></>}{selectedSession.sessionStatus === "missed" && <><button onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Yes, completed it</button><button onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button onClick={() => resolve(selectedSession.id, "dismissed")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Dismiss</button></>}</div></div> : <p className="mt-3 text-sm text-muted-foreground">Select a day to see its workout details.</p>}
+        {!sessionsQuery.isLoading && sessionsQuery.data?.length === 0 && !planItems && (
+          <div className="mt-4 flex flex-col items-center justify-center p-5 text-center border border-dashed border-border rounded-2xl bg-muted/20">
+            <Sparkles className="w-6 h-6 text-muted-foreground mb-2" />
+            <h3 className="font-bold text-foreground text-sm">Your week is completely open</h3>
+            <p className="text-xs text-muted-foreground max-w-md mt-1 mb-4">
+              Generate a weekly plan below based on your preferences, ask the Coach for a workout, or log one manually.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button onClick={() => {
+                if (preferences.daysOfWeek.length === 0) setShowSettings(true);
+                else handleGenerate();
+              }} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90">
+                {preferences.daysOfWeek.length === 0 ? "Set Preferences & Plan" : "Generate Weekly Plan"}
+              </button>
+              {onOpenCoach && (
+                <button onClick={onOpenCoach} className="px-4 py-2 bg-muted text-foreground text-xs font-bold rounded-xl hover:bg-muted/80">
+                  Ask Coach
+                </button>
+              )}
+              {onLogWorkout && (
+                <button onClick={onLogWorkout} className="px-4 py-2 bg-card border border-border text-foreground text-xs font-bold rounded-xl hover:bg-muted/50">
+                  Log Workout
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </section>
       {!planItems ? (
         <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
@@ -198,13 +236,13 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
                 
                 <div>
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Workout Days</label>
-                  <div className="flex gap-2">
+                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
                     {DAYS.map((day, idx) => (
                       <button
                         key={idx}
                         type="button"
                         onClick={() => toggleDay(idx)}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all border ${
+                        className={`py-2 rounded-lg text-xs font-bold transition-all border ${
                           preferences.daysOfWeek.includes(idx) 
                             ? "bg-primary text-primary-foreground border-primary" 
                             : "bg-background text-muted-foreground border-border"
@@ -260,24 +298,25 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved }: { participant
 
           <button 
             onClick={handleGenerate}
-            disabled={generatePlan.isPending || participantIds.length === 0}
+            disabled={generatePlan.isPending}
             className="w-full py-4 bg-primary text-primary-foreground font-bold text-lg rounded-xl hover:bg-primary/90 transition-all shadow-md shadow-primary/20 disabled:opacity-50 flex justify-center items-center gap-2"
           >
             {generatePlan.isPending ? (
               <><RefreshCw className="w-5 h-5 animate-spin" /> Generating Plan...</>
             ) : (
-              <><Sparkles className="w-5 h-5" /> Generate Next Week's Plan</>
+              <><Sparkles className="w-5 h-5" /> Generate Weekly Plan</>
             )}
           </button>
+          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-muted-foreground" role="status">{actionMessage}</p>}
         </div>
       ) : (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-          <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border sticky top-0 z-10 shadow-sm">
+          <div className="flex flex-col justify-between gap-3 bg-card p-4 rounded-2xl border border-border sticky top-0 z-10 shadow-sm sm:flex-row sm:items-center">
             <div>
               <h2 className="font-bold text-lg">Review Schedule</h2>
               <p className="text-xs text-muted-foreground">Adjust drafts as needed before saving.</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 sm:justify-end">
               <button onClick={() => setPlanItems(null)} disabled={saving} className="px-4 py-2 border border-border rounded-lg text-sm font-bold hover:bg-muted">Cancel</button>
               <button onClick={handleSavePlan} disabled={saving} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-md">
                 <Check className="w-4 h-4" /> {saving ? "Saving..." : "Save Schedule"}
