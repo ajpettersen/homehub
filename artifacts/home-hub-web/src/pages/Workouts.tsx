@@ -20,7 +20,11 @@ export default function Workouts() {
   const { data: allMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const { activeMember } = useActiveMember();
   const { preferences } = usePreferences();
-  const { data: workoutPreferences, isLoading: preferencesLoading, isError: preferencesMissing } = useGetWorkoutPreferences({ query: { queryKey: getGetWorkoutPreferencesQueryKey() } });
+  const {
+    data: workoutPreferences,
+    isLoading: preferencesLoading,
+    isSuccess: preferencesLoaded,
+  } = useGetWorkoutPreferences({ query: { queryKey: getGetWorkoutPreferencesQueryKey() } });
   const updateWorkoutPreferences = useUpdateWorkoutPreferences();
   const { data: overdueSessions } = useGetOverdueWorkoutSessions({ query: { queryKey: getGetOverdueWorkoutSessionsQueryKey() } });
   const completeSession = useCompleteWorkoutSession();
@@ -43,14 +47,10 @@ export default function Workouts() {
   const [pendingLibraryExercise, setPendingLibraryExercise] = useState<DraftExercise | null>(null);
   const [setupValues, setSetupValues] = useState<WorkoutPreferencesInput>({ daysOfWeek: [1, 3, 6], goals: "", sessionDurationMinutes: 30, equipment: "", limitations: "", notes: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
   useEffect(() => {
-    if (preferencesMissing) {
-      setSetupOpen(true);
-      return;
-    }
-    if (!workoutPreferences) return;
+    if (!preferencesLoaded || !workoutPreferences) return;
     setSetupValues({ daysOfWeek: workoutPreferences.daysOfWeek, goals: workoutPreferences.goals, sessionDurationMinutes: workoutPreferences.sessionDurationMinutes, equipment: workoutPreferences.equipment, limitations: workoutPreferences.limitations, notes: workoutPreferences.notes, timezone: workoutPreferences.timezone });
     if (!preferencesLoading && (!localStorage.getItem("homehub.workouts.experience.v1") || !workoutPreferences.updatedAt)) setSetupOpen(true);
-  }, [workoutPreferences, preferencesLoading, preferencesMissing]);
+  }, [workoutPreferences, preferencesLoading, preferencesLoaded]);
   const saveSetup = () => updateWorkoutPreferences.mutate({ data: setupValues }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetWorkoutPreferencesQueryKey() }); localStorage.setItem("homehub.workouts.experience.v1", "seen"); setSetupOpen(false); } });
 
   // Initialize selected parents
