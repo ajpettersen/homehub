@@ -189,8 +189,17 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
     queryClient.invalidateQueries({ queryKey: getGetWorkoutSessionsQueryKey({ weekStart: validWeekStart }), exact: true });
     queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetOverdueWorkoutSessionsQueryKey() });
+    if (selectedSessionId) {
+      queryClient.invalidateQueries({ queryKey: getGetWorkoutQueryKey(selectedSessionId) });
+    }
   };
   const selectedSession = sessionsQuery.data?.find(session => session.id === selectedSessionId);
+  const selectedSessionDetailQuery = useGetWorkout(selectedSessionId ?? "", {
+    query: {
+      enabled: Boolean(selectedSessionId),
+      queryKey: getGetWorkoutQueryKey(selectedSessionId ?? ""),
+    },
+  });
   const resolve = (id: string, action: "complete" | "skipped" | "cancelled" | "dismissed") => {
     if (action === "complete") completeSession.mutate({ id, data: {} }, { onSuccess: invalidateSessions });
     else updateSessionStatus.mutate({ id, data: { status: action } }, { onSuccess: invalidateSessions });
@@ -366,7 +375,92 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
             return <div data-testid={`plan-day-${date}`} key={date} className="snap-start shrink-0 w-32 min-h-28 p-3 text-left rounded-xl border border-border bg-background"><span className="block text-[10px] uppercase text-muted-foreground">{format(new Date(`${date}T12:00:00`), "EEE")}</span><strong className="font-serif text-xl">{format(new Date(`${date}T12:00:00`), "d")}</strong>{daySessions.length ? <div className="mt-2 space-y-1">{daySessions.map(session => <button data-testid={`button-plan-session-${session.id}`} key={session.id} onClick={() => setSelectedSessionId(session.id)} className={`block w-full rounded p-1 text-left text-[10px] font-bold ${selectedSessionId === session.id ? "bg-primary text-primary-foreground" : session.sessionStatus === "completed" ? "bg-green-100 text-green-800" : session.sessionStatus === "scheduled" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}><span className="block uppercase">{session.sessionStatus === "missed" ? "Needs confirmation" : session.sessionStatus}</span><span className="line-clamp-2">{session.title}</span></button>)}</div> : <span className="mt-4 block text-[10px] text-muted-foreground">Rest / open</span>}</div>;
           })}
         </div>
-        {sessionsQuery.isLoading ? <p className="text-sm text-muted-foreground mt-3">Loading this week…</p> : selectedSession ? <div className="mt-3 p-4 rounded-xl bg-muted/50" data-testid="workout-session-detail"><div className="flex justify-between gap-3"><div><span className="text-xs font-bold text-primary uppercase">{selectedSession.sessionStatus}</span><h3 className="font-serif font-bold text-xl">{selectedSession.title}</h3><p className="text-sm text-muted-foreground">{selectedSession.participants.map(p => p.name).join(" + ")} · {selectedSession.durationMinutes ?? "—"} min</p></div><Clock3 className="w-5 h-5 text-muted-foreground" /></div><div className="mt-3 flex flex-wrap gap-2">{selectedSession.sessionStatus === "scheduled" && <><button data-testid="button-complete-session" onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Complete</button><button data-testid="button-reschedule-session" onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button data-testid="button-skip-session" onClick={() => resolve(selectedSession.id, "skipped")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Skip</button></>}{selectedSession.sessionStatus === "missed" && <><button onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Yes, completed it</button><button onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button onClick={() => resolve(selectedSession.id, "dismissed")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Dismiss</button></>}</div></div> : <p className="mt-3 text-sm text-muted-foreground">Select a day to see its workout details.</p>}
+        {sessionsQuery.isLoading ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading this week…</p>
+        ) : selectedSession ? (
+          <div className="mt-3 rounded-xl bg-muted/50 p-4" data-testid="workout-session-detail">
+            <div className="flex justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold uppercase text-primary">{selectedSession.sessionStatus}</span>
+                <h3 className="font-serif text-xl font-bold">{selectedSession.title}</h3>
+                <p className="text-sm text-muted-foreground">
+                  {selectedSession.participants.map(person => person.name).join(" + ")} · {selectedSession.durationMinutes ?? "—"} min
+                </p>
+              </div>
+              <Clock3 className="h-5 w-5 shrink-0 text-muted-foreground" />
+            </div>
+
+            {selectedSessionDetailQuery.isLoading ? (
+              <p className="mt-4 text-sm text-muted-foreground">Loading workout details…</p>
+            ) : selectedSessionDetailQuery.isError ? (
+              <div className="mt-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+                <p className="text-sm text-destructive">The workout details could not be loaded.</p>
+                <button
+                  type="button"
+                  onClick={() => selectedSessionDetailQuery.refetch()}
+                  className="mt-2 text-xs font-bold text-primary hover:underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : selectedSessionDetailQuery.data ? (
+              <div className="mt-4 space-y-3">
+                {selectedSessionDetailQuery.data.notes && (
+                  <p className="text-sm text-muted-foreground">{selectedSessionDetailQuery.data.notes}</p>
+                )}
+                {selectedSessionDetailQuery.data.exercises.length > 0 ? (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Exercises</h4>
+                    {selectedSessionDetailQuery.data.exercises.map((exercise, index) => (
+                      <div key={exercise.id} className="rounded-lg border border-border bg-background p-3">
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                            {index + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-foreground">{exercise.name}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {[
+                                exercise.sets && `${exercise.sets} sets`,
+                                exercise.reps && `${exercise.reps} reps`,
+                                exercise.weightLbs !== null && exercise.weightLbs !== undefined && `${exercise.weightLbs} lb`,
+                                exercise.durationSeconds && `${Math.round(exercise.durationSeconds / 60)} min`,
+                              ].filter(Boolean).join(" · ") || "Details not specified"}
+                            </p>
+                            {exercise.notes && <p className="mt-1 text-xs italic text-muted-foreground">{exercise.notes}</p>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                    No exercises were saved with this workout.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {selectedSession.sessionStatus === "scheduled" && (
+                <>
+                  <button type="button" data-testid="button-complete-session" onClick={() => resolve(selectedSession.id, "complete")} className="rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background">Complete</button>
+                  <button type="button" data-testid="button-reschedule-session" onClick={() => reschedule(selectedSession.id)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold">Reschedule</button>
+                  <button type="button" data-testid="button-skip-session" onClick={() => resolve(selectedSession.id, "skipped")} className="rounded-lg border border-border px-3 py-2 text-xs font-bold">Skip</button>
+                </>
+              )}
+              {selectedSession.sessionStatus === "missed" && (
+                <>
+                  <button type="button" onClick={() => resolve(selectedSession.id, "complete")} className="rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background">Yes, completed it</button>
+                  <button type="button" onClick={() => reschedule(selectedSession.id)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold">Reschedule</button>
+                  <button type="button" onClick={() => resolve(selectedSession.id, "dismissed")} className="rounded-lg border border-border px-3 py-2 text-xs font-bold">Dismiss</button>
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">Select a workout to see its exercises and details.</p>
+        )}
         {!sessionsQuery.isLoading && sessionsQuery.data?.length === 0 && !planItems && !dailyDraft && (
           <div className="mt-4 flex flex-col items-center justify-center p-5 text-center border border-dashed border-border rounded-2xl bg-muted/20">
             <Sparkles className="w-6 h-6 text-muted-foreground mb-2" />
