@@ -126,7 +126,7 @@ function AddExerciseForm({ workoutId, onAdded, onCancel }: { workoutId: string; 
       <div className="space-y-4">
         <div>
           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Exercise Name</label>
-          <input autoFocus type="text" required value={name} onChange={(e) => setName(e.target.value)}
+          <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
             className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             placeholder="e.g. Bench Press" />
         </div>
@@ -403,7 +403,7 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
           {addingExercise ? (
             <AddExerciseForm workoutId={workout.id} onAdded={() => setAddingExercise(false)} onCancel={() => setAddingExercise(false)} />
           ) : (
-            <button onClick={() => setAddingExercise(true)}
+            <button type="button" onClick={() => setAddingExercise(true)}
               className="mt-4 w-full py-2.5 rounded-lg border-2 border-dashed border-primary/30 text-primary font-bold text-sm hover:bg-primary/5 hover:border-primary/50 transition-colors flex items-center justify-center gap-2">
               <Plus className="w-4 h-4" /> Add Exercise
             </button>

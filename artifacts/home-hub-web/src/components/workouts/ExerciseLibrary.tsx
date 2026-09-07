@@ -9,9 +9,113 @@ import {
   getListExerciseLibraryQueryKey,
   useGetExerciseHistory,
   getGetExerciseHistoryQueryKey,
-  MuscleGroup
+  useGetWorkouts,
+  getGetWorkoutsQueryKey,
+  useGetWorkout,
+  getGetWorkoutQueryKey,
+  MuscleGroup,
+  WorkoutDraft
 } from "@workspace/api-client-react";
 import { MUSCLE_GROUPS, formatMuscleGroup } from "./WorkoutHistory";
+import { CalendarDays, Play, Flame } from "lucide-react";
+
+const STARTER_ROUTINES: WorkoutDraft[] = [
+  {
+    intent: "plan",
+    title: "Quick Core & Mobility",
+    durationMinutes: 20,
+    notes: "Focus on controlled breathing and full range of motion.",
+    rationale: "A foundational starter routine for building core strength and flexibility.",
+    exercises: [
+      { name: "Cat-Cow Stretch", muscleGroups: ["core", "back", "mobility"], sets: 2, reps: 10, weightLbs: null, durationSeconds: null, notes: "Slow and controlled" },
+      { name: "Plank", muscleGroups: ["core"], sets: 3, reps: null, weightLbs: null, durationSeconds: 60, notes: "Keep back straight" },
+      { name: "Bird Dog", muscleGroups: ["core", "back"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Per side" },
+      { name: "Glute Bridge", muscleGroups: ["glutes", "core"], sets: 3, reps: 15, weightLbs: null, durationSeconds: null, notes: "Squeeze at top" },
+    ]
+  },
+  {
+    intent: "plan",
+    title: "Dumbbell Full Body",
+    durationMinutes: 45,
+    notes: "Rest 60-90 seconds between sets. Choose a challenging but manageable weight.",
+    rationale: "A balanced full-body strength routine using basic equipment.",
+    exercises: [
+      { name: "Goblet Squat", muscleGroups: ["quadriceps", "glutes", "core"], sets: 3, reps: 12, weightLbs: null, durationSeconds: null, notes: "Keep chest up" },
+      { name: "Dumbbell Floor Press", muscleGroups: ["chest", "arms", "shoulders"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Slow descent" },
+      { name: "Bent Over Row", muscleGroups: ["back", "arms", "core"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Pull to hip" },
+      { name: "Romanian Deadlift", muscleGroups: ["hamstrings", "glutes", "back"], sets: 3, reps: 12, weightLbs: null, durationSeconds: null, notes: "Hinge at hips" },
+      { name: "Overhead Press", muscleGroups: ["shoulders", "arms", "core"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Don't arch lower back" },
+    ]
+  },
+  {
+    intent: "plan",
+    title: "Bodyweight HIIT",
+    durationMinutes: 30,
+    notes: "Perform as a circuit. 45 seconds work, 15 seconds rest. Repeat 4 times.",
+    rationale: "High-intensity cardio and muscular endurance without equipment.",
+    exercises: [
+      { name: "Jumping Jacks", muscleGroups: ["cardio", "full_body"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Light on feet" },
+      { name: "Push-ups", muscleGroups: ["chest", "shoulders", "arms"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Modify on knees if needed" },
+      { name: "Bodyweight Squats", muscleGroups: ["quadriceps", "glutes", "cardio"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Explosive up" },
+      { name: "Mountain Climbers", muscleGroups: ["core", "cardio", "shoulders"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Keep hips down" },
+      { name: "Burpees", muscleGroups: ["full_body", "cardio", "core"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Pace yourself" }
+    ]
+  }
+];
+
+function CompletedWorkoutRoutine({ workout, onUseRoutine }: { workout: any, onUseRoutine: (routine: WorkoutDraft) => void }) {
+  const [isFetching, setIsFetching] = useState(false);
+  const { data: detail, isFetching: isLoading } = useGetWorkout(workout.id, {
+    query: {
+      enabled: isFetching,
+      queryKey: getGetWorkoutQueryKey(workout.id)
+    }
+  });
+
+  React.useEffect(() => {
+    if (isFetching && detail) {
+      setIsFetching(false);
+      onUseRoutine({
+        intent: "plan",
+        title: detail.title,
+        durationMinutes: detail.durationMinutes || 30,
+        notes: detail.notes || null,
+        rationale: "Reused from your history.",
+        exercises: detail.exercises.map((ex: any) => ({
+          name: ex.name,
+          muscleGroups: ex.muscleGroups,
+          sets: ex.sets || null,
+          reps: ex.reps || null,
+          weightLbs: ex.weightLbs || null,
+          durationSeconds: ex.durationSeconds || null,
+          notes: ex.notes || null
+        }))
+      });
+    }
+  }, [isFetching, detail, onUseRoutine]);
+
+  return (
+    <div className="p-4 bg-card border border-border rounded-xl hover:border-primary/40 transition-colors">
+      <div className="flex justify-between items-start gap-3">
+        <div>
+          <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+            <Flame className="w-4 h-4 text-primary" />
+            {workout.title}
+          </h4>
+          <p className="text-xs text-muted-foreground mt-1">
+            {workout.exerciseCount} exercises · {workout.durationMinutes ? `${workout.durationMinutes}m` : "No duration"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Completed: {new Date(`${workout.workoutDate}T12:00:00`).toLocaleDateString()}
+          </p>
+        </div>
+        <button onClick={() => setIsFetching(true)} disabled={isLoading || isFetching} className="shrink-0 flex items-center justify-center h-8 px-3 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors disabled:opacity-50">
+          <Play className="w-3 h-3 mr-1.5" /> Use
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function ExerciseHistory({ exerciseId, onUse }: { exerciseId: string; onUse: (exercise: any) => void }) {
   const { data, isLoading, isError } = useGetExerciseHistory(exerciseId, { query: { queryKey: getGetExerciseHistoryQueryKey(exerciseId) } });
@@ -52,7 +156,7 @@ function LibraryExerciseForm({
       <div className="space-y-4">
         <div>
           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Exercise Name</label>
-          <input autoFocus type="text" required value={name} onChange={(e) => setName(e.target.value)}
+          <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
             className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             placeholder="e.g. Barbell Squat" />
         </div>
@@ -93,12 +197,17 @@ function LibraryExerciseForm({
   );
 }
 
-export function ExerciseLibrary({ onUse }: { onUse?: (exercise: any) => void }) {
+export function ExerciseLibrary({ onUseExercise, onUseRoutine }: { onUseExercise?: (exercise: any) => void; onUseRoutine?: (routine: WorkoutDraft) => void }) {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<"routines" | "exercises">("routines");
+
   const { data: exercises, isLoading } = useListExerciseLibrary({
     query: { queryKey: getListExerciseLibraryQueryKey() }
   });
   
+  const { data: allWorkouts } = useGetWorkouts({}, { query: { queryKey: getGetWorkoutsQueryKey() } });
+  const completedWorkouts = allWorkouts?.filter(w => w.sessionStatus === "completed" && w.exerciseCount > 0) || [];
+
   const createExercise = useCreateLibraryExercise();
   const updateExercise = useUpdateLibraryExercise();
   const deleteExercise = useDeleteLibraryExercise();
@@ -187,17 +296,19 @@ export function ExerciseLibrary({ onUse }: { onUse?: (exercise: any) => void }) 
         </div>
         
         <div className="flex gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input 
-              type="text" 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Search..." 
-              className="w-full bg-background border border-border rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-primary"
-            />
-          </div>
-          {!adding && (
+          {activeTab === "exercises" && (
+            <div className="relative flex-1 sm:w-64">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Search..."
+                className="w-full bg-background border border-border rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+          )}
+          {!adding && activeTab === "exercises" && (
             <button 
               onClick={() => { setAdding(true); setEditingId(null); setErrorMsg(null); }}
               className="flex items-center justify-center w-10 h-10 sm:w-auto sm:px-4 shrink-0 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -209,13 +320,18 @@ export function ExerciseLibrary({ onUse }: { onUse?: (exercise: any) => void }) 
         </div>
       </div>
 
-      {errorMsg && (
+      <div className="flex gap-2 border-b border-border pb-px">
+        <button onClick={() => setActiveTab("routines")} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === "routines" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>Workout routines</button>
+        <button onClick={() => setActiveTab("exercises")} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === "exercises" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>Exercises</button>
+      </div>
+
+      {errorMsg && activeTab === "exercises" && (
         <div className="bg-destructive/10 border-l-4 border-destructive p-4 rounded-r-lg text-sm text-destructive">
           {errorMsg}
         </div>
       )}
 
-      {adding && (
+      {adding && activeTab === "exercises" && (
         <LibraryExerciseForm 
           initial={{ name: "", muscleGroups: ["full_body" as MuscleGroup] }}
           onSave={handleCreate}
@@ -224,7 +340,44 @@ export function ExerciseLibrary({ onUse }: { onUse?: (exercise: any) => void }) 
         />
       )}
 
-      {Object.keys(grouped).length === 0 ? (
+      {activeTab === "routines" ? (
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <h3 className="font-bold text-lg text-foreground border-b border-border pb-2">Starter routines</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {STARTER_ROUTINES.map((routine, idx) => (
+                <div key={idx} className="p-4 bg-card border border-border rounded-xl hover:border-primary/40 transition-colors">
+                  <div className="flex justify-between items-start gap-3">
+                    <div>
+                      <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                        <Flame className="w-4 h-4 text-primary" />
+                        {routine.title}
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {routine.exercises.length} exercises · {routine.durationMinutes}m
+                      </p>
+                    </div>
+                    <button onClick={() => onUseRoutine?.(routine)} className="shrink-0 flex items-center justify-center h-8 px-3 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors">
+                      <Play className="w-3 h-3 mr-1.5" /> Use
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {completedWorkouts.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-bold text-lg text-foreground border-b border-border pb-2">From your history</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {completedWorkouts.map(w => (
+                  <CompletedWorkoutRoutine key={w.id} workout={w} onUseRoutine={onUseRoutine || (() => {})} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : Object.keys(grouped).length === 0 ? (
         <div className="text-center py-12 text-muted-foreground bg-card border border-border border-dashed rounded-2xl">
           <p>No exercises found.</p>
         </div>
@@ -279,10 +432,10 @@ export function ExerciseLibrary({ onUse }: { onUse?: (exercise: any) => void }) 
                         </div>
                         {expandedId === ex.id && (
                           <div className="border-t border-border/60 mt-3 pt-3">
-                            <button onClick={() => onUse?.({ name: ex.name, muscleGroups: ex.muscleGroups, sets: null, reps: null, weightLbs: null, durationSeconds: null, notes: null })} className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 py-2 text-sm font-bold text-primary hover:bg-primary/20">
+                            <button type="button" onClick={() => onUseExercise?.({ name: ex.name, muscleGroups: ex.muscleGroups, sets: null, reps: null, weightLbs: null, durationSeconds: null, notes: null })} className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 py-2 text-sm font-bold text-primary hover:bg-primary/20">
                               <Sparkles className="w-4 h-4" /> Add to Coach Draft
                             </button>
-                            <ExerciseHistory exerciseId={ex.id} onUse={onUse || (() => {})} />
+                            <ExerciseHistory exerciseId={ex.id} onUse={onUseExercise || (() => {})} />
                           </div>
                         )}
                       </div>

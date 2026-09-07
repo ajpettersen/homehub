@@ -961,7 +961,6 @@ router.post("/ai/workout-week-plan", async (req, res) => {
               type: "array",
               minItems: 1,
               maxItems: 20,
-              uniqueItems: true,
               items: { type: "string", enum: parsed.data.participantIds },
             },
             workout: draftJsonSchema,

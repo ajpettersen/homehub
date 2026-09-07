@@ -24,13 +24,17 @@ export function WorkoutCoach({
   onWorkoutLogged,
   onClose,
   libraryExercise,
-  onLibraryExerciseAdded
+  onLibraryExerciseAdded,
+  libraryRoutine,
+  onLibraryRoutineAdded
 }: {
   participantIds: string[];
   onWorkoutLogged: () => void;
   onClose: () => void;
   libraryExercise?: DraftExercise | null;
   onLibraryExerciseAdded?: () => void;
+  libraryRoutine?: WorkoutDraft | null;
+  onLibraryRoutineAdded?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { data: conversation, isLoading } = useGetWorkoutCoachConversation({
@@ -55,7 +59,7 @@ export function WorkoutCoach({
     const messages = messagesRef.current;
     if (!messages) return;
     messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
-  }, [conversation?.messages, draft, sendMessage.isPending]);
+  }, [conversation?.messages, sendMessage.isPending]);
   useEffect(() => {
     if (preferences?.currentLocalDate && !workoutDate) setWorkoutDate(preferences.currentLocalDate);
   }, [preferences?.currentLocalDate, workoutDate]);
@@ -67,6 +71,12 @@ export function WorkoutCoach({
     });
     onLibraryExerciseAdded?.();
   }, [libraryExercise, onLibraryExerciseAdded, preferences?.sessionDurationMinutes]);
+
+  useEffect(() => {
+    if (!libraryRoutine) return;
+    setDraft(libraryRoutine);
+    onLibraryRoutineAdded?.();
+  }, [libraryRoutine, onLibraryRoutineAdded]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,6 +259,7 @@ export function WorkoutCoach({
               {isLogging ? "Saving..." : (draft.intent ?? "plan") === "plan" || workoutDate > (preferences?.currentLocalDate ?? "") ? <><CalendarDays className="w-5 h-5" /> Add to workout plan</> : <><Activity className="w-5 h-5" /> Log completed workout</>}
             </button>
             <button
+              type="button"
               onClick={() => setDraft(null)}
               className="w-full mt-2 py-2 font-bold rounded-xl border border-border text-muted-foreground hover:bg-muted transition-all"
             >

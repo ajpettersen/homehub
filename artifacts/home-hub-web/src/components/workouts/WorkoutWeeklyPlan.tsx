@@ -11,6 +11,9 @@ import {
   useCompleteWorkoutSession,
   useUpdateWorkoutSessionStatus,
   useRescheduleWorkoutSession,
+  useDraftWorkout,
+  useScheduleWorkoutSession,
+  useGetWorkouts,
   getGetWorkoutPreferencesQueryKey,
   getGetWorkoutsQueryKey,
   getGetWorkoutSessionsQueryKey,
@@ -20,8 +23,102 @@ import {
   WorkoutDraft
 } from "@workspace/api-client-react";
 import { EditableDraftWorkout } from "./EditableDraftWorkout";
+import { useGetWorkout, getGetWorkoutQueryKey } from "@workspace/api-client-react";
+
+function SwapHistoryButton({ workout, onSelect }: { workout: any; onSelect: (draft: WorkoutDraft) => void }) {
+  const [isFetching, setIsFetching] = useState(false);
+  const { data: detail, isFetching: isLoading } = useGetWorkout(workout.id, {
+    query: {
+      enabled: isFetching,
+      queryKey: getGetWorkoutQueryKey(workout.id)
+    }
+  });
+
+  useEffect(() => {
+    if (isFetching && detail) {
+      setIsFetching(false);
+      onSelect({
+        intent: "plan",
+        title: detail.title,
+        durationMinutes: detail.durationMinutes || 30,
+        notes: detail.notes || null,
+        rationale: "Reused from your history.",
+        exercises: detail.exercises.map((ex: any) => ({
+          name: ex.name,
+          muscleGroups: ex.muscleGroups,
+          sets: ex.sets || null,
+          reps: ex.reps || null,
+          weightLbs: ex.weightLbs || null,
+          durationSeconds: ex.durationSeconds || null,
+          notes: ex.notes || null
+        }))
+      });
+    }
+  }, [isFetching, detail, onSelect]);
+
+  return (
+    <button
+      type="button"
+      disabled={isLoading || isFetching}
+      onClick={() => setIsFetching(true)}
+      className="flex justify-between items-center text-left p-3 rounded-xl border border-border hover:border-primary/50 transition-colors group bg-background disabled:opacity-50"
+    >
+      <div>
+        <strong className="font-bold text-sm block">{workout.title}</strong>
+        <span className="text-xs text-muted-foreground">{workout.exerciseCount} exercises</span>
+      </div>
+      <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+        <Check className="w-4 h-4" />
+      </div>
+    </button>
+  );
+}
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const STARTER_ROUTINES: WorkoutDraft[] = [
+  {
+    intent: "plan",
+    title: "Quick Core & Mobility",
+    durationMinutes: 20,
+    notes: "Focus on controlled breathing and full range of motion.",
+    rationale: "A foundational starter routine for building core strength and flexibility.",
+    exercises: [
+      { name: "Cat-Cow Stretch", muscleGroups: ["core", "back", "mobility"], sets: 2, reps: 10, weightLbs: null, durationSeconds: null, notes: "Slow and controlled" },
+      { name: "Plank", muscleGroups: ["core"], sets: 3, reps: null, weightLbs: null, durationSeconds: 60, notes: "Keep back straight" },
+      { name: "Bird Dog", muscleGroups: ["core", "back"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Per side" },
+      { name: "Glute Bridge", muscleGroups: ["glutes", "core"], sets: 3, reps: 15, weightLbs: null, durationSeconds: null, notes: "Squeeze at top" },
+    ]
+  },
+  {
+    intent: "plan",
+    title: "Dumbbell Full Body",
+    durationMinutes: 45,
+    notes: "Rest 60-90 seconds between sets. Choose a challenging but manageable weight.",
+    rationale: "A balanced full-body strength routine using basic equipment.",
+    exercises: [
+      { name: "Goblet Squat", muscleGroups: ["quadriceps", "glutes", "core"], sets: 3, reps: 12, weightLbs: null, durationSeconds: null, notes: "Keep chest up" },
+      { name: "Dumbbell Floor Press", muscleGroups: ["chest", "arms", "shoulders"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Slow descent" },
+      { name: "Bent Over Row", muscleGroups: ["back", "arms", "core"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Pull to hip" },
+      { name: "Romanian Deadlift", muscleGroups: ["hamstrings", "glutes", "back"], sets: 3, reps: 12, weightLbs: null, durationSeconds: null, notes: "Hinge at hips" },
+      { name: "Overhead Press", muscleGroups: ["shoulders", "arms", "core"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Don't arch lower back" },
+    ]
+  },
+  {
+    intent: "plan",
+    title: "Bodyweight HIIT",
+    durationMinutes: 30,
+    notes: "Perform as a circuit. 45 seconds work, 15 seconds rest. Repeat 4 times.",
+    rationale: "High-intensity cardio and muscular endurance without equipment.",
+    exercises: [
+      { name: "Jumping Jacks", muscleGroups: ["cardio", "full_body"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Light on feet" },
+      { name: "Push-ups", muscleGroups: ["chest", "shoulders", "arms"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Modify on knees if needed" },
+      { name: "Bodyweight Squats", muscleGroups: ["quadriceps", "glutes", "cardio"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Explosive up" },
+      { name: "Mountain Climbers", muscleGroups: ["core", "cardio", "shoulders"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Keep hips down" },
+      { name: "Burpees", muscleGroups: ["full_body", "cardio", "core"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Pace yourself" }
+    ]
+  }
+];
 
 const currentMonday = () => format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
 
@@ -43,6 +140,14 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
   const completeSession = useCompleteWorkoutSession();
   const updateSessionStatus = useUpdateWorkoutSessionStatus();
   const rescheduleSession = useRescheduleWorkoutSession();
+  const draftWorkout = useDraftWorkout();
+  const scheduleSession = useScheduleWorkoutSession();
+  const { data: allWorkouts } = useGetWorkouts({}, { query: { queryKey: getGetWorkoutsQueryKey() } });
+
+  const [planMode, setPlanMode] = useState<"daily" | "weekly">("weekly");
+  const [dailyDraft, setDailyDraft] = useState<WorkoutDraft | null>(null);
+  const [schedulingDaily, setSchedulingDaily] = useState(false);
+  const [swapTargetIdx, setSwapTargetIdx] = useState<number | null>(null);
 
   const [preferences, setPreferences] = useState<WorkoutPreferencesInput>({
     daysOfWeek: [1, 3, 5],
@@ -153,6 +258,61 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
     }
   };
 
+  const handleGenerateDaily = async () => {
+    if (participantIds.length === 0) {
+      setActionMessage("Select at least one adult above before generating a plan.");
+      return;
+    }
+    setActionMessage(null);
+    try {
+      const draft = await draftWorkout.mutateAsync({
+        data: {
+          prompt: `Generate a workout for today. Goals: ${preferences.goals}. Equipment: ${preferences.equipment}. Limitations: ${preferences.limitations}. Duration: ${preferences.sessionDurationMinutes} mins.`,
+          participantIds,
+        }
+      });
+      setDailyDraft({ ...draft, intent: "plan" });
+    } catch (e) {
+      console.error(e);
+      setActionMessage("The daily plan could not be generated. Please try again.");
+    }
+  };
+
+  const handleScheduleDaily = async () => {
+    if (!dailyDraft || participantIds.length === 0) return;
+    setSchedulingDaily(true);
+    try {
+      await scheduleSession.mutateAsync({
+        data: {
+          participantIds,
+          title: dailyDraft.title,
+          scheduledDate: prefData?.currentLocalDate ?? format(new Date(), "yyyy-MM-dd"),
+          scheduledTimezone: preferences.timezone,
+          durationMinutes: dailyDraft.durationMinutes,
+          notes: dailyDraft.notes || null,
+          exercises: dailyDraft.exercises.filter((ex: any) => ex.name).map((ex: any) => ({
+            name: ex.name,
+            muscleGroups: ex.muscleGroups,
+            sets: ex.sets,
+            reps: ex.reps,
+            weightLbs: ex.weightLbs,
+            durationSeconds: ex.durationSeconds,
+            notes: ex.notes
+          }))
+        }
+      });
+      invalidateSessions();
+      setDailyDraft(null);
+      setActionMessage("Today's workout has been scheduled.");
+      onPlanSaved();
+    } catch (e) {
+      console.error(e);
+      setActionMessage("The workout could not be scheduled. Please try again.");
+    } finally {
+      setSchedulingDaily(false);
+    }
+  };
+
   const updateDraft = (index: number, newDraft: WorkoutDraft) => {
     if (!planItems) return;
     const newItems = [...planItems];
@@ -167,6 +327,13 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
     });
   };
 
+  const handleSwapSelect = (draft: WorkoutDraft) => {
+    if (swapTargetIdx !== null) {
+      updateDraft(swapTargetIdx, draft);
+      setSwapTargetIdx(null);
+    }
+  };
+
   if (prefLoading) {
     return <div className="animate-pulse h-64 bg-muted rounded-3xl" />;
   }
@@ -175,8 +342,22 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
     <div className="space-y-6">
       <section className="bg-card border border-border rounded-3xl p-4 sm:p-6 shadow-sm" data-testid="weekly-plan-calendar">
         <div className="flex flex-col sm:flex-row justify-between gap-4 sm:items-start">
-          <div><p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Shared schedule</p><h2 className="font-serif font-bold text-2xl">Make room for moving.</h2><p className="text-sm text-muted-foreground">Planned sessions and completed history, side by side.</p></div>
-          <div className="flex items-center gap-2"><button data-testid="button-previous-workout-week" onClick={() => setWeekStart(format(addWeeks(new Date(`${validWeekStart}T12:00:00`), -1), "yyyy-MM-dd"))} className="p-2 border border-border rounded-lg"><ChevronLeft className="w-4 h-4" /></button><strong className="text-xs min-w-36 text-center">{`${format(new Date(`${validWeekStart}T12:00:00`), "MMM d")} – ${format(addDays(new Date(`${validWeekStart}T12:00:00`), 6), "MMM d")}`}</strong><button data-testid="button-next-workout-week" onClick={() => setWeekStart(format(addWeeks(new Date(`${validWeekStart}T12:00:00`), 1), "yyyy-MM-dd"))} className="p-2 border border-border rounded-lg"><ChevronRight className="w-4 h-4" /></button></div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Shared schedule</p>
+            <h2 className="font-serif font-bold text-2xl">Make room for moving.</h2>
+            <p className="text-sm text-muted-foreground">Planned sessions and completed history, side by side.</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex bg-muted/50 p-1 rounded-xl self-end">
+              <button type="button" onClick={() => setPlanMode("weekly")} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-colors ${planMode === "weekly" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Weekly</button>
+              <button type="button" onClick={() => setPlanMode("daily")} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-colors ${planMode === "daily" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Daily</button>
+            </div>
+            <div className="flex items-center gap-2 self-end">
+              <button data-testid="button-previous-workout-week" onClick={() => setWeekStart(format(addWeeks(new Date(`${validWeekStart}T12:00:00`), -1), "yyyy-MM-dd"))} className="p-2 border border-border rounded-lg"><ChevronLeft className="w-4 h-4" /></button>
+              <strong className="text-xs min-w-36 text-center">{`${format(new Date(`${validWeekStart}T12:00:00`), "MMM d")} – ${format(addDays(new Date(`${validWeekStart}T12:00:00`), 6), "MMM d")}`}</strong>
+              <button data-testid="button-next-workout-week" onClick={() => setWeekStart(format(addWeeks(new Date(`${validWeekStart}T12:00:00`), 1), "yyyy-MM-dd"))} className="p-2 border border-border rounded-lg"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          </div>
         </div>
         <div className="mt-5 flex gap-2 overflow-x-auto pb-2 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {Array.from({ length: 7 }, (_, day) => {
@@ -186,7 +367,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
           })}
         </div>
         {sessionsQuery.isLoading ? <p className="text-sm text-muted-foreground mt-3">Loading this week…</p> : selectedSession ? <div className="mt-3 p-4 rounded-xl bg-muted/50" data-testid="workout-session-detail"><div className="flex justify-between gap-3"><div><span className="text-xs font-bold text-primary uppercase">{selectedSession.sessionStatus}</span><h3 className="font-serif font-bold text-xl">{selectedSession.title}</h3><p className="text-sm text-muted-foreground">{selectedSession.participants.map(p => p.name).join(" + ")} · {selectedSession.durationMinutes ?? "—"} min</p></div><Clock3 className="w-5 h-5 text-muted-foreground" /></div><div className="mt-3 flex flex-wrap gap-2">{selectedSession.sessionStatus === "scheduled" && <><button data-testid="button-complete-session" onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Complete</button><button data-testid="button-reschedule-session" onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button data-testid="button-skip-session" onClick={() => resolve(selectedSession.id, "skipped")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Skip</button></>}{selectedSession.sessionStatus === "missed" && <><button onClick={() => resolve(selectedSession.id, "complete")} className="px-3 py-2 rounded-lg bg-foreground text-background text-xs font-bold">Yes, completed it</button><button onClick={() => reschedule(selectedSession.id)} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Reschedule</button><button onClick={() => resolve(selectedSession.id, "dismissed")} className="px-3 py-2 rounded-lg border border-border text-xs font-bold">Dismiss</button></>}</div></div> : <p className="mt-3 text-sm text-muted-foreground">Select a day to see its workout details.</p>}
-        {!sessionsQuery.isLoading && sessionsQuery.data?.length === 0 && !planItems && (
+        {!sessionsQuery.isLoading && sessionsQuery.data?.length === 0 && !planItems && !dailyDraft && (
           <div className="mt-4 flex flex-col items-center justify-center p-5 text-center border border-dashed border-border rounded-2xl bg-muted/20">
             <Sparkles className="w-6 h-6 text-muted-foreground mb-2" />
             <h3 className="font-bold text-foreground text-sm">Your week is completely open</h3>
@@ -194,12 +375,18 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
               Generate a weekly plan below based on your preferences, ask the Coach for a workout, or log one manually.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <button onClick={() => {
-                if (preferences.daysOfWeek.length === 0) setShowSettings(true);
-                else handleGenerate();
-              }} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90">
-                {preferences.daysOfWeek.length === 0 ? "Set Preferences & Plan" : "Generate Weekly Plan"}
-              </button>
+              {planMode === "weekly" ? (
+                <button onClick={() => {
+                  if (preferences.daysOfWeek.length === 0) setShowSettings(true);
+                  else handleGenerate();
+                }} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90">
+                  {preferences.daysOfWeek.length === 0 ? "Set Preferences & Plan" : "Generate Weekly Plan"}
+                </button>
+              ) : (
+                <button onClick={handleGenerateDaily} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90">
+                  Generate Daily Plan
+                </button>
+              )}
               {onOpenCoach && (
                 <button onClick={onOpenCoach} className="px-4 py-2 bg-muted text-foreground text-xs font-bold rounded-xl hover:bg-muted/80">
                   Ask Coach
@@ -214,7 +401,57 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
           </div>
         )}
       </section>
-      {!planItems ? (
+
+      {planMode === "daily" && !dailyDraft && (
+        <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h2 className="font-serif font-bold text-2xl mb-1">Daily AI Planner</h2>
+              <p className="text-muted-foreground text-sm">Generate a tailored workout for today.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleGenerateDaily}
+            disabled={draftWorkout.isPending}
+            className="w-full py-4 bg-primary text-primary-foreground font-bold text-lg rounded-xl hover:bg-primary/90 transition-all shadow-md shadow-primary/20 disabled:opacity-50 flex justify-center items-center gap-2"
+          >
+            {draftWorkout.isPending ? (
+              <><RefreshCw className="w-5 h-5 animate-spin" /> Generating Plan...</>
+            ) : (
+              <><Sparkles className="w-5 h-5" /> Generate Today's Plan</>
+            )}
+          </button>
+          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-muted-foreground" role="status">{actionMessage}</p>}
+        </div>
+      )}
+
+      {planMode === "daily" && dailyDraft && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="flex flex-col justify-between gap-3 bg-card p-4 rounded-2xl border border-border sticky top-0 z-10 shadow-sm sm:flex-row sm:items-center">
+            <div>
+              <h2 className="font-bold text-lg">Review Schedule</h2>
+              <p className="text-xs text-muted-foreground">Adjust your workout before scheduling.</p>
+            </div>
+            <div className="flex gap-2 sm:justify-end">
+              <button type="button" onClick={() => setDailyDraft(null)} disabled={schedulingDaily} className="px-4 py-2 border border-border rounded-lg text-sm font-bold hover:bg-muted">Cancel</button>
+              <button type="button" onClick={handleScheduleDaily} disabled={schedulingDaily} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-md">
+                <Check className="w-4 h-4" /> {schedulingDaily ? "Scheduling..." : "Add to today's plan"}
+              </button>
+            </div>
+          </div>
+          <div className="bg-card border border-border p-4 rounded-3xl shadow-sm">
+            <h3 className="font-serif font-bold text-xl mb-4 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" />
+              Today
+            </h3>
+            <EditableDraftWorkout draft={dailyDraft} onUpdate={setDailyDraft} />
+          </div>
+          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-muted-foreground" role="status">{actionMessage}</p>}
+        </div>
+      )}
+
+      {planMode === "weekly" && !planItems ? (
         <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
           <div className="flex justify-between items-start mb-6">
             <div>
@@ -309,7 +546,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
           </button>
           {actionMessage && <p className="mt-3 text-center text-sm font-medium text-muted-foreground" role="status">{actionMessage}</p>}
         </div>
-      ) : (
+      ) : planMode === "weekly" && planItems ? (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
           <div className="flex flex-col justify-between gap-3 bg-card p-4 rounded-2xl border border-border sticky top-0 z-10 shadow-sm sm:flex-row sm:items-center">
             <div>
@@ -326,11 +563,14 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
 
           <div className="space-y-6">
             {planItems.map((item, idx) => (
-              <div key={idx} className="bg-card border border-border p-4 rounded-3xl shadow-sm">
-                <h3 className="font-serif font-bold text-xl mb-4 flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-primary" />
-                  {format(new Date(item.workoutDate), "EEEE, MMM d")}
-                </h3>
+              <div key={idx} className="bg-card border border-border p-4 rounded-3xl shadow-sm relative">
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="font-serif font-bold text-xl flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-primary" />
+                    {format(new Date(item.workoutDate), "EEEE, MMM d")}
+                  </h3>
+                  <button type="button" onClick={() => setSwapTargetIdx(idx)} className="px-3 py-1.5 border border-border text-xs font-bold rounded-lg hover:bg-muted text-muted-foreground transition-colors">Swap workout</button>
+                </div>
                 <EditableDraftWorkout 
                   draft={item.workout} 
                   onUpdate={(newDraft) => updateDraft(idx, newDraft)} 
@@ -342,6 +582,50 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
                 No workouts scheduled for the selected days.
               </p>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {swapTargetIdx !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in" onClick={() => setSwapTargetIdx(null)}>
+          <div className="bg-card w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl border border-border shadow-2xl p-6 relative" onClick={e => e.stopPropagation()}>
+            <h3 className="font-serif font-bold text-2xl mb-4">Choose a workout</h3>
+            <p className="text-sm text-muted-foreground mb-6">Select a starter routine or completed workout from your history to replace this day's plan.</p>
+
+            <div className="space-y-6">
+              <div>
+                <h4 className="font-bold text-sm text-foreground mb-3 uppercase tracking-wider">Starter Routines</h4>
+                <div className="grid gap-3">
+                  {STARTER_ROUTINES.map((routine, idx) => (
+                    <button key={`starter-${idx}`} onClick={() => handleSwapSelect(routine)} className="flex justify-between items-center text-left p-3 rounded-xl border border-border hover:border-primary/50 transition-colors group bg-background">
+                      <div>
+                        <strong className="font-bold text-sm block">{routine.title}</strong>
+                        <span className="text-xs text-muted-foreground">{routine.exercises.length} exercises · {routine.durationMinutes}m</span>
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Check className="w-4 h-4" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {allWorkouts && allWorkouts.filter(w => w.sessionStatus === "completed").length > 0 && (
+                <div>
+                  <h4 className="font-bold text-sm text-foreground mb-3 uppercase tracking-wider">From your history</h4>
+                  <div className="grid gap-3">
+                    {allWorkouts.filter(w => w.sessionStatus === "completed").map((w) => (
+                      <SwapHistoryButton key={`history-${w.id}`} workout={w} onSelect={handleSwapSelect} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button type="button" onClick={() => setSwapTargetIdx(null)} className="absolute top-4 right-4 p-2 text-muted-foreground hover:bg-muted rounded-full">
+              <span className="sr-only">Close</span>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
           </div>
         </div>
       )}

@@ -22,3 +22,4 @@
 - [Publish foreign-key staging](publish-foreign-key-staging.md) — when Publish orders a new composite FK before its unique prerequisite, ship the uniqueness first and the FK in a second publish.
 - [Paid chore wallets](paid-chore-wallets.md) — rewards are virtual ledger credits posted only after adult approval; recurring payouts are idempotent per occurrence.
 - [Development preview identity](development-preview-identity.md) — interactive previews use a synthetic demo household identity that must be impossible to activate in production.
+- [Strict AI schema compatibility](strict-ai-schema-compatibility.md) — omit unsupported JSON Schema keywords from strict output schemas; enforce those invariants server-side.

@@ -134,7 +134,7 @@ export function EditableDraftWorkout({
           </div>
         ))}
 
-        <button onClick={handleAddEx}
+        <button type="button" onClick={handleAddEx}
           className="w-full py-2 border-2 border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary rounded-xl flex items-center justify-center gap-1 text-xs font-bold transition-colors">
           <Plus className="w-3 h-3" /> Add Exercise
         </button>

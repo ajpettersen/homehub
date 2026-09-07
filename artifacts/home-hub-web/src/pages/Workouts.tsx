@@ -6,7 +6,8 @@ import {
   useGetWorkouts,
   useGetFamilyMembers, useGetOverdueWorkoutSessions, useCompleteWorkoutSession, useUpdateWorkoutSessionStatus, useGetWorkoutPreferences, useUpdateWorkoutPreferences,
   getGetWorkoutsQueryKey,
-  getGetFamilyMembersQueryKey, getGetOverdueWorkoutSessionsQueryKey, getGetWorkoutSessionsQueryKey, getGetWorkoutPreferencesQueryKey, WorkoutPreferencesInput, DraftExercise
+  getGetFamilyMembersQueryKey, getGetOverdueWorkoutSessionsQueryKey, getGetWorkoutSessionsQueryKey, getGetWorkoutPreferencesQueryKey, WorkoutPreferencesInput, DraftExercise,
+  WorkoutDraft
 } from "@workspace/api-client-react";
 import { Plus, History, Calendar, Sparkles, BookOpen, WandSparkles, Bell, Check } from "lucide-react";
 import { WorkoutHistory } from "@/components/workouts/WorkoutHistory";
@@ -19,7 +20,7 @@ const WORKOUT_TABS = [
   { id: "coach", label: "Coach", Icon: Sparkles },
   { id: "plan", label: "Weekly Plan", Icon: Calendar },
   { id: "history", label: "History", Icon: History },
-  { id: "library", label: "Exercise Library", Icon: BookOpen }
+  { id: "library", label: "Library", Icon: BookOpen }
 ] as const;
 
 type WorkoutTab = typeof WORKOUT_TABS[number]["id"];
@@ -63,6 +64,7 @@ export default function Workouts() {
   const [setupStep, setSetupStep] = useState(1);
   const [setupConfirmation, setSetupConfirmation] = useState<string | null>(null);
   const [pendingLibraryExercise, setPendingLibraryExercise] = useState<DraftExercise | null>(null);
+  const [pendingLibraryRoutine, setPendingLibraryRoutine] = useState<WorkoutDraft | null>(null);
   const [setupValues, setSetupValues] = useState<WorkoutPreferencesInput>({ daysOfWeek: [1, 3, 6], goals: "", sessionDurationMinutes: 30, equipment: "", limitations: "", notes: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
   useEffect(() => {
     if (!preferencesLoaded || !workoutPreferences) return;
@@ -227,11 +229,11 @@ export default function Workouts() {
         )}
         
         {activeTab === "coach" && (
-          <WorkoutCoach participantIds={selectedIds} onWorkoutLogged={() => setActiveTab("history")} onClose={() => setActiveTab("history")} libraryExercise={pendingLibraryExercise} onLibraryExerciseAdded={() => setPendingLibraryExercise(null)} />
+          <WorkoutCoach participantIds={selectedIds} onWorkoutLogged={() => setActiveTab("history")} onClose={() => setActiveTab("history")} libraryExercise={pendingLibraryExercise} onLibraryExerciseAdded={() => setPendingLibraryExercise(null)} libraryRoutine={pendingLibraryRoutine} onLibraryRoutineAdded={() => setPendingLibraryRoutine(null)} />
         )}
         
         {activeTab === "library" && (
-          <ExerciseLibrary onUse={exercise => { setPendingLibraryExercise(exercise); setActiveTab("coach"); }} />
+          <ExerciseLibrary onUseExercise={exercise => { setPendingLibraryExercise(exercise); setActiveTab("coach"); }} onUseRoutine={routine => { setPendingLibraryRoutine(routine); setActiveTab("coach"); }} />
         )}
       </div>
 
