@@ -193,6 +193,7 @@ export * from './workoutDetailSessionKind';
 export * from './workoutDetailSessionStatus';
 export * from './workoutDraft';
 export * from './workoutDraftInput';
+export * from './workoutDraftIntent';
 export * from './workoutParticipant';
 export * from './workoutPreferences';
 export * from './workoutPreferencesInput';

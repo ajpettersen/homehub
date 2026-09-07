@@ -6,8 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DraftExercise } from './draftExercise';
+import type { WorkoutDraftIntent } from './workoutDraftIntent';
 
 export interface WorkoutDraft {
+  /** Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans. */
+  intent?: WorkoutDraftIntent;
   /**
      * @minLength 1
      * @maxLength 160

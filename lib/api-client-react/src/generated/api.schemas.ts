@@ -480,7 +480,20 @@ export interface DraftExercise {
   notes: string | null;
 }
 
+/**
+ * Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.
+ */
+export type WorkoutDraftIntent = typeof WorkoutDraftIntent[keyof typeof WorkoutDraftIntent];
+
+
+export const WorkoutDraftIntent = {
+  plan: 'plan',
+  log_completed: 'log_completed',
+} as const;
+
 export interface WorkoutDraft {
+  /** Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans. */
+  intent?: WorkoutDraftIntent;
   /**
      * @minLength 1
      * @maxLength 160

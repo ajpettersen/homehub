@@ -2826,6 +2826,7 @@ export const draftWorkoutResponseExercisesMax = 30;
 
 
 export const DraftWorkoutResponse = zod.object({
+  "intent": zod.enum(['plan', 'log_completed']).optional().describe('Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.'),
   "title": zod.string().min(1).max(draftWorkoutResponseTitleMax),
   "durationMinutes": zod.number().min(1).max(draftWorkoutResponseDurationMinutesMax),
   "notes": zod.string().max(draftWorkoutResponseNotesMax).nullable(),
@@ -3024,6 +3025,7 @@ export const GenerateWorkoutWeekPlanResponse = zod.object({
   "workoutDate": zod.coerce.date(),
   "participantIds": zod.array(zod.string()).min(1).max(generateWorkoutWeekPlanResponseItemsItemParticipantIdsMax),
   "workout": zod.object({
+  "intent": zod.enum(['plan', 'log_completed']).optional().describe('Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.'),
   "title": zod.string().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutTitleMax),
   "durationMinutes": zod.number().min(1).max(generateWorkoutWeekPlanResponseItemsItemWorkoutDurationMinutesMax),
   "notes": zod.string().max(generateWorkoutWeekPlanResponseItemsItemWorkoutNotesMax).nullable(),
@@ -3085,6 +3087,7 @@ export const SaveWorkoutWeekPlanBody = zod.object({
   "workoutDate": zod.coerce.date(),
   "participantIds": zod.array(zod.string()).min(1).max(saveWorkoutWeekPlanBodyItemsItemParticipantIdsMax),
   "workout": zod.object({
+  "intent": zod.enum(['plan', 'log_completed']).optional().describe('Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.'),
   "title": zod.string().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutTitleMax),
   "durationMinutes": zod.number().min(1).max(saveWorkoutWeekPlanBodyItemsItemWorkoutDurationMinutesMax),
   "notes": zod.string().max(saveWorkoutWeekPlanBodyItemsItemWorkoutNotesMax).nullable(),
@@ -3198,6 +3201,7 @@ export const GetWorkoutCoachConversationResponse = zod.object({
   "role": zod.enum(['user', 'assistant']),
   "content": zod.string(),
   "draft": zod.union([zod.object({
+  "intent": zod.enum(['plan', 'log_completed']).optional().describe('Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.'),
   "title": zod.string().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneTitleMax),
   "durationMinutes": zod.number().min(1).max(getWorkoutCoachConversationResponseMessagesItemDraftOneDurationMinutesMax),
   "notes": zod.string().max(getWorkoutCoachConversationResponseMessagesItemDraftOneNotesMax).nullable(),
@@ -3311,6 +3315,7 @@ export const SendWorkoutCoachMessageResponse = zod.object({
   "role": zod.enum(['user', 'assistant']),
   "content": zod.string(),
   "draft": zod.union([zod.object({
+  "intent": zod.enum(['plan', 'log_completed']).optional().describe('Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.'),
   "title": zod.string().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneTitleMax),
   "durationMinutes": zod.number().min(1).max(sendWorkoutCoachMessageResponseUserMessageDraftOneDurationMinutesMax),
   "notes": zod.string().max(sendWorkoutCoachMessageResponseUserMessageDraftOneNotesMax).nullable(),
@@ -3332,6 +3337,7 @@ export const SendWorkoutCoachMessageResponse = zod.object({
   "role": zod.enum(['user', 'assistant']),
   "content": zod.string(),
   "draft": zod.union([zod.object({
+  "intent": zod.enum(['plan', 'log_completed']).optional().describe('Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.'),
   "title": zod.string().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneTitleMax),
   "durationMinutes": zod.number().min(1).max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneDurationMinutesMax),
   "notes": zod.string().max(sendWorkoutCoachMessageResponseAssistantMessageDraftOneNotesMax).nullable(),
@@ -3349,6 +3355,7 @@ export const SendWorkoutCoachMessageResponse = zod.object({
   "createdAt": zod.coerce.date()
 }),
   "draft": zod.union([zod.object({
+  "intent": zod.enum(['plan', 'log_completed']).optional().describe('Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.'),
   "title": zod.string().min(1).max(sendWorkoutCoachMessageResponseDraftOneTitleMax),
   "durationMinutes": zod.number().min(1).max(sendWorkoutCoachMessageResponseDraftOneDurationMinutesMax),
   "notes": zod.string().max(sendWorkoutCoachMessageResponseDraftOneNotesMax).nullable(),

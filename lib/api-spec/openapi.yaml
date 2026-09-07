@@ -2945,6 +2945,10 @@ components:
       additionalProperties: false
       required: [title, durationMinutes, notes, rationale, exercises]
       properties:
+        intent:
+          type: string
+          enum: [plan, log_completed]
+          description: Whether this draft is meant for a future workout plan or records an already completed workout. Older saved drafts may omit this and are treated as plans.
         title: { type: string, minLength: 1, maxLength: 160 }
         durationMinutes: { type: integer, minimum: 1, maximum: 1440 }
         notes: { type: [string, "null"], maxLength: 4000 }

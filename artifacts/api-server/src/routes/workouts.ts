@@ -761,8 +761,9 @@ router.delete("/exercise-library/:id", async (req, res) => {
 const draftJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "durationMinutes", "notes", "rationale", "exercises"],
+  required: ["intent", "title", "durationMinutes", "notes", "rationale", "exercises"],
   properties: {
+    intent: { type: "string", enum: ["plan", "log_completed"] },
     title: { type: "string", minLength: 1, maxLength: 160 },
     durationMinutes: { type: "integer", minimum: 1, maximum: 1440 },
     notes: { type: ["string", "null"], maxLength: 4000 },
@@ -834,7 +835,7 @@ router.post("/ai/workout-draft", async (req, res) => {
     if (!members) return badRequest(res, "Every participant must be an active adult in this household");
     const context = await householdContext(scope.householdId);
     const raw = await aiJson([
-      { role: "system", content: "You are a careful family fitness coach. Produce an editable workout draft only. Account for stated limitations; never claim medical certainty." },
+      { role: "system", content: "You are a careful family fitness coach. Produce an editable workout draft only. Set intent to plan unless the user clearly says the workout already happened and wants to record it; only then use log_completed. Account for stated limitations; never claim medical certainty." },
       { role: "user", content: JSON.stringify({ request: parsed.data.prompt, requestedPreferences: parsed.data.preferences, participants: members.map(m => m.name), context }) },
     ], draftJsonSchema, "workout_draft");
     const draft = DraftWorkoutResponse.safeParse(raw);
@@ -858,7 +859,7 @@ router.post("/ai/recommend-workout", async (req, res) => {
     if (!members) return res.status(404).json({ error: "Adult participant not found" });
     const context = await householdContext(scope.householdId);
     const raw = await aiJson([
-      { role: "system", content: "Recommend a balanced editable workout based on household workout history." },
+      { role: "system", content: "Recommend a balanced editable workout based on household workout history. This is a proposed workout, so set intent to plan." },
       { role: "user", content: JSON.stringify({ participant: members[0].name, context }) },
     ], draftJsonSchema, "workout_recommendation");
     const draft = DraftWorkoutResponse.safeParse(raw);
@@ -1108,7 +1109,7 @@ router.post("/workout-coach/conversations", async (req, res) => {
       properties: { message: { type: "string" }, draft: { anyOf: [draftJsonSchema, { type: "null" }] } },
     };
     const raw = await aiJson([
-      { role: "system", content: `You are a family workout coach. Answer conversationally. You may offer an editable draft, but never claim to save or mutate workouts. Context: ${JSON.stringify(context)}` },
+      { role: "system", content: `You are a family workout coach. First identify the user's goal. When creating, recommending, adjusting, or discussing a workout they could do, return an editable draft with intent plan. Use intent log_completed only when the user clearly states they already performed the workout and wants it recorded. If the goal is ambiguous, prefer plan and explain the proposed workout. Never claim to save or mutate workouts; the user must confirm the draft action. Context: ${JSON.stringify(context)}` },
       ...prior.reverse().map(message => ({ role: message.role as "user" | "assistant", content: message.content })),
       { role: "user", content: parsed.data.content },
     ], replySchema, "workout_coach_reply");

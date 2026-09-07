@@ -62,7 +62,7 @@ export function WorkoutCoach({
   useEffect(() => {
     if (!libraryExercise) return;
     setDraft(current => current ? { ...current, exercises: [...current.exercises, libraryExercise] } : {
-      title: "Workout draft", durationMinutes: preferences?.sessionDurationMinutes ?? 30, notes: null,
+      intent: "plan", title: "Workout draft", durationMinutes: preferences?.sessionDurationMinutes ?? 30, notes: null,
       rationale: "Started from a movement in your completed history.", exercises: [libraryExercise]
     });
     onLibraryExerciseAdded?.();
@@ -101,8 +101,10 @@ export function WorkoutCoach({
     setIsLogging(true);
     
     try {
-      const isFuture = workoutDate > (preferences?.currentLocalDate ?? "");
-      if (isFuture) {
+      const shouldAddToPlan =
+        (draft.intent ?? "plan") === "plan" ||
+        workoutDate > (preferences?.currentLocalDate ?? "");
+      if (shouldAddToPlan) {
         await scheduleSession.mutateAsync({ data: {
           participantIds,
           title: draft.title,
@@ -244,7 +246,7 @@ export function WorkoutCoach({
               disabled={isLogging}
               className="w-full mt-3 py-3 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {isLogging ? "Saving..." : workoutDate > (preferences?.currentLocalDate ?? "") ? <><CalendarDays className="w-5 h-5" /> Add to weekly schedule</> : <><Activity className="w-5 h-5" /> Log completed workout</>}
+              {isLogging ? "Saving..." : (draft.intent ?? "plan") === "plan" || workoutDate > (preferences?.currentLocalDate ?? "") ? <><CalendarDays className="w-5 h-5" /> Add to workout plan</> : <><Activity className="w-5 h-5" /> Log completed workout</>}
             </button>
             <button
               onClick={() => setDraft(null)}
