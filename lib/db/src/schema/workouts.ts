@@ -64,6 +64,7 @@ export const exerciseLibraryTable = pgTable("exercise_library", {
 export const workoutExercisesTable = pgTable("workout_exercises", {
   id: serial("id").primaryKey(),
   workoutId: integer("workout_id").notNull().references(() => workoutsTable.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").notNull().default(0),
   libraryExerciseId: integer("library_exercise_id").references(() => exerciseLibraryTable.id, { onDelete: "restrict" }),
   name: text("name").notNull(),
   muscleGroups: text("muscle_groups").array().notNull().default([]),
@@ -72,7 +73,9 @@ export const workoutExercisesTable = pgTable("workout_exercises", {
   weightLbs: integer("weight_lbs"),
   durationSeconds: integer("duration_seconds"),
   notes: text("notes"),
-});
+}, (table) => [
+  index("workout_exercises_workout_order_idx").on(table.workoutId, table.sortOrder, table.id),
+]);
 
 export const workoutPreferencesTable = pgTable("workout_preferences", {
   householdId: integer("household_id").primaryKey().references(() => householdsTable.id, { onDelete: "cascade" }),

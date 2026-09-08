@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { formatMuscleGroup, MUSCLE_GROUPS } from "./WorkoutHistory";
 import { MuscleGroup, WorkoutDraft } from "@workspace/api-client-react";
-import { Trash2, Plus, GripVertical } from "lucide-react";
+import { Trash2, Plus, GripVertical, ChevronUp, ChevronDown } from "lucide-react";
 
 export function EditableDraftWorkout({
   draft,
@@ -40,6 +40,16 @@ export function EditableDraftWorkout({
     });
   };
 
+  const handleMoveEx = (index: number, direction: "up" | "down") => {
+    const newEx = [...draft.exercises];
+    if (direction === "up" && index > 0) {
+      [newEx[index - 1], newEx[index]] = [newEx[index], newEx[index - 1]];
+    } else if (direction === "down" && index < newEx.length - 1) {
+      [newEx[index + 1], newEx[index]] = [newEx[index], newEx[index + 1]];
+    }
+    onUpdate({ ...draft, exercises: newEx });
+  };
+
   const toggleMuscle = (index: number, mg: MuscleGroup) => {
     const current = draft.exercises[index].muscleGroups;
     const next = current.includes(mg) ? current.filter(x => x !== mg) : [...current, mg];
@@ -71,14 +81,34 @@ export function EditableDraftWorkout({
         
         {draft.exercises.map((ex, i) => (
           <div key={i} className="bg-background border border-border rounded-xl p-3 relative group">
-            <button 
-              type="button"
-              onClick={() => handleRemoveEx(i)}
-              aria-label={`Remove ${ex.name || `exercise ${i + 1}`}`}
-              className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-100 shadow-sm transition-opacity sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
+            <div className="absolute -right-2 -top-2 flex flex-col sm:flex-row gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={() => handleMoveEx(i, "up")}
+                disabled={i === 0}
+                aria-label={`Move ${ex.name || `exercise ${i + 1}`} up`}
+                className="flex h-7 w-7 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm hover:bg-primary/10 hover:text-primary disabled:opacity-30"
+              >
+                <ChevronUp className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMoveEx(i, "down")}
+                disabled={i === draft.exercises.length - 1}
+                aria-label={`Move ${ex.name || `exercise ${i + 1}`} down`}
+                className="flex h-7 w-7 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm hover:bg-primary/10 hover:text-primary disabled:opacity-30"
+              >
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRemoveEx(i)}
+                aria-label={`Remove ${ex.name || `exercise ${i + 1}`}`}
+                className="flex h-7 w-7 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm transition-opacity hover:bg-destructive/90"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
 
             <div className="space-y-3">
               <input 

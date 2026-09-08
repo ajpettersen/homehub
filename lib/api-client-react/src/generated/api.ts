@@ -139,6 +139,7 @@ import type {
   WorkoutDetail,
   WorkoutDraft,
   WorkoutDraftInput,
+  WorkoutExerciseOrderInput,
   WorkoutPreferences,
   WorkoutPreferencesInput,
   WorkoutRecommendation,
@@ -6571,6 +6572,78 @@ export const useAddExercise = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAddExerciseMutationOptions(options));
+    }
+
+export const getReorderWorkoutExercisesUrl = (id: string,) => {
+
+
+
+
+  return `/api/workouts/${id}/exercises/order`
+}
+
+/**
+ * @summary Persist the display order of all exercises in a workout
+ */
+export const reorderWorkoutExercises = async (id: string,
+    workoutExerciseOrderInput: WorkoutExerciseOrderInput, options?: RequestInit): Promise<WorkoutDetail> => {
+
+  return customFetch<WorkoutDetail>(getReorderWorkoutExercisesUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(workoutExerciseOrderInput)
+  }
+);}
+
+
+
+
+
+export const getReorderWorkoutExercisesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderWorkoutExercises>>, TError,{id: string;data: BodyType<WorkoutExerciseOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reorderWorkoutExercises>>, TError,{id: string;data: BodyType<WorkoutExerciseOrderInput>}, TContext> => {
+
+const mutationKey = ['reorderWorkoutExercises'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderWorkoutExercises>>, {id: string;data: BodyType<WorkoutExerciseOrderInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reorderWorkoutExercises(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReorderWorkoutExercisesMutationResult = NonNullable<Awaited<ReturnType<typeof reorderWorkoutExercises>>>
+    export type ReorderWorkoutExercisesMutationBody = BodyType<WorkoutExerciseOrderInput>
+    export type ReorderWorkoutExercisesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Persist the display order of all exercises in a workout
+ */
+export const useReorderWorkoutExercises = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderWorkoutExercises>>, TError,{id: string;data: BodyType<WorkoutExerciseOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reorderWorkoutExercises>>,
+        TError,
+        {id: string;data: BodyType<WorkoutExerciseOrderInput>},
+        TContext
+      > => {
+      return useMutation(getReorderWorkoutExercisesMutationOptions(options));
     }
 
 export const getGetWorkoutSessionsUrl = (params: GetWorkoutSessionsParams,) => {

@@ -19,6 +19,7 @@ import {
   DraftWorkoutResponse,
   GenerateWorkoutWeekPlanBody,
   GenerateWorkoutWeekPlanResponse,
+  ReorderWorkoutExercisesBody,
   SaveWorkoutWeekPlanBody,
   SendWorkoutCoachMessageBody,
   ScheduleWorkoutSessionBody,
@@ -112,7 +113,7 @@ async function authorizedWorkout(workoutId: number, householdId: number) {
 async function exerciseRows(workoutId: number) {
   return db.select().from(workoutExercisesTable)
     .where(eq(workoutExercisesTable.workoutId, workoutId))
-    .orderBy(asc(workoutExercisesTable.id));
+    .orderBy(asc(workoutExercisesTable.sortOrder), asc(workoutExercisesTable.id));
 }
 
 function formatExercise(exercise: typeof workoutExercisesTable.$inferSelect) {
@@ -179,10 +180,11 @@ async function ensureLibraryExercise(
 }
 
 async function insertExercises(tx: any, workoutId: number, householdId: number, exercises: any[]) {
-  for (const exercise of exercises) {
+  for (const [sortOrder, exercise] of exercises.entries()) {
     const library = await ensureLibraryExercise(tx, householdId, exercise.name, exercise.muscleGroups);
     await tx.insert(workoutExercisesTable).values({
       workoutId,
+      sortOrder,
       libraryExerciseId: library.id,
       name: library.name,
       muscleGroups: library.muscleGroups,
@@ -193,6 +195,10 @@ async function insertExercises(tx: any, workoutId: number, householdId: number, 
       notes: exercise.notes ?? null,
     });
   }
+}
+
+async function lockWorkoutExercises(tx: any, workoutId: number) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`workout-exercises:${workoutId}`}))`);
 }
 
 // An obvious duplicate is the same household, date-only value, normalized title,
@@ -600,9 +606,16 @@ router.post("/workouts/:id/exercises", async (req, res) => {
       return res.status(404).json({ error: "Workout not found" });
     }
     const exercise = await db.transaction(async tx => {
+      await lockWorkoutExercises(tx, workoutId);
+      const [lastExercise] = await tx.select({ sortOrder: workoutExercisesTable.sortOrder })
+        .from(workoutExercisesTable)
+        .where(eq(workoutExercisesTable.workoutId, workoutId))
+        .orderBy(desc(workoutExercisesTable.sortOrder), desc(workoutExercisesTable.id))
+        .limit(1);
       const library = await ensureLibraryExercise(tx, scope.householdId, name, groups);
       const [created] = await tx.insert(workoutExercisesTable).values({
         workoutId,
+        sortOrder: (lastExercise?.sortOrder ?? -1) + 1,
         libraryExerciseId: library.id,
         name: library.name,
         muscleGroups: library.muscleGroups,
@@ -621,6 +634,58 @@ router.post("/workouts/:id/exercises", async (req, res) => {
   }
 });
 
+router.put("/workouts/:id/exercises/order", async (req, res) => {
+  const workoutId = id(req.params.id);
+  const parsed = ReorderWorkoutExercisesBody.safeParse(req.body);
+  if (!workoutId || !parsed.success) {
+    return badRequest(res, "A valid workout and complete exercise order are required", parsed.success ? undefined : parsed.error.flatten());
+  }
+
+  const exerciseIds = parsed.data.exerciseIds.map(id);
+  if (exerciseIds.some(exerciseId => exerciseId === null)) {
+    return badRequest(res, "Every exercise id must be valid");
+  }
+
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const workout = await authorizedWorkout(workoutId, scope.householdId);
+    if (!workout) return res.status(404).json({ error: "Workout not found" });
+
+    const numericExerciseIds = exerciseIds as number[];
+    await db.transaction(async tx => {
+      await lockWorkoutExercises(tx, workoutId);
+      const existing = await tx.select({ id: workoutExercisesTable.id })
+        .from(workoutExercisesTable)
+        .where(eq(workoutExercisesTable.workoutId, workoutId));
+      const existingIds = new Set(existing.map((exercise: { id: number }) => exercise.id));
+      if (
+        existingIds.size !== numericExerciseIds.length
+        || new Set(numericExerciseIds).size !== numericExerciseIds.length
+        || numericExerciseIds.some(exerciseId => !existingIds.has(exerciseId))
+      ) {
+        throw new Error("EXERCISE_ORDER_MISMATCH");
+      }
+
+      for (const [sortOrder, exerciseId] of numericExerciseIds.entries()) {
+        await tx.update(workoutExercisesTable)
+          .set({ sortOrder })
+          .where(and(
+            eq(workoutExercisesTable.id, exerciseId),
+            eq(workoutExercisesTable.workoutId, workoutId),
+          ));
+      }
+    });
+
+    res.json(await formatWorkout(workout, true));
+  } catch (err) {
+    if ((err as Error).message === "EXERCISE_ORDER_MISMATCH") {
+      return res.status(409).json({ error: "Exercise list changed; refresh the workout and try again" });
+    }
+    req.log.error({ err }, "Failed to reorder workout exercises");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.delete("/workout-exercises/:id", async (req, res) => {
   const exerciseId = id(req.params.id);
   if (!exerciseId) return badRequest(res, "Invalid exercise id");
@@ -632,7 +697,10 @@ router.delete("/workout-exercises/:id", async (req, res) => {
     if (!row || !(await authorizedWorkout(row.workoutId, scope.householdId))) {
       return res.status(404).json({ error: "Exercise not found" });
     }
-    await db.delete(workoutExercisesTable).where(eq(workoutExercisesTable.id, exerciseId));
+    await db.transaction(async tx => {
+      await lockWorkoutExercises(tx, row.workoutId);
+      await tx.delete(workoutExercisesTable).where(eq(workoutExercisesTable.id, exerciseId));
+    });
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete workout exercise");

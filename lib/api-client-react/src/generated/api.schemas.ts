@@ -395,6 +395,14 @@ export interface WorkoutRescheduleInput {
   scheduledTimezone: string;
 }
 
+export interface WorkoutExerciseOrderInput {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  exerciseIds: string[];
+}
+
 export interface ExerciseAppearance {
   workoutId: string;
   workoutDate: string;

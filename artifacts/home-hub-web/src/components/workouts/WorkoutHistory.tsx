@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { formatDateOnly } from "../../lib/dateOnly";
 import {
   Activity, Clock, ChevronDown, ChevronUp, Trash2, Plus, Flame, X, Pencil
 } from "lucide-react";
@@ -11,6 +11,7 @@ import {
   useRescheduleWorkoutSession,
   useAddExercise,
   useDeleteExercise,
+  useReorderWorkoutExercises,
   getGetWorkoutQueryKey,
   getGetWorkoutsQueryKey,
   getGetWorkoutSessionsQueryKey,
@@ -27,7 +28,23 @@ export function formatMuscleGroup(mg: string) {
   return mg.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase());
 }
 
-function ExerciseRow({ exercise, onDelete }: { exercise: any; onDelete: () => void }) {
+function ExerciseRow({
+  exercise,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+  isReordering
+}: {
+  exercise: any;
+  onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+  isReordering: boolean;
+}) {
   return (
     <div className="flex items-center justify-between py-2 px-3 bg-muted/40 rounded-lg border border-border/50 group">
       <div className="flex-1">
@@ -56,15 +73,37 @@ function ExerciseRow({ exercise, onDelete }: { exercise: any; onDelete: () => vo
         </div>
         {exercise.notes && <p className="text-xs text-muted-foreground mt-1 italic">{exercise.notes}</p>}
       </div>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-100 transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-        title="Delete exercise"
-        aria-label={`Delete ${exercise.name}`}
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
+      <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={isFirst || isReordering}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
+          title="Move up"
+          aria-label={`Move ${exercise.name} up`}
+        >
+          <ChevronUp className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={isLast || isReordering}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
+          title="Move down"
+          aria-label={`Move ${exercise.name} down`}
+        >
+          <ChevronDown className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          title="Delete exercise"
+          aria-label={`Delete ${exercise.name}`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -211,6 +250,7 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
   const updateWorkout = useUpdateWorkout();
   const rescheduleWorkout = useRescheduleWorkoutSession();
   const deleteExercise = useDeleteExercise();
+  const reorderExercises = useReorderWorkoutExercises();
   const isScheduledWorkout = workout.sessionStatus === "scheduled";
 
   const { data: detail, isLoading } = useGetWorkout(workout.id, {
@@ -279,6 +319,31 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
     }
   };
 
+  const handleReorder = (currentIndex: number, direction: "up" | "down") => {
+    if (!detail?.exercises) return;
+    const newExercises = [...detail.exercises];
+
+    if (direction === "up" && currentIndex > 0) {
+      [newExercises[currentIndex - 1], newExercises[currentIndex]] = [newExercises[currentIndex], newExercises[currentIndex - 1]];
+    } else if (direction === "down" && currentIndex < newExercises.length - 1) {
+      [newExercises[currentIndex + 1], newExercises[currentIndex]] = [newExercises[currentIndex], newExercises[currentIndex + 1]];
+    } else {
+      return;
+    }
+
+    const exerciseIds = newExercises.map(ex => ex.id);
+
+    reorderExercises.mutate(
+      { id: workout.id, data: { exerciseIds } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetWorkoutQueryKey(workout.id) });
+          queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+        }
+      }
+    );
+  };
+
   return (
     <div className={`bg-card rounded-2xl border-2 transition-all duration-300 overflow-hidden ${expanded ? "border-primary/40 shadow-md" : "border-border shadow-sm hover:border-border/80"}`}>
       <div className="p-4 cursor-pointer flex items-start gap-4 select-none" onClick={() => setExpanded(!expanded)}>
@@ -290,7 +355,7 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
           <div className="flex justify-between items-start gap-2">
             <h3 className="font-serif font-bold text-lg text-foreground truncate">{workout.title}</h3>
             <span className="text-xs font-bold text-muted-foreground whitespace-nowrap bg-muted px-2 py-1 rounded-md">
-              {format(new Date(workout.workoutDate), "MMM d, yyyy")}
+              {formatDateOnly(workout.workoutDate, "MMM d, yyyy")}
             </span>
           </div>
           
@@ -393,8 +458,20 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
               </p>
             ) : (
               <div className="space-y-2">
-                {detail?.exercises?.map((ex: any) => (
-                  <ExerciseRow key={ex.id} exercise={ex} onDelete={() => handleDeleteExercise(ex.id)} />
+                {reorderExercises.isError && (
+                  <p className="text-sm font-medium text-destructive mb-2">Failed to reorder exercises. Please try again.</p>
+                )}
+                {detail?.exercises?.map((ex: any, i: number) => (
+                  <ExerciseRow
+                    key={ex.id}
+                    exercise={ex}
+                    onDelete={() => handleDeleteExercise(ex.id)}
+                    onMoveUp={() => handleReorder(i, "up")}
+                    onMoveDown={() => handleReorder(i, "down")}
+                    isFirst={i === 0}
+                    isLast={i === (detail?.exercises?.length || 0) - 1}
+                    isReordering={reorderExercises.isPending}
+                  />
                 ))}
               </div>
             )}

@@ -19,49 +19,9 @@ import {
 import { MUSCLE_GROUPS, formatMuscleGroup } from "./WorkoutHistory";
 import { CalendarDays, Play, Flame } from "lucide-react";
 
-const STARTER_ROUTINES: WorkoutDraft[] = [
-  {
-    intent: "plan",
-    title: "Quick Core & Mobility",
-    durationMinutes: 20,
-    notes: "Focus on controlled breathing and full range of motion.",
-    rationale: "A foundational starter routine for building core strength and flexibility.",
-    exercises: [
-      { name: "Cat-Cow Stretch", muscleGroups: ["core", "back", "mobility"], sets: 2, reps: 10, weightLbs: null, durationSeconds: null, notes: "Slow and controlled" },
-      { name: "Plank", muscleGroups: ["core"], sets: 3, reps: null, weightLbs: null, durationSeconds: 60, notes: "Keep back straight" },
-      { name: "Bird Dog", muscleGroups: ["core", "back"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Per side" },
-      { name: "Glute Bridge", muscleGroups: ["glutes", "core"], sets: 3, reps: 15, weightLbs: null, durationSeconds: null, notes: "Squeeze at top" },
-    ]
-  },
-  {
-    intent: "plan",
-    title: "Dumbbell Full Body",
-    durationMinutes: 45,
-    notes: "Rest 60-90 seconds between sets. Choose a challenging but manageable weight.",
-    rationale: "A balanced full-body strength routine using basic equipment.",
-    exercises: [
-      { name: "Goblet Squat", muscleGroups: ["quadriceps", "glutes", "core"], sets: 3, reps: 12, weightLbs: null, durationSeconds: null, notes: "Keep chest up" },
-      { name: "Dumbbell Floor Press", muscleGroups: ["chest", "arms", "shoulders"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Slow descent" },
-      { name: "Bent Over Row", muscleGroups: ["back", "arms", "core"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Pull to hip" },
-      { name: "Romanian Deadlift", muscleGroups: ["hamstrings", "glutes", "back"], sets: 3, reps: 12, weightLbs: null, durationSeconds: null, notes: "Hinge at hips" },
-      { name: "Overhead Press", muscleGroups: ["shoulders", "arms", "core"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Don't arch lower back" },
-    ]
-  },
-  {
-    intent: "plan",
-    title: "Bodyweight HIIT",
-    durationMinutes: 30,
-    notes: "Perform as a circuit. 45 seconds work, 15 seconds rest. Repeat 4 times.",
-    rationale: "High-intensity cardio and muscular endurance without equipment.",
-    exercises: [
-      { name: "Jumping Jacks", muscleGroups: ["cardio", "full_body"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Light on feet" },
-      { name: "Push-ups", muscleGroups: ["chest", "shoulders", "arms"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Modify on knees if needed" },
-      { name: "Bodyweight Squats", muscleGroups: ["quadriceps", "glutes", "cardio"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Explosive up" },
-      { name: "Mountain Climbers", muscleGroups: ["core", "cardio", "shoulders"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Keep hips down" },
-      { name: "Burpees", muscleGroups: ["full_body", "cardio", "core"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Pace yourself" }
-    ]
-  }
-];
+import { STARTER_ROUTINES } from "./starterRoutines";
+
+import { formatDateOnly } from "../../lib/dateOnly";
 
 function CompletedWorkoutRoutine({ workout, onUseRoutine }: { workout: any, onUseRoutine: (routine: WorkoutDraft) => void }) {
   const [isFetching, setIsFetching] = useState(false);
@@ -106,7 +66,7 @@ function CompletedWorkoutRoutine({ workout, onUseRoutine }: { workout: any, onUs
             {workout.exerciseCount} exercises · {workout.durationMinutes ? `${workout.durationMinutes}m` : "No duration"}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Completed: {new Date(`${workout.workoutDate}T12:00:00`).toLocaleDateString()}
+            Completed: {formatDateOnly(workout.workoutDate, "MMM d, yyyy")}
           </p>
         </div>
         <button onClick={() => setIsFetching(true)} disabled={isLoading || isFetching} className="shrink-0 flex items-center justify-center h-8 px-3 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors disabled:opacity-50">
@@ -123,7 +83,7 @@ function ExerciseHistory({ exerciseId, onUse }: { exerciseId: string; onUse: (ex
   if (isError) return <p className="mt-2 text-xs text-destructive">Could not load exercise history.</p>;
   return <div className="mt-3 rounded-lg bg-muted/40 p-3" data-testid={`exercise-history-${exerciseId}`}>
     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{data?.completedAppearanceCount ?? 0} completed appearances</p>
-    {data?.appearances.length ? <><button data-testid={`button-add-history-exercise-${exerciseId}`} onClick={() => onUse(data.appearances[0].exercise)} className="mt-2 rounded-md text-xs font-bold text-primary hover:underline">+ Add latest setup to draft</button><div className="mt-2 space-y-2">{data.appearances.map(appearance => <div key={`${appearance.workoutId}-${appearance.exercise.id}`} className="border-t border-border/60 pt-2 text-xs"><div className="flex justify-between gap-2"><strong>{appearance.title}</strong><span className="whitespace-nowrap text-muted-foreground">{new Date(`${appearance.workoutDate}T12:00:00`).toLocaleDateString()}</span></div><p className="mt-1 text-muted-foreground">{appearance.participants.map(person => person.name).join(" + ")} · {[appearance.exercise.sets && `${appearance.exercise.sets} × ${appearance.exercise.reps ?? "—"}`, appearance.exercise.weightLbs && `${appearance.exercise.weightLbs} lb`, appearance.exercise.notes].filter(Boolean).join(" · ") || "Details not recorded"}</p></div>)}</div></> : <p className="mt-2 text-xs text-muted-foreground">No completed appearances yet.</p>}
+    {data?.appearances.length ? <><button data-testid={`button-add-history-exercise-${exerciseId}`} onClick={() => onUse(data.appearances[0].exercise)} className="mt-2 rounded-md text-xs font-bold text-primary hover:underline">+ Add latest setup to draft</button><div className="mt-2 space-y-2">{data.appearances.map(appearance => <div key={`${appearance.workoutId}-${appearance.exercise.id}`} className="border-t border-border/60 pt-2 text-xs"><div className="flex justify-between gap-2"><strong>{appearance.title}</strong><span className="whitespace-nowrap text-muted-foreground">{formatDateOnly(appearance.workoutDate, "MMM d, yyyy")}</span></div><p className="mt-1 text-muted-foreground">{appearance.participants.map((person: any) => person.name).join(" + ")} · {[appearance.exercise.sets && `${appearance.exercise.sets} × ${appearance.exercise.reps ?? "—"}`, appearance.exercise.weightLbs && `${appearance.exercise.weightLbs} lb`, appearance.exercise.notes].filter(Boolean).join(" · ") || "Details not recorded"}</p></div>)}</div></> : <p className="mt-2 text-xs text-muted-foreground">No completed appearances yet.</p>}
   </div>;
 }
 
@@ -216,6 +176,7 @@ export function ExerciseLibrary({ onUseExercise, onUseRoutine }: { onUseExercise
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [routineSearchTerm, setRoutineSearchTerm] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleCreate = (name: string, muscleGroups: MuscleGroup[]) => {
@@ -282,6 +243,25 @@ export function ExerciseLibrary({ onUseExercise, onUseRoutine }: { onUseExercise
     grouped[primaryMuscle].push(ex);
   });
 
+  // Filter routines
+  const lowerRoutineSearch = routineSearchTerm.toLowerCase();
+  const filteredStarterRoutines = STARTER_ROUTINES.filter(r =>
+    r.title.toLowerCase().includes(lowerRoutineSearch) ||
+    r.summary.toLowerCase().includes(lowerRoutineSearch) ||
+    r.exercises.some(ex => ex.name.toLowerCase().includes(lowerRoutineSearch))
+  );
+
+  const filteredCompletedWorkouts = completedWorkouts.filter(w => {
+    const formattedDate = formatDateOnly(w.workoutDate, "MMM d, yyyy").toLowerCase();
+    return (
+      w.title.toLowerCase().includes(lowerRoutineSearch) ||
+      w.workoutDate.includes(lowerRoutineSearch) ||
+      formattedDate.includes(lowerRoutineSearch) ||
+      (w.durationMinutes && w.durationMinutes.toString().includes(lowerRoutineSearch)) ||
+      (w.participants && w.participants.some((p: any) => p.name.toLowerCase().includes(lowerRoutineSearch)))
+    );
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
@@ -304,6 +284,18 @@ export function ExerciseLibrary({ onUseExercise, onUseRoutine }: { onUseExercise
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 placeholder="Search..."
+                className="w-full bg-background border border-border rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+          )}
+          {activeTab === "routines" && (
+            <div className="relative flex-1 sm:w-64">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={routineSearchTerm}
+                onChange={e => setRoutineSearchTerm(e.target.value)}
+                placeholder="Search routines & history..."
                 className="w-full bg-background border border-border rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-primary"
               />
             </div>
@@ -342,39 +334,51 @@ export function ExerciseLibrary({ onUseExercise, onUseRoutine }: { onUseExercise
 
       {activeTab === "routines" ? (
         <div className="space-y-6">
+          <p className="text-sm text-muted-foreground bg-muted/40 p-3 rounded-lg border border-border/50">
+            Every workout you log becomes a reusable routine here. Start from a curated plan or repeat your favorites.
+          </p>
           <div className="space-y-3">
             <h3 className="font-bold text-lg text-foreground border-b border-border pb-2">Starter routines</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {STARTER_ROUTINES.map((routine, idx) => (
-                <div key={idx} className="p-4 bg-card border border-border rounded-xl hover:border-primary/40 transition-colors">
-                  <div className="flex justify-between items-start gap-3">
-                    <div>
-                      <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                        <Flame className="w-4 h-4 text-primary" />
-                        {routine.title}
-                      </h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {routine.exercises.length} exercises · {routine.durationMinutes}m
-                      </p>
+            {filteredStarterRoutines.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {filteredStarterRoutines.map((routine, idx) => (
+                  <div key={idx} className="p-4 bg-card border border-border rounded-xl hover:border-primary/40 transition-colors">
+                    <div className="flex justify-between items-start gap-3">
+                      <div>
+                        <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                          <Flame className="w-4 h-4 text-primary" />
+                          {routine.title}
+                        </h4>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {routine.exercises.length} exercises · {routine.durationMinutes}m
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1.5">{routine.summary}</p>
+                      </div>
+                      <button onClick={() => onUseRoutine?.(routine)} className="shrink-0 flex items-center justify-center h-8 px-3 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors">
+                        <Play className="w-3 h-3 mr-1.5" /> Use
+                      </button>
                     </div>
-                    <button onClick={() => onUseRoutine?.(routine)} className="shrink-0 flex items-center justify-center h-8 px-3 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors">
-                      <Play className="w-3 h-3 mr-1.5" /> Use
-                    </button>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No starter routines match your search.</p>
+            )}
           </div>
 
-          {completedWorkouts.length > 0 && (
+          {filteredCompletedWorkouts.length > 0 && (
             <div className="space-y-3">
               <h3 className="font-bold text-lg text-foreground border-b border-border pb-2">From your history</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {completedWorkouts.map(w => (
+                {filteredCompletedWorkouts.map(w => (
                   <CompletedWorkoutRoutine key={w.id} workout={w} onUseRoutine={onUseRoutine || (() => {})} />
                 ))}
               </div>
             </div>
+          )}
+
+          {completedWorkouts.length > 0 && filteredCompletedWorkouts.length === 0 && (
+            <p className="text-sm text-muted-foreground">No completed workouts match your search.</p>
           )}
         </div>
       ) : Object.keys(grouped).length === 0 ? (

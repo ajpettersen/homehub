@@ -24,6 +24,7 @@ import {
 } from "@workspace/api-client-react";
 import { EditableDraftWorkout } from "./EditableDraftWorkout";
 import { useGetWorkout, getGetWorkoutQueryKey } from "@workspace/api-client-react";
+import { formatDateOnly } from "../../lib/dateOnly";
 
 function SwapHistoryButton({ workout, onSelect }: { workout: any; onSelect: (draft: WorkoutDraft) => void }) {
   const [isFetching, setIsFetching] = useState(false);
@@ -76,49 +77,7 @@ function SwapHistoryButton({ workout, onSelect }: { workout: any; onSelect: (dra
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const STARTER_ROUTINES: WorkoutDraft[] = [
-  {
-    intent: "plan",
-    title: "Quick Core & Mobility",
-    durationMinutes: 20,
-    notes: "Focus on controlled breathing and full range of motion.",
-    rationale: "A foundational starter routine for building core strength and flexibility.",
-    exercises: [
-      { name: "Cat-Cow Stretch", muscleGroups: ["core", "back", "mobility"], sets: 2, reps: 10, weightLbs: null, durationSeconds: null, notes: "Slow and controlled" },
-      { name: "Plank", muscleGroups: ["core"], sets: 3, reps: null, weightLbs: null, durationSeconds: 60, notes: "Keep back straight" },
-      { name: "Bird Dog", muscleGroups: ["core", "back"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Per side" },
-      { name: "Glute Bridge", muscleGroups: ["glutes", "core"], sets: 3, reps: 15, weightLbs: null, durationSeconds: null, notes: "Squeeze at top" },
-    ]
-  },
-  {
-    intent: "plan",
-    title: "Dumbbell Full Body",
-    durationMinutes: 45,
-    notes: "Rest 60-90 seconds between sets. Choose a challenging but manageable weight.",
-    rationale: "A balanced full-body strength routine using basic equipment.",
-    exercises: [
-      { name: "Goblet Squat", muscleGroups: ["quadriceps", "glutes", "core"], sets: 3, reps: 12, weightLbs: null, durationSeconds: null, notes: "Keep chest up" },
-      { name: "Dumbbell Floor Press", muscleGroups: ["chest", "arms", "shoulders"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Slow descent" },
-      { name: "Bent Over Row", muscleGroups: ["back", "arms", "core"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Pull to hip" },
-      { name: "Romanian Deadlift", muscleGroups: ["hamstrings", "glutes", "back"], sets: 3, reps: 12, weightLbs: null, durationSeconds: null, notes: "Hinge at hips" },
-      { name: "Overhead Press", muscleGroups: ["shoulders", "arms", "core"], sets: 3, reps: 10, weightLbs: null, durationSeconds: null, notes: "Don't arch lower back" },
-    ]
-  },
-  {
-    intent: "plan",
-    title: "Bodyweight HIIT",
-    durationMinutes: 30,
-    notes: "Perform as a circuit. 45 seconds work, 15 seconds rest. Repeat 4 times.",
-    rationale: "High-intensity cardio and muscular endurance without equipment.",
-    exercises: [
-      { name: "Jumping Jacks", muscleGroups: ["cardio", "full_body"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Light on feet" },
-      { name: "Push-ups", muscleGroups: ["chest", "shoulders", "arms"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Modify on knees if needed" },
-      { name: "Bodyweight Squats", muscleGroups: ["quadriceps", "glutes", "cardio"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Explosive up" },
-      { name: "Mountain Climbers", muscleGroups: ["core", "cardio", "shoulders"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Keep hips down" },
-      { name: "Burpees", muscleGroups: ["full_body", "cardio", "core"], sets: 4, reps: null, weightLbs: null, durationSeconds: 45, notes: "Pace yourself" }
-    ]
-  }
-];
+import { STARTER_ROUTINES } from "./starterRoutines";
 
 const currentMonday = () => format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
 
@@ -661,7 +620,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="font-serif font-bold text-xl flex items-center gap-2">
                     <Calendar className="w-5 h-5 text-primary" />
-                    {format(new Date(item.workoutDate), "EEEE, MMM d")}
+                    {formatDateOnly(item.workoutDate, "EEEE, MMM d")}
                   </h3>
                   <button type="button" onClick={() => setSwapTargetIdx(idx)} className="px-3 py-1.5 border border-border text-xs font-bold rounded-lg hover:bg-muted text-muted-foreground transition-colors">Swap workout</button>
                 </div>

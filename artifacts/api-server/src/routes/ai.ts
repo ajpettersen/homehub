@@ -1718,6 +1718,7 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
     for (let round = 0; round < 4; round += 1) {
       const chatResponse = await openai.chat.completions.create({
         model: "gpt-5.6-luna",
+        reasoning_effort: "none",
         max_completion_tokens: 1024,
         messages: conversation,
         tools: AI_ACTION_TOOLS as any,
@@ -1798,7 +1799,7 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
 
     res.json({ reply, memorized: newMemories });
   } catch (err) {
-    console.error("Chat error:", err);
+    req.log.error({ err }, "Failed to generate AI chat response");
     res.status(500).json({ error: "Failed to generate response" });
   }
 });

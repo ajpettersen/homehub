@@ -2235,6 +2235,81 @@ export const AddExerciseResponse = zod.object({
 
 
 /**
+ * @summary Persist the display order of all exercises in a workout
+ */
+export const ReorderWorkoutExercisesParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const reorderWorkoutExercisesBodyExerciseIdsMax = 100;
+
+
+
+export const ReorderWorkoutExercisesBody = zod.object({
+  "exerciseIds": zod.array(zod.string()).min(1).max(reorderWorkoutExercisesBodyExerciseIdsMax)
+})
+
+export const reorderWorkoutExercisesResponseScheduledTimeRegExp = new RegExp('^\\d{2}:\\d{2}$');
+export const reorderWorkoutExercisesResponseTitleMax = 160;
+
+export const reorderWorkoutExercisesResponseDurationMinutesMax = 1440;
+
+export const reorderWorkoutExercisesResponseNotesMax = 4000;
+
+export const reorderWorkoutExercisesResponseExercisesItemNameMax = 120;
+
+export const reorderWorkoutExercisesResponseExercisesItemSetsMax = 100;
+
+export const reorderWorkoutExercisesResponseExercisesItemRepsMax = 1000;
+
+export const reorderWorkoutExercisesResponseExercisesItemWeightLbsMin = 0;
+export const reorderWorkoutExercisesResponseExercisesItemWeightLbsMax = 5000;
+
+export const reorderWorkoutExercisesResponseExercisesItemDurationSecondsMax = 86400;
+
+export const reorderWorkoutExercisesResponseExercisesItemNotesMax = 500;
+
+
+
+export const ReorderWorkoutExercisesResponse = zod.object({
+  "id": zod.string(),
+  "memberId": zod.string(),
+  "memberName": zod.string(),
+  "participantIds": zod.array(zod.string()),
+  "participants": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "color": zod.string()
+})),
+  "workoutDate": zod.coerce.date(),
+  "scheduledDate": zod.coerce.date().nullable(),
+  "scheduledTime": zod.string().regex(reorderWorkoutExercisesResponseScheduledTimeRegExp).nullable(),
+  "scheduledTimezone": zod.string().nullable(),
+  "sessionStatus": zod.enum(['scheduled', 'completed', 'skipped', 'missed', 'cancelled']),
+  "sessionKind": zod.enum(['weekly_plan', 'ad_hoc']),
+  "completedAt": zod.coerce.date().nullable(),
+  "followUpDismissedAt": zod.coerce.date().nullable(),
+  "rescheduledFromWorkoutId": zod.string().nullable(),
+  "title": zod.string().min(1).max(reorderWorkoutExercisesResponseTitleMax),
+  "durationMinutes": zod.number().min(1).max(reorderWorkoutExercisesResponseDurationMinutesMax).nullish(),
+  "notes": zod.string().max(reorderWorkoutExercisesResponseNotesMax).nullish(),
+  "exercises": zod.array(zod.object({
+  "id": zod.string(),
+  "workoutId": zod.string(),
+  "name": zod.string().min(1).max(reorderWorkoutExercisesResponseExercisesItemNameMax),
+  "libraryExerciseId": zod.string().nullish(),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])),
+  "sets": zod.number().min(1).max(reorderWorkoutExercisesResponseExercisesItemSetsMax).nullish(),
+  "reps": zod.number().min(1).max(reorderWorkoutExercisesResponseExercisesItemRepsMax).nullish(),
+  "weightLbs": zod.number().min(reorderWorkoutExercisesResponseExercisesItemWeightLbsMin).max(reorderWorkoutExercisesResponseExercisesItemWeightLbsMax).nullish(),
+  "durationSeconds": zod.number().min(1).max(reorderWorkoutExercisesResponseExercisesItemDurationSecondsMax).nullish(),
+  "notes": zod.string().max(reorderWorkoutExercisesResponseExercisesItemNotesMax).nullish()
+})),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
  * @summary List scheduled and completed workout sessions for a week
  */
 export const GetWorkoutSessionsQueryParams = zod.object({

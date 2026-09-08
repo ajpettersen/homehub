@@ -194,6 +194,7 @@ export * from './workoutDetailSessionStatus';
 export * from './workoutDraft';
 export * from './workoutDraftInput';
 export * from './workoutDraftIntent';
+export * from './workoutExerciseOrderInput';
 export * from './workoutParticipant';
 export * from './workoutPreferences';
 export * from './workoutPreferencesInput';

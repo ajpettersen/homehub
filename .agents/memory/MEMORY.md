@@ -23,3 +23,4 @@
 - [Paid chore wallets](paid-chore-wallets.md) — rewards are virtual ledger credits posted only after adult approval; recurring payouts are idempotent per occurrence.
 - [Development preview identity](development-preview-identity.md) — interactive previews use a synthetic demo household identity that must be impossible to activate in production.
 - [Strict AI schema compatibility](strict-ai-schema-compatibility.md) — omit unsupported JSON Schema keywords from strict output schemas; enforce those invariants server-side.
+- [Home assistant tool compatibility](home-assistant-tool-compatibility.md) — tool-enabled gpt-5.6-luna chat requires reasoning_effort none; otherwise every request fails.
