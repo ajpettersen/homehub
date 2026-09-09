@@ -4,6 +4,7 @@ import { formatDateOnly } from "../../lib/dateOnly";
 import {
   Activity, Clock, ChevronDown, ChevronUp, Trash2, Plus, Flame, X, Pencil
 } from "lucide-react";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import {
   useGetWorkout,
   useDeleteWorkout,
@@ -244,6 +245,8 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
   const [editDate, setEditDate] = useState(workout.scheduledDate || workout.workoutDate);
   const [editDuration, setEditDuration] = useState(workout.durationMinutes?.toString() || "");
   const [editNotes, setEditNotes] = useState(workout.notes || "");
+  const [deletingWorkout, setDeletingWorkout] = useState(false);
+  const [deletingExerciseId, setDeletingExerciseId] = useState<string | null>(null);
   
   const queryClient = useQueryClient();
   const deleteWorkout = useDeleteWorkout();
@@ -297,26 +300,39 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
 
   const handleDeleteWorkout = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Delete "${workout.title}" and all of its exercises? This cannot be undone.`)) {
-      deleteWorkout.mutate(
-        { id: workout.id },
-        { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() }) }
-      );
-    }
+    deleteWorkout.reset();
+    setDeletingWorkout(true);
+  };
+
+  const performDeleteWorkout = () => {
+    deleteWorkout.mutate(
+      { id: workout.id },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+          setDeletingWorkout(false);
+        }
+      }
+    );
   };
 
   const handleDeleteExercise = (exerciseId: string) => {
-    if (confirm("Delete this exercise?")) {
-      deleteExercise.mutate(
-        { id: exerciseId },
-        {
-          onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: getGetWorkoutQueryKey(workout.id) });
-            queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
-          }
+    deleteExercise.reset();
+    setDeletingExerciseId(exerciseId);
+  };
+
+  const performDeleteExercise = () => {
+    if (!deletingExerciseId) return;
+    deleteExercise.mutate(
+      { id: deletingExerciseId },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetWorkoutQueryKey(workout.id) });
+          queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
+          setDeletingExerciseId(null);
         }
-      );
-    }
+      }
+    );
   };
 
   const handleReorder = (currentIndex: number, direction: "up" | "down") => {
@@ -487,6 +503,34 @@ function WorkoutDetailCard({ workout, showMember }: { workout: any; showMember?:
           )}
         </div>
       )}
+
+      <ConfirmActionDialog
+        open={deletingWorkout}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deleteWorkout.isPending) setDeletingWorkout(false);
+        }}
+        title="Delete Workout"
+        description={`Delete "${workout.title}" and all of its exercises? This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive={true}
+        pending={deleteWorkout.isPending}
+        error={deleteWorkout.isError ? "Failed to delete workout." : null}
+        onConfirm={performDeleteWorkout}
+      />
+
+      <ConfirmActionDialog
+        open={!!deletingExerciseId}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deleteExercise.isPending) setDeletingExerciseId(null);
+        }}
+        title="Delete Exercise"
+        description="Are you sure you want to delete this exercise?"
+        confirmLabel="Delete"
+        destructive={true}
+        pending={deleteExercise.isPending}
+        error={deleteExercise.isError ? "Failed to delete exercise." : null}
+        onConfirm={performDeleteExercise}
+      />
     </div>
   );
 }

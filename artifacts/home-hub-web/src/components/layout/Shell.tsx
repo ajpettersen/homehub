@@ -218,7 +218,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {children}
           </div>
           <div
-            className={location === "/workouts" ? "h-4 shrink-0 md:hidden" : "h-[calc(6.5rem+env(safe-area-inset-bottom))] shrink-0 md:hidden"}
+            className={"h-[calc(6.5rem+env(safe-area-inset-bottom))] shrink-0 md:hidden"}
             aria-hidden="true"
           />
         </div>
@@ -226,8 +226,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile bottom tab bar ── */}
       <nav
-        className={`${location === "/workouts" ? "relative mx-2 mb-3 shrink-0" : "fixed inset-x-2"} z-40 flex items-stretch overflow-hidden rounded-2xl border border-border bg-card shadow-lg md:hidden`}
-        style={location === "/workouts" ? undefined : { bottom: "max(env(safe-area-inset-bottom), 0.75rem)" }}
+        className={`${"fixed inset-x-2"} z-40 flex items-stretch overflow-hidden rounded-2xl border border-border bg-card shadow-lg md:hidden`}
+        style={{ bottom: "max(env(safe-area-inset-bottom), 0.75rem)" }}
         aria-label="Primary navigation"
       >
         {visibleNavItems.map((item) => {

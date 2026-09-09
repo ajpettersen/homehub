@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   useGetMe, getGetMeQueryKey,
@@ -670,6 +671,9 @@ export default function Onboarding({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState("");
 
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  const [skipError, setSkipError] = useState<string | null>(null);
+
   const executeSetup = async () => {
     setIsSubmitting(true);
     setSubmitError(null);
@@ -731,16 +735,20 @@ export default function Onboarding({
     }
   };
 
-  const handleSkip = async () => {
-    if (confirm("Are you sure you want to skip setup? You can run the guided setup later from Settings.")) {
-      setIsSubmitting(true);
-      try {
-        await updateHouseholdMutation.mutateAsync({ data: { onboardingCompleted: true } });
-        await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-      } catch (err) {
-        alert("Failed to skip setup.");
-        setIsSubmitting(false);
-      }
+  const handleSkip = () => {
+    setSkipError(null);
+    setConfirmSkip(true);
+  };
+
+  const performSkip = async () => {
+    setSkipError(null);
+    setIsSubmitting(true);
+    try {
+      await updateHouseholdMutation.mutateAsync({ data: { onboardingCompleted: true } });
+      await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+    } catch (err) {
+      setSkipError("Failed to skip setup. Please try again.");
+      setIsSubmitting(false);
     }
   };
 
@@ -806,6 +814,20 @@ export default function Onboarding({
           </AnimatePresence>
         </div>
       </main>
+
+      <ConfirmActionDialog
+        open={confirmSkip}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !isSubmitting) setConfirmSkip(false);
+        }}
+        title="Skip Setup?"
+        description="Are you sure you want to skip setup? You can run the guided setup later from Settings."
+        confirmLabel="Skip Setup"
+        destructive={false}
+        pending={isSubmitting}
+        error={skipError}
+        onConfirm={performSkip}
+      />
 
       <div className="fixed bottom-0 left-0 right-0 h-1.5 bg-muted z-20">
         <div 

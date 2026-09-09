@@ -1491,6 +1491,7 @@ export const GetMeResponse = zod.object({
  */
 export const getMyFamilyProfileResponseNameMax = 100;
 
+export const getMyFamilyProfileResponseColorRegExp = new RegExp('^#[0-9A-Fa-f]{6}$');
 export const getMyFamilyProfileResponsePhotoUrlMax = 2048;
 
 
@@ -1500,7 +1501,7 @@ export const getMyFamilyProfileResponsePhotoUrlRegExp = new RegExp('^https?:/');
 export const GetMyFamilyProfileResponse = zod.object({
   "id": zod.string(),
   "name": zod.string().min(1).max(getMyFamilyProfileResponseNameMax),
-  "color": zod.enum(['#C1440E', '#2D6A4F', '#E07B39', '#4A90D9', '#9B59B6', '#E74C3C', '#2ECC71', '#F39C12', '#1ABC9C', '#E91E8C', '#607D8B', '#795548']),
+  "color": zod.string().regex(getMyFamilyProfileResponseColorRegExp),
   "photoUrl": zod.string().max(getMyFamilyProfileResponsePhotoUrlMax).regex(getMyFamilyProfileResponsePhotoUrlRegExp).nullable()
 })
 
@@ -1524,6 +1525,7 @@ export const UpdateMyFamilyProfileBody = zod.object({
 
 export const updateMyFamilyProfileResponseNameMax = 100;
 
+export const updateMyFamilyProfileResponseColorRegExp = new RegExp('^#[0-9A-Fa-f]{6}$');
 export const updateMyFamilyProfileResponsePhotoUrlMax = 2048;
 
 
@@ -1533,7 +1535,7 @@ export const updateMyFamilyProfileResponsePhotoUrlRegExp = new RegExp('^https?:/
 export const UpdateMyFamilyProfileResponse = zod.object({
   "id": zod.string(),
   "name": zod.string().min(1).max(updateMyFamilyProfileResponseNameMax),
-  "color": zod.enum(['#C1440E', '#2D6A4F', '#E07B39', '#4A90D9', '#9B59B6', '#E74C3C', '#2ECC71', '#F39C12', '#1ABC9C', '#E91E8C', '#607D8B', '#795548']),
+  "color": zod.string().regex(updateMyFamilyProfileResponseColorRegExp),
   "photoUrl": zod.string().max(updateMyFamilyProfileResponsePhotoUrlMax).regex(updateMyFamilyProfileResponsePhotoUrlRegExp).nullable()
 })
 
@@ -1557,6 +1559,7 @@ export const CompletePersonalSetupBody = zod.object({
 
 export const completePersonalSetupResponseProfileNameMax = 100;
 
+export const completePersonalSetupResponseProfileColorRegExp = new RegExp('^#[0-9A-Fa-f]{6}$');
 export const completePersonalSetupResponseProfilePhotoUrlMax = 2048;
 
 
@@ -1567,7 +1570,7 @@ export const CompletePersonalSetupResponse = zod.object({
   "profile": zod.object({
   "id": zod.string(),
   "name": zod.string().min(1).max(completePersonalSetupResponseProfileNameMax),
-  "color": zod.enum(['#C1440E', '#2D6A4F', '#E07B39', '#4A90D9', '#9B59B6', '#E74C3C', '#2ECC71', '#F39C12', '#1ABC9C', '#E91E8C', '#607D8B', '#795548']),
+  "color": zod.string().regex(completePersonalSetupResponseProfileColorRegExp),
   "photoUrl": zod.string().max(completePersonalSetupResponseProfilePhotoUrlMax).regex(completePersonalSetupResponseProfilePhotoUrlRegExp).nullable()
 }),
   "alreadyCompleted": zod.boolean()

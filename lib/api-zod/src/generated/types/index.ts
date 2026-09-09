@@ -138,7 +138,6 @@ export * from './saveWorkoutWeekPlanInput';
 export * from './scanPantryBody';
 export * from './searchGroceryCatalogParams';
 export * from './selfFamilyProfile';
-export * from './selfFamilyProfileColor';
 export * from './selfFamilyProfileUpdate';
 export * from './selfFamilyProfileUpdateColor';
 export * from './storeDepartment';

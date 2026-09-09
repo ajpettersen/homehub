@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { Link } from "wouter";
 import { usePreferences } from "@/context/PreferencesContext";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Check,
@@ -497,6 +498,12 @@ export default function People() {
   const [contractorForm, setContractorForm] = useState<ContractorFormState | null>(null);
   const [editingContractorId, setEditingContractorId] = useState<string | null>(null);
   const [savingContractor, setSavingContractor] = useState(false);
+  const [deletingPerson, setDeletingPerson] = useState<Person | null>(null);
+  const [isDeletingPerson, setIsDeletingPerson] = useState(false);
+  const [deletePersonError, setDeletePersonError] = useState<string | null>(null);
+  const [deletingContractor, setDeletingContractor] = useState<Contractor | null>(null);
+  const [isDeletingContractor, setIsDeletingContractor] = useState(false);
+  const [deleteContractorError, setDeleteContractorError] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
   const [matches, setMatches] = useState<Contractor[] | null>(null);
   const [matching, setMatching] = useState(false);
@@ -614,14 +621,28 @@ export default function People() {
     }
   };
 
-  const deletePerson = async (person: Person) => {
-    if (!confirm(`Remove ${person.name} from People?`)) return;
-    const response = await fetch(`/api/people/${person.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      setError("Unable to remove person");
-      return;
+  const deletePerson = (person: Person) => {
+    setDeletingPerson(person);
+    setDeletePersonError(null);
+  };
+
+  const performDeletePerson = async () => {
+    if (!deletingPerson) return;
+    setIsDeletingPerson(true);
+    setDeletePersonError(null);
+    try {
+      const response = await fetch(`/api/people/${deletingPerson.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Unable to remove person");
+      }
+      setPeople(current => current.filter(item => item.id !== deletingPerson.id));
+      setDeletingPerson(null);
+    } catch (err) {
+      setDeletePersonError(err instanceof Error ? err.message : "Unable to remove person");
+    } finally {
+      setIsDeletingPerson(false);
     }
-    setPeople(current => current.filter(item => item.id !== person.id));
   };
 
   const dueFollowUps = useMemo(() => {
@@ -675,15 +696,29 @@ export default function People() {
     }
   };
 
-  const deleteContractor = async (contractor: Contractor) => {
-    if (!confirm(`Remove ${contractor.name} from Contractors?`)) return;
-    const response = await fetch(`/api/contractors/${contractor.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      setError("Unable to remove contractor");
-      return;
+  const deleteContractor = (contractor: Contractor) => {
+    setDeletingContractor(contractor);
+    setDeleteContractorError(null);
+  };
+
+  const performDeleteContractor = async () => {
+    if (!deletingContractor) return;
+    setIsDeletingContractor(true);
+    setDeleteContractorError(null);
+    try {
+      const response = await fetch(`/api/contractors/${deletingContractor.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Unable to remove contractor");
+      }
+      setContractors(current => current.filter(item => item.id !== deletingContractor.id));
+      setMatches(current => current?.filter(item => item.id !== deletingContractor.id) ?? null);
+      setDeletingContractor(null);
+    } catch (err) {
+      setDeleteContractorError(err instanceof Error ? err.message : "Unable to remove contractor");
+    } finally {
+      setIsDeletingContractor(false);
     }
-    setContractors(current => current.filter(item => item.id !== contractor.id));
-    setMatches(current => current?.filter(item => item.id !== contractor.id) ?? null);
   };
 
   const findContractor = async (event: React.FormEvent) => {
@@ -896,6 +931,34 @@ export default function People() {
           )}
         </div>
       </section>
+
+      <ConfirmActionDialog
+        open={!!deletingPerson}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !isDeletingPerson) setDeletingPerson(null);
+        }}
+        title="Remove Person"
+        description={`Remove ${deletingPerson?.name} from People?`}
+        confirmLabel="Remove"
+        destructive={true}
+        pending={isDeletingPerson}
+        error={deletePersonError}
+        onConfirm={performDeletePerson}
+      />
+
+      <ConfirmActionDialog
+        open={!!deletingContractor}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !isDeletingContractor) setDeletingContractor(null);
+        }}
+        title="Remove Contractor"
+        description={`Remove ${deletingContractor?.name} from Contractors?`}
+        confirmLabel="Remove"
+        destructive={true}
+        pending={isDeletingContractor}
+        error={deleteContractorError}
+        onConfirm={performDeleteContractor}
+      />
     </div>
   );
 }

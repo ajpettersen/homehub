@@ -17,6 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { usePreferences } from "@/context/PreferencesContext";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Plus, Trash2, X, Check, Home, CalendarClock, CreditCard, ChevronRight, AlertCircle, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 import { addDays, isToday, parseISO } from "date-fns";
@@ -48,6 +49,7 @@ function ChoreCard({
   onApprove,
   onReject,
   updating,
+  error,
   members,
   isParent,
 }: {
@@ -58,6 +60,7 @@ function ChoreCard({
   onApprove: () => void;
   onReject: () => void;
   updating: boolean;
+  error: string | null;
   members: any[];
   isParent: boolean;
 }) {
@@ -95,7 +98,8 @@ function ChoreCard({
           {!isDone && !isPending && (
             <button
               onClick={onComplete}
-              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 ${
+              disabled={updating}
+              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 disabled:opacity-50 ${
                 overdue
                   ? "border-destructive/50 hover:bg-destructive/10 text-transparent hover:text-destructive"
                   : "border-muted-foreground/30 hover:border-primary hover:bg-primary/10 text-transparent hover:text-primary"
@@ -136,7 +140,8 @@ function ChoreCard({
               )}
               <button
                 onClick={onDelete}
-                className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                disabled={updating}
+                className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
                 aria-label="Delete chore"
               >
                 <Trash2 className="w-4 h-4" />
@@ -196,16 +201,25 @@ function ChoreCard({
             <div className="mt-5 flex items-center gap-3">
               <button
                 onClick={onApprove}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                disabled={updating}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50"
               >
                 <Check className="w-4 h-4" /> Approve & Pay
               </button>
               <button
                 onClick={onReject}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-foreground font-bold hover:bg-muted-foreground/10 transition-colors"
+                disabled={updating}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-foreground font-bold hover:bg-muted-foreground/10 transition-colors disabled:opacity-50"
               >
                 <X className="w-4 h-4" /> Reject
               </button>
+            </div>
+          )}
+
+          {error && (
+            <div role="alert" className="mt-4 flex items-center gap-2 text-sm font-semibold text-destructive bg-destructive/10 p-3 rounded-lg">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <p>{error}</p>
             </div>
           )}
         </div>
@@ -264,12 +278,14 @@ function AddChoreForm({
   onSubmit,
   onCancel,
   saving,
+  createError,
 }: {
   properties: any[];
   members: any[];
   onSubmit: (data: any) => void;
   onCancel: () => void;
   saving: boolean;
+  createError?: string | null;
 }) {
   const [title, setTitle] = useState("");
   const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
@@ -453,6 +469,7 @@ function AddChoreForm({
           </div>
 
           {formError && <p role="alert" className="text-sm font-semibold text-destructive">{formError}</p>}
+          {createError && <p role="alert" className="text-sm font-semibold text-destructive">{createError}</p>}
         </form>
 
         <div className="p-5 border-t border-border/50 bg-muted/30 flex gap-3">
@@ -474,12 +491,14 @@ function WalletTransactionModal({
   wallet,
   onClose,
   onSave,
-  saving
+  saving,
+  saveError
 }: {
   wallet: ChildWallet;
   onClose: () => void;
   onSave: (amountCents: number, description: string) => void;
   saving: boolean;
+  saveError?: string | null;
 }) {
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
@@ -551,6 +570,8 @@ function WalletTransactionModal({
             />
           </div>
 
+          {saveError && <p role="alert" className="text-sm font-semibold text-destructive">{saveError}</p>}
+
           <button type="submit" disabled={saving} className="w-full py-3.5 font-bold rounded-xl bg-foreground text-background hover:bg-foreground/90 transition-all shadow-md mt-4 disabled:opacity-50">
             {saving ? "Saving..." : "Confirm"}
           </button>
@@ -585,6 +606,16 @@ export default function Chores() {
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState<"all" | "mine" | "today" | "pending" | "done">(() => preferences.tabs.chores.defaultFilter);
   const [transactWallet, setTransactWallet] = useState<ChildWallet | null>(null);
+  const [deletingChore, setDeletingChore] = useState<{ id: string; title: string } | null>(null);
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+
+  const clearError = (id: string) => {
+    setActionErrors(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
 
   const invalidateChores = () => {
     queryClient.invalidateQueries({ queryKey: getGetChoresQueryKey() });
@@ -596,39 +627,59 @@ export default function Chores() {
   };
 
   const handleComplete = (id: string) => {
+    clearError(id);
     completeChore.mutate(
       { id, data: { completedBy: activeMember?.name ?? "Someone" } },
-      { onSuccess: invalidateChores }
+      {
+        onSuccess: invalidateChores,
+        onError: () => setActionErrors(prev => ({ ...prev, [id]: "Failed to complete chore. Please try again." }))
+      }
     );
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Remove this chore?")) return;
-    deleteChore.mutate({ id }, { onSuccess: invalidateChores });
+  const handleDelete = (chore: Chore) => {
+    deleteChore.reset();
+    setDeletingChore({ id: chore.id, title: chore.title });
   };
 
   const handleUpdateDueDate = (id: string, dueDate: string) => {
-    updateChore.mutate({ id, data: { dueDate } }, { onSuccess: invalidateChores });
+    clearError(id);
+    updateChore.mutate(
+      { id, data: { dueDate } },
+      {
+        onSuccess: invalidateChores,
+        onError: () => setActionErrors(prev => ({ ...prev, [id]: "Failed to update due date." }))
+      }
+    );
   };
 
   const handleCreate = (data: any) => {
+    setActionErrors(prev => ({ ...prev, "create": "" }));
     createChore.mutate({ data }, {
-      onSuccess: () => { setAdding(false); invalidateChores(); }
+      onSuccess: () => { setAdding(false); invalidateChores(); },
+      onError: () => setActionErrors(prev => ({ ...prev, "create": "Failed to create chore." }))
     });
   };
 
   const handleApprove = (id: string) => {
+    clearError(id);
     approveChore.mutate({ id }, {
-      onSuccess: () => { invalidateChores(); invalidateWallets(); }
+      onSuccess: () => { invalidateChores(); invalidateWallets(); },
+      onError: () => setActionErrors(prev => ({ ...prev, [id]: "Failed to approve chore." }))
     });
   };
 
   const handleReject = (id: string) => {
-    rejectChore.mutate({ id }, { onSuccess: invalidateChores });
+    clearError(id);
+    rejectChore.mutate({ id }, {
+      onSuccess: invalidateChores,
+      onError: () => setActionErrors(prev => ({ ...prev, [id]: "Failed to reject chore." }))
+    });
   };
 
   const handleWalletTx = (amountCents: number, description: string) => {
     if (!transactWallet) return;
+    setActionErrors(prev => ({ ...prev, "wallet": "" }));
     createWalletTx.mutate({
       memberId: transactWallet.memberId,
       data: {
@@ -637,7 +688,8 @@ export default function Chores() {
         type: amountCents > 0 ? "manual_credit" : "manual_debit"
       }
     }, {
-      onSuccess: () => { setTransactWallet(null); invalidateWallets(); }
+      onSuccess: () => { setTransactWallet(null); invalidateWallets(); },
+      onError: () => setActionErrors(prev => ({ ...prev, "wallet": "Failed to update allowance." }))
     });
   };
 
@@ -828,7 +880,7 @@ export default function Chores() {
                   </h2>
                   <div className="space-y-3">
                     {pendingGroup.map(c => (
-                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending} />
+                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} error={actionErrors[c.id] || null} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending || completeChore.isPending || approveChore.isPending || rejectChore.isPending} />
                     ))}
                   </div>
                 </section>
@@ -841,7 +893,7 @@ export default function Chores() {
                   </h2>
                   <div className="space-y-3">
                     {overdueGroup.map(c => (
-                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending} />
+                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} error={actionErrors[c.id] || null} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending || completeChore.isPending || approveChore.isPending || rejectChore.isPending} />
                     ))}
                   </div>
                 </section>
@@ -854,7 +906,7 @@ export default function Chores() {
                   </h2>
                   <div className="space-y-3">
                     {dueTodayGroup.map(c => (
-                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending} />
+                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} error={actionErrors[c.id] || null} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending || completeChore.isPending || approveChore.isPending || rejectChore.isPending} />
                     ))}
                   </div>
                 </section>
@@ -867,7 +919,7 @@ export default function Chores() {
                   </h2>
                   <div className="space-y-3">
                     {upcomingGroup.map(c => (
-                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending} />
+                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} error={actionErrors[c.id] || null} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending || completeChore.isPending || approveChore.isPending || rejectChore.isPending} />
                     ))}
                   </div>
                 </section>
@@ -880,7 +932,7 @@ export default function Chores() {
                   </h2>
                   <div className="space-y-3">
                     {doneGroup.map(c => (
-                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c.id)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending} />
+                      <ChoreCard key={c.id} chore={c} members={members ?? []} isParent={isParent} error={actionErrors[c.id] || null} onComplete={() => handleComplete(c.id)} onDelete={() => handleDelete(c)} onUpdateDueDate={dueDate => handleUpdateDueDate(c.id, dueDate)} onApprove={() => handleApprove(c.id)} onReject={() => handleReject(c.id)} updating={updateChore.isPending || completeChore.isPending || approveChore.isPending || rejectChore.isPending} />
                     ))}
                   </div>
                 </section>
@@ -896,19 +948,53 @@ export default function Chores() {
           properties={properties ?? []}
           members={(members ?? []).filter(m => m.role !== "pet")}
           onSubmit={handleCreate}
-          onCancel={() => setAdding(false)}
+          onCancel={() => {
+            setAdding(false);
+            setActionErrors(prev => { const next = { ...prev }; delete next["create"]; return next; });
+          }}
           saving={createChore.isPending}
+          createError={actionErrors["create"]}
         />
       )}
 
       {transactWallet && (
         <WalletTransactionModal
           wallet={transactWallet}
-          onClose={() => setTransactWallet(null)}
+          onClose={() => {
+            setTransactWallet(null);
+            setActionErrors(prev => { const next = { ...prev }; delete next["wallet"]; return next; });
+          }}
           onSave={handleWalletTx}
           saving={createWalletTx.isPending}
+          saveError={actionErrors["wallet"]}
         />
       )}
+
+      <ConfirmActionDialog
+        open={!!deletingChore}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deleteChore.isPending) setDeletingChore(null);
+        }}
+        title="Delete Chore"
+        description={`Are you sure you want to delete "${deletingChore?.title}"?`}
+        confirmLabel="Delete"
+        destructive={true}
+        pending={deleteChore.isPending}
+        error={deleteChore.isError ? "Failed to delete chore. Please try again." : null}
+        onConfirm={() => {
+          if (deletingChore) {
+            deleteChore.mutate(
+              { id: deletingChore.id },
+              {
+                onSuccess: () => {
+                  invalidateChores();
+                  setDeletingChore(null);
+                },
+              }
+            );
+          }
+        }}
+      />
     </div>
   );
 }

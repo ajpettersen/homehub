@@ -18,6 +18,7 @@ import { CheckSquare, Plus, Check, Trash2, ArrowUp, CalendarClock, X, Clock } fr
 import { usePreferences } from "@/context/PreferencesContext";
 import { formatDateOnly, getLocalDateOnly } from "@/lib/dateOnly";
 import Maintenance from "./Maintenance";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 export default function Tasks() {
   const queryClient = useQueryClient();
@@ -274,13 +275,23 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
     );
   };
 
+  const [deleteTaskTarget, setDeleteTaskTarget] = useState<{ id: string } | null>(null);
+  const [deleteListTarget, setDeleteListTarget] = useState<{ id: string } | null>(null);
+
   const handleDeleteItem = (itemId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    if (!confirm('Delete this task?')) return;
+    setDeleteTaskTarget({ id: itemId });
+  };
+
+  const confirmDeleteTask = () => {
+    if (!deleteTaskTarget) return;
     setItemActionError("");
-    deleteItem.mutate({ id: itemId }, {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) }),
+    deleteItem.mutate({ id: deleteTaskTarget.id }, {
+      onSuccess: () => {
+        setDeleteTaskTarget(null);
+        queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
+      },
       onError: () => setItemActionError("Could not delete that task. Please try again."),
     });
   };
@@ -294,16 +305,23 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
   };
 
   const handleDeleteList = () => {
-    if (!confirm('Are you sure you want to delete this list and all its tasks?')) return;
+    setDeleteListTarget({ id: list.id });
+  };
+
+  const confirmDeleteList = () => {
+    if (!deleteListTarget) return;
     setItemActionError("");
-    deleteList.mutate({ id: list.id }, {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() }),
+    deleteList.mutate({ id: deleteListTarget.id }, {
+      onSuccess: () => {
+        setDeleteListTarget(null);
+        queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() });
+      },
       onError: () => setItemActionError("Could not delete this list. Please try again."),
     });
   };
 
   return (
-    <Card className="flex max-h-none flex-col border-border bg-card/50 shadow-sm sm:max-h-[500px]">
+    <Card className="flex flex-col border-border bg-card/50 shadow-sm">
       <div className="group flex items-center justify-between border-b border-border bg-muted/20 p-3 sm:p-4">
         <div className="flex flex-col">
           <h3 className="font-serif text-lg font-bold sm:text-xl">{list.name}</h3>
@@ -328,7 +346,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
           </Button>
         </div>
       </div>
-      <CardContent className="flex-1 space-y-1 overflow-visible p-2 sm:space-y-2 sm:overflow-y-auto sm:p-4">
+      <CardContent className="flex-1 space-y-1 overflow-visible p-2 sm:space-y-2 sm:p-4">
         {itemActionError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{itemActionError}</p>}
         {isLoading ? (
           <div className="animate-pulse space-y-2">
@@ -484,7 +502,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
           </div>
           {addError && <p className="text-sm text-destructive" role="alert">{addError}</p>}
         </form>
-        <Dialog open={isBulkOpen} onOpenChange={(open) => {
+        <Dialog open={isBulkOpen} onOpenChange={(open: boolean) => {
           setIsBulkOpen(open);
           if (!open) setBulkError("");
         }}>
@@ -534,6 +552,28 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
           </DialogContent>
         </Dialog>
       </div>
+      <ConfirmActionDialog
+        open={!!deleteTaskTarget}
+        onOpenChange={(open: boolean) => !open && setDeleteTaskTarget(null)}
+        title="Delete task?"
+        description="This task will be permanently removed."
+        confirmLabel="Delete task"
+        destructive
+        pending={deleteItem.isPending}
+        error={itemActionError && deleteItem.isError ? itemActionError : null}
+        onConfirm={confirmDeleteTask}
+      />
+      <ConfirmActionDialog
+        open={!!deleteListTarget}
+        onOpenChange={(open: boolean) => !open && setDeleteListTarget(null)}
+        title={`Delete ${list.name}?`}
+        description="This list and all its tasks will be permanently removed. This action cannot be undone."
+        confirmLabel="Delete list"
+        destructive
+        pending={deleteList.isPending}
+        error={itemActionError && deleteList.isError ? itemActionError : null}
+        onConfirm={confirmDeleteList}
+      />
     </Card>
   );
 }

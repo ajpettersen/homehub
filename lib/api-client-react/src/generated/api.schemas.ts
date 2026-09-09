@@ -791,24 +791,6 @@ export interface FamilyMember {
   linkedAccountDisplayName?: string | null;
 }
 
-export type SelfFamilyProfileColor = typeof SelfFamilyProfileColor[keyof typeof SelfFamilyProfileColor];
-
-
-export const SelfFamilyProfileColor = {
-  '#C1440E': '#C1440E',
-  '#2D6A4F': '#2D6A4F',
-  '#E07B39': '#E07B39',
-  '#4A90D9': '#4A90D9',
-  '#9B59B6': '#9B59B6',
-  '#E74C3C': '#E74C3C',
-  '#2ECC71': '#2ECC71',
-  '#F39C12': '#F39C12',
-  '#1ABC9C': '#1ABC9C',
-  '#E91E8C': '#E91E8C',
-  '#607D8B': '#607D8B',
-  '#795548': '#795548',
-} as const;
-
 export interface SelfFamilyProfile {
   id: string;
   /**
@@ -816,7 +798,8 @@ export interface SelfFamilyProfile {
      * @maxLength 100
      */
   name: string;
-  color: SelfFamilyProfileColor;
+  /** @pattern ^#[0-9A-Fa-f]{6}$ */
+  color: string;
   /**
      * @maxLength 2048
      * @nullable

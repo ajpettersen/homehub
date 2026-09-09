@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useId } from "react";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import {
   useGetFamilyMembers, useCreateFamilyMember, useUpdateFamilyMember, useDeleteFamilyMember,
   useGetProperties, useCreateProperty, useUpdateProperty, useDeleteProperty,
@@ -547,6 +548,7 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
   const [editingId, setEditingId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [deletingTask, setDeletingTask] = useState<{ id: string; title: string } | null>(null);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) });
 
@@ -598,8 +600,8 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
   };
 
   const handleDelete = (id: string, title: string) => {
-    if (!confirm(`Delete "${title}"? This can't be undone.`)) return;
-    deleteTask.mutate({ id }, { onSuccess: invalidate });
+    deleteTask.reset();
+    setDeletingTask({ id, title });
   };
 
   if (isLoading) {
@@ -775,6 +777,32 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
            Add recurring maintenance
         </button>
       )}
+
+      <ConfirmActionDialog
+        open={!!deletingTask}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deleteTask.isPending) setDeletingTask(null);
+        }}
+        title="Delete Maintenance Task"
+        description={`Are you sure you want to delete "${deletingTask?.title}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive={true}
+        pending={deleteTask.isPending}
+        error={deleteTask.isError ? "Failed to delete task. Please try again." : null}
+        onConfirm={() => {
+          if (deletingTask) {
+            deleteTask.mutate(
+              { id: deletingTask.id },
+              {
+                onSuccess: () => {
+                  setDeletingTask(null);
+                  invalidate();
+                },
+              }
+            );
+          }
+        }}
+      />
     </div>
   );
 }
@@ -1028,31 +1056,23 @@ function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canMana
           <PropertyTasksSection property={property} onGoToTasks={onGoToTasks} />
         </div>
       )}
-      <AlertDialog open={confirmDelete} onOpenChange={open => { if (!deleting) setConfirmDelete(open); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {property.name}?</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <span className="block">This permanently deletes the property and cannot be undone.</span>
-              <span className="block">Properties with household records cannot be deleted. Reassign or clear chores, plans, lists, people, and other records first.</span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {deleteError && <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm font-medium text-destructive">{deleteError}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Keep property</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={deleting}
-              onClick={event => {
-                event.preventDefault();
-                void handleDelete();
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? "Deleting…" : "Delete permanently"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmActionDialog
+        open={confirmDelete}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deleting) setConfirmDelete(false);
+        }}
+        title={`Delete ${property.name}?`}
+        description={
+          "This permanently deletes the property and cannot be undone.\n\nProperties with household records cannot be deleted. Reassign or clear chores, plans, lists, people, and other records first."
+        }
+        confirmLabel="Delete permanently"
+        destructive={true}
+        pending={deleting}
+        error={deleteError}
+        onConfirm={() => {
+          void handleDelete();
+        }}
+      />
     </div>
   );
 }
@@ -2175,6 +2195,7 @@ function StoresSection({ canEdit }: { canEdit: boolean }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [deletingStore, setDeletingStore] = useState<{ id: string; name: string } | null>(null);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetStoresQueryKey() });
 
@@ -2205,15 +2226,8 @@ function StoresSection({ canEdit }: { canEdit: boolean }) {
       setErrorMsg("Cannot delete the final store.");
       return;
     }
-    if (!confirm(`Delete store "${name}"?`)) return;
-    setErrorMsg(null);
-    deleteStore.mutate(
-      { id },
-      {
-        onSuccess: () => invalidate(),
-        onError: (err: any) => setErrorMsg(err.message || "Failed to delete store")
-      }
-    );
+    deleteStore.reset();
+    setDeletingStore({ id, name });
   };
 
   return (
@@ -2322,6 +2336,32 @@ function StoresSection({ canEdit }: { canEdit: boolean }) {
           );
         })}
       </div>
+
+      <ConfirmActionDialog
+        open={!!deletingStore}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deleteStore.isPending) setDeletingStore(null);
+        }}
+        title="Delete Store"
+        description={`Are you sure you want to delete store "${deletingStore?.name}"?`}
+        confirmLabel="Delete"
+        destructive={true}
+        pending={deleteStore.isPending}
+        error={deleteStore.isError ? "Failed to delete store. Please try again." : null}
+        onConfirm={() => {
+          if (deletingStore) {
+            deleteStore.mutate(
+              { id: deletingStore.id },
+              {
+                onSuccess: () => {
+                  setDeletingStore(null);
+                  invalidate();
+                },
+              }
+            );
+          }
+        }}
+      />
     </AccordionSection>
   );
 }
@@ -2357,6 +2397,7 @@ export default function Settings() {
   const [addingMember, setAddingMember] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [addingProperty, setAddingProperty] = useState(false);
+  const [deletingMember, setDeletingMember] = useState<any>(null);
 
   const invalidateMembers = () => queryClient.invalidateQueries({ queryKey: getGetFamilyMembersQueryKey() });
   const invalidateProps = () => queryClient.invalidateQueries({ queryKey: getGetPropertiesQueryKey() });
@@ -2460,19 +2501,8 @@ export default function Settings() {
                 canManage={canManageMembers}
                 onEdit={() => { setEditingMemberId(member.id); setAddingMember(false); }}
                 onDelete={() => {
-                  if (confirm(`Remove ${member.name}? This only works when they have no linked account or household history.`)) {
-                    deleteMember.mutate(
-                      { id: member.id },
-                      {
-                        onSuccess: invalidateMembers,
-                        onError: () => alert(
-                          member.role === "parent"
-                            ? "This legacy adult still has household history. Use Merge Duplicate Adult so their history is transferred safely."
-                            : "This family member still has household history and cannot be removed until it is reassigned.",
-                        ),
-                      },
-                    );
-                  }
+                  deleteMember.reset();
+                  setDeletingMember(member);
                 }} />
             )
           )}
@@ -2484,6 +2514,42 @@ export default function Settings() {
             <Plus className="w-4 h-4 text-primary/60" /> Add family member
           </button>
         )}
+
+        <ConfirmActionDialog
+          open={!!deletingMember}
+          onOpenChange={(isOpen) => {
+            if (!isOpen && !deleteMember.isPending) setDeletingMember(null);
+          }}
+          title="Remove Family Member"
+          description={
+            deletingMember
+              ? `Remove ${deletingMember.name}? This only works when they have no linked account or household history.`
+              : ""
+          }
+          confirmLabel="Remove"
+          destructive={true}
+          pending={deleteMember.isPending}
+          error={
+            deleteMember.isError
+              ? deletingMember?.role === "parent"
+                ? "This legacy adult still has household history. Use Merge Duplicate Adult so their history is transferred safely."
+                : "This family member still has household history and cannot be removed until it is reassigned."
+              : null
+          }
+          onConfirm={() => {
+            if (deletingMember) {
+              deleteMember.mutate(
+                { id: deletingMember.id },
+                {
+                  onSuccess: () => {
+                    invalidateMembers();
+                    setDeletingMember(null);
+                  },
+                }
+              );
+            }
+          }}
+        />
       </AccordionSection>
 
       {/* ── Properties ──────────────────────────────────────────────────────── */}

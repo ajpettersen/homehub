@@ -58,8 +58,11 @@ export default function Invite() {
   }, [token, validationResult]);
 
   // Try to redeem if they are signed in and validation passed
+  const [redeemError, setRedeemError] = useState<string | null>(null);
+
   const handleRedeem = () => {
     if (!token) return;
+    setRedeemError(null);
     redeemInvite.mutate({ data: { token } }, {
       onSuccess: async () => {
         sessionStorage.removeItem("homehub_invite_token");
@@ -68,7 +71,7 @@ export default function Invite() {
         setLocation("/", { replace: true });
       },
       onError: (err) => {
-        alert(err instanceof Error ? err.message : "Failed to join household.");
+        setRedeemError(err instanceof Error ? err.message : "Failed to join household.");
       }
     });
   };
@@ -146,6 +149,12 @@ export default function Invite() {
                   <p className="text-sm font-bold text-foreground mb-1">Ready to join?</p>
                   <p className="text-xs text-muted-foreground">You are signed in. Click below to accept the invitation and link your account.</p>
                 </div>
+
+                {redeemError && (
+                  <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive font-medium text-left">
+                    {redeemError}
+                  </div>
+                )}
                 
                 <button
                   onClick={handleRedeem}

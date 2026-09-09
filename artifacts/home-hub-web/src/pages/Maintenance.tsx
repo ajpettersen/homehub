@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import {
   useGetMaintenanceTasks, getGetMaintenanceTasksQueryKey,
   useCompleteMaintenanceTask,
@@ -642,6 +643,8 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
   const [updatingDueDateId, setUpdatingDueDateId] = useState<string | null>(null);
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  const [deletingTask, setDeletingTask] = useState<{ id: string; title: string } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const invalidate = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) }),
@@ -662,14 +665,20 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
     );
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Remove this task?")) return;
-    if (deleteTask.isPending) return;
-    setActionError("");
-    setPendingTaskId(id);
-    deleteTask.mutate({ id }, {
-      onSuccess: invalidate,
-      onError: () => setActionError("Could not remove that maintenance task. Please try again."),
+  const handleDelete = (id: string, title: string) => {
+    setDeletingTask({ id, title });
+    setDeleteError(null);
+  };
+
+  const performDelete = () => {
+    if (!deletingTask || deleteTask.isPending) return;
+    setPendingTaskId(deletingTask.id);
+    deleteTask.mutate({ id: deletingTask.id }, {
+      onSuccess: () => {
+        invalidate();
+        setDeletingTask(null);
+      },
+      onError: () => setDeleteError("Could not remove that maintenance task. Please try again."),
       onSettled: () => setPendingTaskId(null),
     });
   };
@@ -794,7 +803,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
         task={task}
         members={members ?? []}
         onComplete={() => handleComplete(task.id)}
-        onDelete={() => handleDelete(task.id)}
+        onDelete={() => handleDelete(task.id, task.title)}
         onEdit={() => {
           setEditingTaskId(task.id);
           setAdding(false);
@@ -889,6 +898,20 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
           saving={createTask.isPending}
         />
       )}
+
+      <ConfirmActionDialog
+        open={!!deletingTask}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deleteTask.isPending) setDeletingTask(null);
+        }}
+        title="Remove Task"
+        description={`Remove "${deletingTask?.title}"?`}
+        confirmLabel="Remove"
+        destructive={true}
+        pending={deleteTask.isPending}
+        error={deleteError}
+        onConfirm={performDelete}
+      />
 
       {/* Category filter chips */}
       {usedCategories.length > 1 && (

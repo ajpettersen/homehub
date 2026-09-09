@@ -12,6 +12,7 @@ import {
   Sparkles, Send, Paperclip, X, Loader2, Brain, ChevronDown, Bell, Check,
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatDateOnly } from "@/lib/dateOnly";
 import { usePreferences } from "@/context/PreferencesContext";
 
 interface StoredMemory { id: number; content: string; source?: string | null; createdAt: string; }
@@ -85,6 +86,8 @@ function HouseholdChat() {
   const [input, setInput] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [chatError, setChatError] = useState(false);
+  const [lastFailedMsg, setLastFailedMsg] = useState<Message | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [clearingHistory, setClearingHistory] = useState(false);
   const [memories, setMemories] = useState<StoredMemory[]>([]);
@@ -162,15 +165,18 @@ function HouseholdChat() {
     setImages(prev => [...prev, ...dataUrls].slice(0, 3));
   };
 
-  const send = async (text = input) => {
-    if (historyLoading || loading || (!text.trim() && images.length === 0)) return;
-    const userMsg: Message = { role: "user", content: text.trim(), images: images.length > 0 ? [...images] : undefined };
+  const send = async (text = input, overrideImages?: string[]) => {
+    const imagesToUse = overrideImages ?? images;
+    if (historyLoading || loading || (!text.trim() && imagesToUse.length === 0)) return;
+    const userMsg: Message = { role: "user", content: text.trim(), images: imagesToUse.length > 0 ? [...imagesToUse] : undefined };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
     setImages([]);
     setLoading(true);
 
+    setChatError(false);
+    setLastFailedMsg(null);
     try {
       const profileResponse = await fetch("/api/me", { credentials: "include" });
       if (!profileResponse.ok) {
@@ -193,7 +199,9 @@ function HouseholdChat() {
       ]);
       if (data.memorized?.length > 0) loadMemories();
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Try again in a moment." }]);
+      setMessages(prev => prev.slice(0, -1)); // Remove the user message from history
+      setLastFailedMsg(userMsg);
+      setChatError(true);
     } finally {
       setLoading(false);
     }
@@ -292,6 +300,25 @@ function HouseholdChat() {
           {historyLoading && <p className="text-xs text-muted-foreground text-center py-2">Loading conversation…</p>}
           {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
           {loading && <ThinkingBubble />}
+          {chatError && lastFailedMsg && (
+            <div className="flex flex-col gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl mt-2 text-sm text-destructive" role="alert">
+              <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Something went wrong</p>
+              <p>The assistant could not process your message.</p>
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={() => {
+                    setInput(lastFailedMsg.content);
+                    setImages(lastFailedMsg.images ?? []);
+                    setChatError(false);
+                    setLastFailedMsg(null);
+                  }}
+                  className="bg-destructive text-destructive-foreground px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-destructive/90 transition-colors"
+                >
+                  Restore message
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -392,6 +419,8 @@ export default function Dashboard() {
   const updateSessionStatus = useUpdateWorkoutSessionStatus();
   const overdueWorkout = overdueSessions?.[0];
   const isUpdatingOverdueWorkout = completeSession.isPending || updateSessionStatus.isPending;
+  const [overdueError, setOverdueError] = useState<string | null>(null);
+
   const invalidateWorkoutViews = () => {
     queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetOverdueWorkoutSessionsQueryKey() });
@@ -453,34 +482,34 @@ export default function Dashboard() {
               <p className="mt-1 text-sm text-muted-foreground">
                 {overdueWorkout.title} — a quick answer keeps your shared history up to date.
               </p>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button
-                  data-testid={`button-complete-overdue-workout-${overdueWorkout.id}`}
-                  onClick={() => completeSession.mutate({ id: overdueWorkout.id, data: {} }, { onSuccess: invalidateWorkoutViews })}
-                  disabled={isUpdatingOverdueWorkout}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background hover:bg-foreground/90 disabled:opacity-50"
-                >
-                  <Check className="w-4 h-4" /> Completed
-                </button>
-                <button
-                  data-testid={`button-skip-overdue-workout-${overdueWorkout.id}`}
-                  onClick={() => updateSessionStatus.mutate({ id: overdueWorkout.id, data: { status: "skipped" } }, { onSuccess: invalidateWorkoutViews })}
-                  disabled={isUpdatingOverdueWorkout}
-                  className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold hover:bg-muted disabled:opacity-50"
-                >
-                  Not completed
-                </button>
-                <button
-                  data-testid={`button-dismiss-overdue-workout-${overdueWorkout.id}`}
-                  onClick={() => updateSessionStatus.mutate({ id: overdueWorkout.id, data: { status: "dismissed" } }, { onSuccess: invalidateWorkoutViews })}
-                  disabled={isUpdatingOverdueWorkout}
-                  className="rounded-lg px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50"
-                >
-                  Dismiss for now
-                </button>
-                <Link href="/workouts" data-testid={`link-overdue-workout-details-${overdueWorkout.id}`} className="ml-auto text-xs font-semibold text-primary hover:underline underline-offset-4">
-                  View workout details →
-                </Link>
+              <div className="mt-4 flex flex-col gap-1 items-start">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    data-testid={`button-complete-overdue-workout-${overdueWorkout.id}`}
+                    onClick={() => { setOverdueError(null); completeSession.mutate({ id: overdueWorkout.id, data: {} }, { onSuccess: invalidateWorkoutViews, onError: () => setOverdueError("Failed to mark completed.") }) }}
+                    disabled={isUpdatingOverdueWorkout}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background hover:bg-foreground/90 disabled:opacity-50"
+                  >
+                    <Check className="w-4 h-4" /> Completed
+                  </button>
+                  <button
+                    data-testid={`button-skip-overdue-workout-${overdueWorkout.id}`}
+                    onClick={() => { setOverdueError(null); updateSessionStatus.mutate({ id: overdueWorkout.id, data: { status: "skipped" } }, { onSuccess: invalidateWorkoutViews, onError: () => setOverdueError("Failed to update status.") }) }}
+                    disabled={isUpdatingOverdueWorkout}
+                    className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold hover:bg-muted disabled:opacity-50"
+                  >
+                    Not completed
+                  </button>
+                  <button
+                    data-testid={`button-dismiss-overdue-workout-${overdueWorkout.id}`}
+                    onClick={() => { setOverdueError(null); updateSessionStatus.mutate({ id: overdueWorkout.id, data: { status: "dismissed" } }, { onSuccess: invalidateWorkoutViews, onError: () => setOverdueError("Failed to dismiss.") }) }}
+                    disabled={isUpdatingOverdueWorkout}
+                    className="rounded-lg px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                {overdueError && <p className="text-xs text-destructive font-bold mt-1" role="alert">{overdueError} <button onClick={() => setOverdueError(null)} className="underline ml-1">Clear</button></p>}
               </div>
             </div>
           </div>
@@ -613,7 +642,7 @@ export default function Dashboard() {
                       {task.isOverdue && <Badge variant="destructive" className="ml-2 whitespace-nowrap text-[10px]">Overdue</Badge>}
                     </div>
                     <div className="flex gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Due: {format(new Date(task.nextDueDate), "MMM d")}</span>
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Due: {formatDateOnly(task.nextDueDate, "MMM d")}</span>
                       <span className="flex items-center gap-1 text-primary">{task.propertyName}</span>
                     </div>
                   </CardContent>

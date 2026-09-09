@@ -5,7 +5,6 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
-import type { SelfFamilyProfileColor } from './selfFamilyProfileColor';
 
 export interface SelfFamilyProfile {
   id: string;
@@ -14,7 +13,8 @@ export interface SelfFamilyProfile {
      * @maxLength 100
      */
   name: string;
-  color: SelfFamilyProfileColor;
+  /** @pattern ^#[0-9A-Fa-f]{6}$ */
+  color: string;
   /**
      * @maxLength 2048
      * @nullable

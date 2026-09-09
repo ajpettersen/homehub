@@ -45,6 +45,9 @@ export default function Workouts() {
   const { data: overdueSessions } = useGetOverdueWorkoutSessions({ query: { queryKey: getGetOverdueWorkoutSessionsQueryKey() } });
   const completeSession = useCompleteWorkoutSession();
   const updateSessionStatus = useUpdateWorkoutSessionStatus();
+  const [overdueError, setOverdueError] = useState<string | null>(null);
+  const isUpdatingOverdue = completeSession.isPending || updateSessionStatus.isPending;
+
   const invalidateWorkoutViews = () => {
     queryClient.invalidateQueries({ queryKey: getGetOverdueWorkoutSessionsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
@@ -114,7 +117,7 @@ export default function Workouts() {
   const defaultLogMember = singleSelected ?? null;
 
   return (
-    <main className="mx-auto w-full min-w-0 max-w-5xl space-y-4 overflow-x-hidden pb-[calc(7.5rem+env(safe-area-inset-bottom))] animate-in fade-in duration-500 sm:space-y-5 sm:pb-12" data-testid="workouts-page">
+    <main className="mx-auto w-full min-w-0 max-w-5xl space-y-4 overflow-x-hidden animate-in fade-in duration-500 sm:space-y-5" data-testid="workouts-page">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
@@ -171,38 +174,41 @@ export default function Workouts() {
               <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
                 <Bell className="w-4 h-4" />
               </div>
-              <div>
-                <p className="text-sm font-bold text-foreground">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-foreground truncate">
                   {overdueSessions.length} past workout{overdueSessions.length === 1 ? "" : "s"} needing review
                 </p>
-                <p className="text-xs text-muted-foreground">Did you complete {overdueSessions[0].title}?</p>
+                <p className="text-xs text-muted-foreground truncate">Did you complete {overdueSessions[0].title}?</p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button data-testid="button-complete-overdue-workout" onClick={() => completeSession.mutate({ id: overdueSessions[0].id, data: {} }, { onSuccess: invalidateWorkoutViews })} disabled={completeSession.isPending} className="rounded-lg bg-foreground px-3 py-1.5 text-xs font-bold text-background disabled:opacity-50">Completed</button>
-              <button data-testid="button-skip-overdue-workout" onClick={() => updateSessionStatus.mutate({ id: overdueSessions[0].id, data: { status: "skipped" } }, { onSuccess: invalidateWorkoutViews })} disabled={updateSessionStatus.isPending} className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold disabled:opacity-50">Not completed</button>
-              <button data-testid="button-dismiss-overdue-workout" onClick={() => updateSessionStatus.mutate({ id: overdueSessions[0].id, data: { status: "dismissed" } }, { onSuccess: invalidateWorkoutViews })} disabled={updateSessionStatus.isPending} className="rounded-lg px-3 py-1.5 text-xs font-bold text-muted-foreground disabled:opacity-50">Dismiss</button>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <button data-testid="button-complete-overdue-workout" onClick={() => { setOverdueError(null); completeSession.mutate({ id: overdueSessions[0].id, data: {} }, { onSuccess: invalidateWorkoutViews, onError: () => setOverdueError("Failed to mark completed.") }) }} disabled={isUpdatingOverdue} className="rounded-lg bg-foreground px-3 py-1.5 text-xs font-bold text-background disabled:opacity-50">Completed</button>
+                <button data-testid="button-skip-overdue-workout" onClick={() => { setOverdueError(null); updateSessionStatus.mutate({ id: overdueSessions[0].id, data: { status: "skipped" } }, { onSuccess: invalidateWorkoutViews, onError: () => setOverdueError("Failed to update status.") }) }} disabled={isUpdatingOverdue} className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold disabled:opacity-50">Not completed</button>
+                <button data-testid="button-dismiss-overdue-workout" onClick={() => { setOverdueError(null); updateSessionStatus.mutate({ id: overdueSessions[0].id, data: { status: "dismissed" } }, { onSuccess: invalidateWorkoutViews, onError: () => setOverdueError("Failed to dismiss.") }) }} disabled={isUpdatingOverdue} className="rounded-lg px-3 py-1.5 text-xs font-bold text-muted-foreground disabled:opacity-50">Dismiss</button>
+              </div>
+              {overdueError && <p className="text-xs text-destructive font-bold" role="alert">{overdueError} <button onClick={() => setOverdueError(null)} className="underline ml-1">Clear</button></p>}
             </div>
           </div>
         </aside>
       )}
 
       {/* Tabs */}
-      <div className="flex max-w-full overflow-x-auto gap-2 border-b border-border pb-3 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <div className="grid w-full grid-cols-4 gap-1 border-b border-border pb-3 sm:flex sm:gap-2 sm:overflow-x-auto sm:[&::-webkit-scrollbar]:hidden sm:[-ms-overflow-style:none] sm:[scrollbar-width:none]">
         {WORKOUT_TABS.map(tab => {
           const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`shrink-0 flex items-center justify-center md:justify-start gap-1.5 md:gap-2 px-3 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[10px] font-bold leading-tight transition-all sm:shrink-0 sm:flex-row sm:gap-2 sm:px-3 sm:text-sm ${
                 active 
                   ? "bg-primary text-primary-foreground shadow-sm" 
                   : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
-              <tab.Icon className="w-4 h-4 shrink-0" />
-              <span className="truncate">{tab.label}</span>
+              <tab.Icon className="h-4 w-4 shrink-0" />
+              <span>{tab.label}</span>
             </button>
           )
         })}

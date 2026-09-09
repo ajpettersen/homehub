@@ -26,6 +26,7 @@ import { getMatchedInventoryNames } from "@/lib/inventory-utils";
 import { Link as RouterLink } from "wouter";
 import { usePreferences } from "@/context/PreferencesContext";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLocation, useSearch } from "wouter";
 import {
   ChevronLeft, ChevronRight, Sparkles, Plus, X, Check,
   ShoppingCart, Trash2, Sun, Coffee, Moon, Loader2, Store, ChevronDown,
@@ -1283,7 +1284,32 @@ export default function Meals() {
   const [deleteWeekOpen, setDeleteWeekOpen] = useState(false);
   const [isDeletingWeek, setIsDeletingWeek] = useState(false);
   const [deleteWeekError, setDeleteWeekError] = useState("");
-  const [activeTab, setActiveTab] = useState<"meals" | "shopping" | "recipes" | "inventory">(() => preferences.tabs.meals.defaultView as any);
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const searchParams = new URLSearchParams(searchString);
+  const viewParam = searchParams.get("view");
+
+  const internalToUrl: Record<string, string> = {
+    meals: "meal-plan",
+    recipes: "cookbook",
+    shopping: "shopping",
+    inventory: "inventory"
+  };
+  const urlToInternal: Record<string, "meals" | "shopping" | "recipes" | "inventory"> = {
+    "meal-plan": "meals",
+    "cookbook": "recipes",
+    "shopping": "shopping",
+    "inventory": "inventory"
+  };
+
+  const urlTab = viewParam && urlToInternal[viewParam] ? urlToInternal[viewParam] : null;
+  const activeTab = urlTab || (preferences.tabs.meals.defaultView as "meals" | "shopping" | "recipes" | "inventory") || "meals";
+
+  const setActiveTab = (tab: "meals" | "shopping" | "recipes" | "inventory") => {
+    const newParams = new URLSearchParams(searchString);
+    newParams.set("view", internalToUrl[tab]);
+    setLocation(`/meals?${newParams.toString()}`);
+  };
   const [pendingRecipeName, setPendingRecipeName] = useState<string | null>(null);
   const [openRecipeName, setOpenRecipeName] = useState<string | null>(null);
 
@@ -1855,6 +1881,8 @@ export default function Meals() {
             <div className="text-muted-foreground py-8 text-center animate-pulse">Loading…</div>
           )}
         </div>
+      ) : activeTab === "inventory" ? (
+        <InventorySection propertyId={propertyIdStr} />
       ) : (
         /* ── Cookbook / Recipes ── */
         <div>

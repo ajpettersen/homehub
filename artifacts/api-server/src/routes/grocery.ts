@@ -59,7 +59,7 @@ router.get("/grocery-catalog", async (req, res) => {
               WHEN ${groceryCatalogItemsTable.normalizedName} LIKE ${`${query}%`} THEN 1
               ELSE 2
             END`
-          : sql`0`,
+          : groceryCatalogItemsTable.name,
         groceryCatalogItemsTable.name,
       )
       .limit(limit);

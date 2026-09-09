@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Pencil, Search, BookOpen, Sparkles } from "lucide-react";
 import {
@@ -178,6 +179,8 @@ export function ExerciseLibrary({ onUseExercise, onUseRoutine }: { onUseExercise
   const [searchTerm, setSearchTerm] = useState("");
   const [routineSearchTerm, setRoutineSearchTerm] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [deletingExercise, setDeletingExercise] = useState<{ id: string; name: string } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleCreate = (name: string, muscleGroups: MuscleGroup[]) => {
     createExercise.mutate(
@@ -208,17 +211,23 @@ export function ExerciseLibrary({ onUseExercise, onUseRoutine }: { onUseExercise
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+    deleteExercise.reset();
+    setDeletingExercise({ id, name });
+    setDeleteError(null);
+  };
+
+  const performDelete = () => {
+    if (!deletingExercise) return;
+    setDeleteError(null);
     deleteExercise.mutate(
-      { id },
+      { id: deletingExercise.id },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListExerciseLibraryQueryKey() });
-          setErrorMsg(null);
+          setDeletingExercise(null);
         },
         onError: (err: any) => {
-          // If it's referenced, the API should return 409
-          setErrorMsg(`Cannot delete ${name}: ${err.message || "It may be used in past workouts."}`);
+          setDeleteError(`Cannot delete ${deletingExercise.name}: ${err.message || "It may be used in past workouts."}`);
         }
       }
     );
@@ -451,6 +460,20 @@ export function ExerciseLibrary({ onUseExercise, onUseRoutine }: { onUseExercise
           })}
         </div>
       )}
+
+      <ConfirmActionDialog
+        open={!!deletingExercise}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deleteExercise.isPending) setDeletingExercise(null);
+        }}
+        title="Delete Exercise"
+        description={`Are you sure you want to delete ${deletingExercise?.name}?`}
+        confirmLabel="Delete"
+        destructive={true}
+        pending={deleteExercise.isPending}
+        error={deleteError}
+        onConfirm={performDelete}
+      />
     </div>
   );
 }

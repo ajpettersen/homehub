@@ -3255,19 +3255,7 @@ components:
           maxLength: 100
         color:
           type: string
-          enum:
-            - "#C1440E"
-            - "#2D6A4F"
-            - "#E07B39"
-            - "#4A90D9"
-            - "#9B59B6"
-            - "#E74C3C"
-            - "#2ECC71"
-            - "#F39C12"
-            - "#1ABC9C"
-            - "#E91E8C"
-            - "#607D8B"
-            - "#795548"
+          pattern: "^#[0-9A-Fa-f]{6}$"
         photoUrl:
           type: [string, "null"]
           maxLength: 2048
