@@ -81,6 +81,7 @@ import type {
   MaintenanceRecommendationInput,
   MaintenanceRecommendationResult,
   MaintenanceTask,
+  MealPlanBulkUpsertInput,
   MealPlanEntry,
   MealRating,
   MealRatingList,
@@ -3921,6 +3922,77 @@ export const useDeleteMealPlanEntry = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteMealPlanEntryMutationOptions(options));
+    }
+
+export const getUpsertMealPlanEntriesUrl = () => {
+
+
+
+
+  return `/api/meal-plans/bulk-upsert`
+}
+
+/**
+ * @summary Atomically create or update meal plan slots
+ */
+export const upsertMealPlanEntries = async (mealPlanBulkUpsertInput: MealPlanBulkUpsertInput, options?: RequestInit): Promise<MealPlanEntry[]> => {
+
+  return customFetch<MealPlanEntry[]>(getUpsertMealPlanEntriesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mealPlanBulkUpsertInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertMealPlanEntriesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMealPlanEntries>>, TError,{data: BodyType<MealPlanBulkUpsertInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertMealPlanEntries>>, TError,{data: BodyType<MealPlanBulkUpsertInput>}, TContext> => {
+
+const mutationKey = ['upsertMealPlanEntries'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertMealPlanEntries>>, {data: BodyType<MealPlanBulkUpsertInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertMealPlanEntries(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertMealPlanEntriesMutationResult = NonNullable<Awaited<ReturnType<typeof upsertMealPlanEntries>>>
+    export type UpsertMealPlanEntriesMutationBody = BodyType<MealPlanBulkUpsertInput>
+    export type UpsertMealPlanEntriesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Atomically create or update meal plan slots
+ */
+export const useUpsertMealPlanEntries = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertMealPlanEntries>>, TError,{data: BodyType<MealPlanBulkUpsertInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertMealPlanEntries>>,
+        TError,
+        {data: BodyType<MealPlanBulkUpsertInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertMealPlanEntriesMutationOptions(options));
     }
 
 export const getGetMealRatingsUrl = (params: GetMealRatingsParams,) => {

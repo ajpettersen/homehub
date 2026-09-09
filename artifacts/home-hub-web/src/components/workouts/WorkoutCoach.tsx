@@ -18,6 +18,7 @@ import {
   WorkoutDraft, DraftExercise
 } from "@workspace/api-client-react";
 import { EditableDraftWorkout } from "./EditableDraftWorkout";
+import { isValidDateOnly } from "../../lib/dateOnly";
 
 export function WorkoutCoach({
   participantIds,
@@ -51,8 +52,11 @@ export function WorkoutCoach({
   const [input, setInput] = useState("");
   const [draft, setDraft] = useState<WorkoutDraft | null>(null);
   const [isLogging, setIsLogging] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
   const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null);
   const [workoutDate, setWorkoutDate] = useState("");
+  const [createdWorkoutId, setCreatedWorkoutId] = useState<string | null>(null);
+  const [createdExerciseIndices, setCreatedExerciseIndices] = useState<Set<number>>(new Set());
   const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,7 +89,8 @@ export function WorkoutCoach({
     const text = input;
     setInput("");
     setOptimisticMessage(text);
-    
+    sendMessage.reset();
+
     sendMessage.mutate(
       { data: { content: text, participantIds } },
       {
@@ -108,8 +113,15 @@ export function WorkoutCoach({
 
   const handleLogDraft = async () => {
     if (!draft || participantIds.length === 0) return;
+
+    if (!isValidDateOnly(workoutDate)) {
+      setLogError("Please provide a valid calendar date in YYYY-MM-DD format.");
+      return;
+    }
+
     setIsLogging(true);
-    
+    setLogError(null);
+
     try {
       const shouldAddToPlan =
         (draft.intent ?? "plan") === "plan" ||
@@ -128,25 +140,23 @@ export function WorkoutCoach({
           }))
         }});
       } else {
-        const newWorkout = await createWorkout.mutateAsync({ data: {
-          participantIds, title: draft.title, workoutDate,
-          durationMinutes: draft.durationMinutes, notes: draft.notes || null,
-        }});
-        for (const ex of draft.exercises) {
-        if (!ex.name) continue;
-        await addExercise.mutateAsync({
-          id: newWorkout.id,
+        await createWorkout.mutateAsync({
           data: {
-            name: ex.name,
-            muscleGroups: ex.muscleGroups,
-            sets: ex.sets || null,
-            reps: ex.reps || null,
-            weightLbs: ex.weightLbs || null,
-            durationSeconds: ex.durationSeconds || null,
-            notes: ex.notes || null
-          }
+            participantIds, title: draft.title, workoutDate,
+            durationMinutes: draft.durationMinutes, notes: draft.notes || null,
+            exercises: draft.exercises
+              .filter((exercise) => exercise.name.trim())
+              .map((exercise) => ({
+                name: exercise.name,
+                muscleGroups: exercise.muscleGroups,
+                sets: exercise.sets ?? null,
+                reps: exercise.reps ?? null,
+                weightLbs: exercise.weightLbs ?? null,
+                durationSeconds: exercise.durationSeconds ?? null,
+                notes: exercise.notes || null,
+              })),
+          },
         });
-      }
       }
 
       queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
@@ -159,6 +169,7 @@ export function WorkoutCoach({
       onWorkoutLogged();
     } catch (e) {
       console.error(e);
+      setLogError("Could not save workout. Please try again.");
     } finally {
       setIsLogging(false);
     }
@@ -244,6 +255,14 @@ export function WorkoutCoach({
           </div>
         )}
 
+        {sendMessage.isError && (
+          <div className="flex justify-center">
+            <p className="text-sm font-medium text-destructive bg-destructive/10 px-3 py-1.5 rounded-lg" role="alert">
+              Failed to send message. Please try again.
+            </p>
+          </div>
+        )}
+
         {draft && (
           <div className="max-w-[100%] pt-2 animate-in slide-in-from-bottom-2">
             <EditableDraftWorkout draft={draft} onUpdate={setDraft} />
@@ -251,16 +270,21 @@ export function WorkoutCoach({
               Workout date
               <input data-testid="input-draft-workout-date" type="date" value={workoutDate} onChange={e => setWorkoutDate(e.target.value)} className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground" />
             </label>
+            {logError && <p className="mt-3 text-center text-sm font-medium text-destructive" role="alert">{logError}</p>}
             <button
               onClick={handleLogDraft}
-              disabled={isLogging}
+              disabled={isLogging || !preferences || !workoutDate}
               className="w-full mt-3 py-3 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {isLogging ? "Saving..." : (draft.intent ?? "plan") === "plan" || workoutDate > (preferences?.currentLocalDate ?? "") ? <><CalendarDays className="w-5 h-5" /> Add to workout plan</> : <><Activity className="w-5 h-5" /> Log completed workout</>}
+              {isLogging ? "Saving..." : (draft.intent ?? "plan") === "plan" || workoutDate > (preferences?.currentLocalDate ?? "") ? <><CalendarDays className="w-5 h-5" /> Add to workout plan</> : createdWorkoutId ? <><Activity className="w-5 h-5" /> Resume saving workout</> : <><Activity className="w-5 h-5" /> Log completed workout</>}
             </button>
             <button
               type="button"
-              onClick={() => setDraft(null)}
+              onClick={() => {
+                setDraft(null);
+                setCreatedWorkoutId(null);
+                setCreatedExerciseIndices(new Set());
+              }}
               className="w-full mt-2 py-2 font-bold rounded-xl border border-border text-muted-foreground hover:bg-muted transition-all"
             >
               Discard Draft

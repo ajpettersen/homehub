@@ -24,5 +24,7 @@ export * from "./recipes";
 export * from "./people";
 export * from "./mealRatings";
 export * from "./chatMessages";
+export * from "./chatMessageAttachments";
+export * from "./chatAttachmentCleanupQueue";
 export * from "./notificationPreferences";
 export * from "./oneTimeCleanups";

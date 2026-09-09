@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { usePreferences } from "@/context/PreferencesContext";
@@ -57,10 +58,29 @@ export default function Workouts() {
   const parents = allMembers?.filter(m => m.role === "parent") ?? [];
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<WorkoutTab>(getSavedWorkoutTab);
+  const [location, setLocation] = useLocation();
+  const searchString = useSearch();
+  const searchParams = new URLSearchParams(searchString);
+  const viewParam = searchParams.get("view");
+
+  const activeTab: WorkoutTab = WORKOUT_TABS.some(t => t.id === viewParam)
+    ? (viewParam as WorkoutTab)
+    : getSavedWorkoutTab();
+
+  const setActiveTab = (tab: WorkoutTab) => {
+    window.localStorage.setItem("homehub.workouts.activeTab", tab);
+    const newParams = new URLSearchParams(searchString);
+    newParams.set("view", tab);
+    setLocation(`${location}?${newParams.toString()}`);
+  };
+
   useEffect(() => {
-    window.localStorage.setItem("homehub.workouts.activeTab", activeTab);
-  }, [activeTab]);
+    if (!viewParam || !WORKOUT_TABS.some(t => t.id === viewParam)) {
+      const newParams = new URLSearchParams(searchString);
+      newParams.set("view", activeTab);
+      setLocation(`${location}?${newParams.toString()}`, { replace: true });
+    }
+  }, [viewParam, searchString, location, setLocation, activeTab]);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
@@ -69,17 +89,26 @@ export default function Workouts() {
   const [pendingLibraryExercise, setPendingLibraryExercise] = useState<DraftExercise | null>(null);
   const [pendingLibraryRoutine, setPendingLibraryRoutine] = useState<WorkoutDraft | null>(null);
   const [setupValues, setSetupValues] = useState<WorkoutPreferencesInput>({ daysOfWeek: [1, 3, 6], goals: "", sessionDurationMinutes: 30, equipment: "", limitations: "", notes: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+  const [setupError, setSetupError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!preferencesLoaded || !workoutPreferences) return;
     setSetupValues({ daysOfWeek: workoutPreferences.daysOfWeek, goals: workoutPreferences.goals, sessionDurationMinutes: workoutPreferences.sessionDurationMinutes, equipment: workoutPreferences.equipment, limitations: workoutPreferences.limitations, notes: workoutPreferences.notes, timezone: workoutPreferences.timezone });
     if (!preferencesLoading && (!localStorage.getItem("homehub.workouts.experience.v1") || !workoutPreferences.updatedAt)) setSetupOpen(true);
   }, [workoutPreferences, preferencesLoading, preferencesLoaded]);
-  const saveSetup = () => updateWorkoutPreferences.mutate({ data: setupValues }, { onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: getGetWorkoutPreferencesQueryKey() });
-    localStorage.setItem("homehub.workouts.experience.v1", "seen");
-    setSetupOpen(false);
-    setSetupConfirmation("Workout preferences saved. Your coach and weekly planner will use them.");
-  } });
+
+  const saveSetup = () => {
+    setSetupError(null);
+    updateWorkoutPreferences.mutate({ data: setupValues }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetWorkoutPreferencesQueryKey() });
+        localStorage.setItem("homehub.workouts.experience.v1", "seen");
+        setSetupOpen(false);
+        setSetupConfirmation("Workout preferences saved. Your coach and weekly planner will use them.");
+      },
+      onError: () => setSetupError("Could not save preferences. Please try again.")
+    });
+  };
 
   // Initialize selected parents
   React.useEffect(() => {
@@ -96,7 +125,7 @@ export default function Workouts() {
 
   // For history filtering, if we only select one, we can optionally pass `memberId` to query, 
   // but let's just fetch all and filter client side since workouts have multiple participants now
-  const { data: allWorkouts, isLoading } = useGetWorkouts(
+  const { data: allWorkouts, isLoading, isError, refetch } = useGetWorkouts(
     {}, 
     { query: { queryKey: getGetWorkoutsQueryKey() } }
   );
@@ -142,13 +171,14 @@ export default function Workouts() {
       )}
 
       {parents.length > 0 && (
-        <div className="flex max-w-full gap-2 overflow-x-auto pb-1 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <div className="flex max-w-full flex-wrap gap-2 pb-1" aria-label="Workout participants">
           {parents.map(parent => {
             const active = selectedIds.includes(parent.id);
             return (
               <button
                 key={parent.id}
                 onClick={() => toggleMember(parent.id)}
+                aria-pressed={active}
                 className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all border-2 ${
                   active
                     ? "border-transparent text-white shadow-md"
@@ -194,14 +224,16 @@ export default function Workouts() {
       )}
 
       {/* Tabs */}
-      <div className="grid w-full grid-cols-4 gap-1 border-b border-border pb-3 sm:flex sm:gap-2 sm:overflow-x-auto sm:[&::-webkit-scrollbar]:hidden sm:[-ms-overflow-style:none] sm:[scrollbar-width:none]">
+      <div className="grid w-full grid-cols-2 gap-2 border-b border-border pb-3 sm:flex" role="tablist" aria-label="Workout views">
         {WORKOUT_TABS.map(tab => {
           const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[10px] font-bold leading-tight transition-all sm:shrink-0 sm:flex-row sm:gap-2 sm:px-3 sm:text-sm ${
+              role="tab"
+              aria-selected={active}
+              className={`flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold leading-tight transition-all sm:shrink-0 sm:gap-2 sm:text-sm ${
                 active 
                   ? "bg-primary text-primary-foreground shadow-sm" 
                   : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -219,6 +251,11 @@ export default function Workouts() {
           isLoading ? (
             <div className="space-y-4">
               {[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted rounded-2xl animate-pulse" />)}
+            </div>
+          ) : isError ? (
+            <div className="bg-destructive/10 p-6 rounded-3xl text-center border-2 border-dashed border-destructive/30">
+              <p className="text-sm font-medium text-destructive mb-3" role="alert">Failed to load workout history.</p>
+              <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-background border border-border rounded-xl text-sm font-bold shadow-sm">Try again</button>
             </div>
           ) : (
             <WorkoutHistory 
@@ -250,7 +287,9 @@ export default function Workouts() {
           onClose={() => setShowCreateModal(false)}
         />
       )}
-      {setupOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-3" role="dialog" aria-modal="true" aria-label="Workout preferences setup"><section className="w-full max-w-xl max-h-[90vh] overflow-auto rounded-3xl bg-background p-5 shadow-2xl"><div className="flex justify-between gap-4"><div><p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Your workout rhythm</p><h2 className="font-serif text-3xl font-bold">Make movement fit real life.</h2><p className="mt-1 text-sm text-muted-foreground">Step {setupStep} of 3</p></div><button data-testid="button-close-workout-setup" onClick={() => setSetupOpen(false)} className="h-9 rounded-lg border border-border px-3 text-sm font-bold">Close</button></div><div className="mt-5 grid gap-4">{setupStep === 1 && <><h3 className="font-serif text-xl font-bold">When do you want to move?</h3><div className="grid grid-cols-4 gap-2">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day, index) => <button data-testid={`button-setup-day-${index}`} key={day} onClick={() => setSetupValues(current => ({ ...current, daysOfWeek: current.daysOfWeek.includes(index) ? current.daysOfWeek.filter(value => value !== index) : [...current.daysOfWeek, index] }))} className={`rounded-xl border p-3 text-sm font-bold ${setupValues.daysOfWeek.includes(index) ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{day}</button>)}</div><label className="text-sm font-bold">How many sessions each week?<input data-testid="input-setup-frequency" type="number" min="1" max="7" value={setupValues.daysOfWeek.length} readOnly className="mt-1 block w-full rounded-lg border border-border bg-muted/30 p-2" /></label></>}{setupStep === 2 && <><h3 className="font-serif text-xl font-bold">What should the coach plan around?</h3><label className="text-sm font-bold">Session length<select data-testid="select-setup-duration" value={setupValues.sessionDurationMinutes} onChange={e => setSetupValues(current => ({ ...current, sessionDurationMinutes: Number(e.target.value) }))} className="mt-1 block w-full rounded-lg border border-border bg-background p-2">{[15,20,25,30,45,60].map(value => <option key={value} value={value}>{value} minutes</option>)}</select></label><label className="text-sm font-bold">Goals<input data-testid="input-setup-goals" value={setupValues.goals} onChange={e => setSetupValues(current => ({ ...current, goals: e.target.value }))} className="mt-1 block w-full rounded-lg border border-border p-2" placeholder="Strength together, mobility…" /></label><label className="text-sm font-bold">Equipment<input data-testid="input-setup-equipment" value={setupValues.equipment} onChange={e => setSetupValues(current => ({ ...current, equipment: e.target.value }))} className="mt-1 block w-full rounded-lg border border-border p-2" placeholder="Dumbbells, bands…" /></label></>}{setupStep === 3 && <><h3 className="font-serif text-xl font-bold">Anything to work around?</h3><label className="text-sm font-bold">Limitations or preferences<textarea data-testid="input-setup-limitations" value={setupValues.limitations} onChange={e => setSetupValues(current => ({ ...current, limitations: e.target.value }))} className="mt-1 block min-h-24 w-full rounded-lg border border-border p-2" placeholder="Knee-friendly options, injuries, dislikes…" /></label><label className="text-sm font-bold">Extra notes<textarea data-testid="input-setup-notes" value={setupValues.notes} onChange={e => setSetupValues(current => ({ ...current, notes: e.target.value }))} className="mt-1 block min-h-20 w-full rounded-lg border border-border p-2" /></label></>}</div><div className="mt-6 flex justify-between gap-3"><button data-testid="button-skip-workout-setup" onClick={() => { localStorage.setItem("homehub.workouts.experience.v1", "seen"); setSetupOpen(false); setSetupConfirmation("Setup skipped for now. Return to Preferences whenever you are ready."); }} className="rounded-lg px-3 py-2 text-sm font-bold text-muted-foreground">Skip for now</button><div className="flex gap-2">{setupStep > 1 && <button onClick={() => setSetupStep(step => step - 1)} className="rounded-lg border border-border px-3 py-2 text-sm font-bold">Back</button>}{setupStep < 3 ? <button data-testid="button-next-workout-setup" onClick={() => setSetupStep(step => step + 1)} className="rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background">Next</button> : <button data-testid="button-save-workout-setup" onClick={saveSetup} disabled={updateWorkoutPreferences.isPending} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{updateWorkoutPreferences.isPending ? "Saving…" : "Save preferences"}</button>}</div></div></section></div>}
+      {setupOpen && <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/40 p-3 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:items-center sm:pb-3" role="dialog" aria-modal="true" aria-label="Workout preferences setup"><section className="w-full max-w-xl max-h-[calc(100dvh-7.75rem)] overflow-y-auto rounded-3xl bg-background p-5 shadow-2xl sm:max-h-[90dvh]"><div className="flex justify-between gap-4"><div><p className="text-[10px] uppercase tracking-[.13em] font-bold text-primary">Your workout rhythm</p><h2 className="font-serif text-3xl font-bold">Make movement fit real life.</h2><p className="mt-1 text-sm text-muted-foreground">Step {setupStep} of 3</p></div><button data-testid="button-close-workout-setup" onClick={() => setSetupOpen(false)} className="h-9 rounded-lg border border-border px-3 text-sm font-bold">Close</button></div><div className="mt-5 grid gap-4">{setupStep === 1 && <><h3 className="font-serif text-xl font-bold">When do you want to move?</h3><div className="grid grid-cols-4 gap-2">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day, index) => <button data-testid={`button-setup-day-${index}`} key={day} onClick={() => setSetupValues(current => ({ ...current, daysOfWeek: current.daysOfWeek.includes(index) ? current.daysOfWeek.filter(value => value !== index) : [...current.daysOfWeek, index] }))} className={`rounded-xl border p-3 text-sm font-bold ${setupValues.daysOfWeek.includes(index) ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{day}</button>)}</div><label className="text-sm font-bold">How many sessions each week?<input data-testid="input-setup-frequency" type="number" min="1" max="7" value={setupValues.daysOfWeek.length} readOnly className="mt-1 block w-full rounded-lg border border-border bg-muted/30 p-2" /></label></>}{setupStep === 2 && <><h3 className="font-serif text-xl font-bold">What should the coach plan around?</h3><label className="text-sm font-bold">Session length<select data-testid="select-setup-duration" value={setupValues.sessionDurationMinutes} onChange={e => setSetupValues(current => ({ ...current, sessionDurationMinutes: Number(e.target.value) }))} className="mt-1 block w-full rounded-lg border border-border bg-background p-2">{[15,20,25,30,45,60].map(value => <option key={value} value={value}>{value} minutes</option>)}</select></label><label className="text-sm font-bold">Goals<input data-testid="input-setup-goals" value={setupValues.goals} onChange={e => setSetupValues(current => ({ ...current, goals: e.target.value }))} className="mt-1 block w-full rounded-lg border border-border p-2" placeholder="Strength together, mobility…" /></label><label className="text-sm font-bold">Equipment<input data-testid="input-setup-equipment" value={setupValues.equipment} onChange={e => setSetupValues(current => ({ ...current, equipment: e.target.value }))} className="mt-1 block w-full rounded-lg border border-border p-2" placeholder="Dumbbells, bands…" /></label></>}{setupStep === 3 && <><h3 className="font-serif text-xl font-bold">Anything to work around?</h3><label className="text-sm font-bold">Limitations or preferences<textarea data-testid="input-setup-limitations" value={setupValues.limitations} onChange={e => setSetupValues(current => ({ ...current, limitations: e.target.value }))} className="mt-1 block min-h-24 w-full rounded-lg border border-border p-2" placeholder="Knee-friendly options, injuries, dislikes…" /></label><label className="text-sm font-bold">Extra notes<textarea data-testid="input-setup-notes" value={setupValues.notes} onChange={e => setSetupValues(current => ({ ...current, notes: e.target.value }))} className="mt-1 block min-h-20 w-full rounded-lg border border-border p-2" /></label></>}</div>
+{setupError && <p className="mt-4 text-sm font-medium text-destructive" role="alert">{setupError}</p>}
+<div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-6 flex justify-between gap-3 border-t border-border bg-background px-5 pb-5 pt-4"><button data-testid="button-skip-workout-setup" onClick={() => { localStorage.setItem("homehub.workouts.experience.v1", "seen"); setSetupOpen(false); setSetupConfirmation("Setup skipped for now. Return to Preferences whenever you are ready."); }} className="rounded-lg px-3 py-2 text-sm font-bold text-muted-foreground">Skip for now</button><div className="flex gap-2">{setupStep > 1 && <button onClick={() => setSetupStep(step => step - 1)} className="rounded-lg border border-border px-3 py-2 text-sm font-bold">Back</button>}{setupStep < 3 ? <button data-testid="button-next-workout-setup" onClick={() => setSetupStep(step => step + 1)} className="rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background">Next</button> : <button data-testid="button-save-workout-setup" onClick={saveSetup} disabled={updateWorkoutPreferences.isPending} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{updateWorkoutPreferences.isPending ? "Saving…" : "Save preferences"}</button>}</div></div></section></div>}
     </main>
   );
 }

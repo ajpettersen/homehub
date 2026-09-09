@@ -71,7 +71,7 @@ export default function Invite() {
         setLocation("/", { replace: true });
       },
       onError: (err) => {
-        setRedeemError(err instanceof Error ? err.message : "Failed to join household.");
+        setRedeemError((err as any)?.data?.error || (err instanceof Error ? err.message : "Failed to join household."));
       }
     });
   };

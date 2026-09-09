@@ -260,6 +260,7 @@ function AddTaskForm({
   saving,
   defaultPropertyId,
   initialTask,
+  error,
 }: {
   properties: any[];
   members: any[];
@@ -268,6 +269,7 @@ function AddTaskForm({
   saving: boolean;
   defaultPropertyId?: string;
   initialTask?: any;
+  error?: string | null;
 }) {
   const editing = Boolean(initialTask);
   const [title, setTitle] = useState(initialTask?.title ?? "");
@@ -449,6 +451,8 @@ function AddTaskForm({
           placeholder="Any details…"
         />
       </div>
+
+      {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
       <div className="flex gap-3 pt-1">
         <button type="button" onClick={onCancel} className="flex-1 py-2.5 font-bold rounded-xl border-2 border-border hover:bg-muted transition-colors flex items-center justify-center gap-2">
@@ -659,7 +663,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
       { id, data: { completedBy: activeMember?.name ?? "Someone", completedOn: getLocalDateOnly(), timezone } },
       {
         onSuccess: invalidate,
-        onError: () => setActionError("Could not complete that maintenance task. Please try again."),
+        onError: (err) => setActionError((err as any)?.data?.error || "Could not complete that maintenance task. Please try again."),
         onSettled: () => setPendingTaskId(null),
       }
     );
@@ -678,7 +682,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
         invalidate();
         setDeletingTask(null);
       },
-      onError: () => setDeleteError("Could not remove that maintenance task. Please try again."),
+      onError: (err) => setDeleteError((err as any)?.data?.error || "Could not remove that maintenance task. Please try again."),
       onSettled: () => setPendingTaskId(null),
     });
   };
@@ -687,7 +691,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
     setActionError("");
     createTask.mutate({ data: { ...data, ...(data.scheduleType === "recurring" && { timezone }) } }, {
       onSuccess: () => { setAdding(false); invalidate(); },
-      onError: () => setActionError("Could not create that maintenance task. Please try again."),
+      onError: (err) => setActionError((err as any)?.data?.error || "Could not create that maintenance task. Please try again."),
     });
   };
 
@@ -715,7 +719,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
           setEditingTaskId(null);
           void invalidate();
         },
-        onError: () => setActionError("Could not update that maintenance task. Please try again."),
+        onError: (err) => setActionError((err as any)?.data?.error || "Could not update that maintenance task. Please try again."),
         onSettled: () => setPendingTaskId(null),
       },
     );
@@ -736,7 +740,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
       },
       {
         onSuccess: invalidate,
-        onError: () => setActionError("Could not change the assignment. Please try again."),
+        onError: (err) => setActionError((err as any)?.data?.error || "Could not change the assignment. Please try again."),
         onSettled: () => setPendingTaskId(null),
       },
     );
@@ -756,7 +760,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
       },
       {
         onSuccess: invalidate,
-        onError: () => setActionError("Could not change the due date. Please try again."),
+        onError: (err) => setActionError((err as any)?.data?.error || "Could not change the due date. Please try again."),
         onSettled: () => setUpdatingDueDateId(null),
       },
     );
@@ -793,6 +797,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
             setActionError("");
           }}
           saving={updateTask.isPending}
+          error={actionError}
         />
       );
     }
@@ -836,7 +841,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
 
   return (
     <div className={`space-y-6 ${!isEmbedded ? "animate-in fade-in duration-300" : ""}`}>
-      {actionError && (
+      {actionError && !adding && !editingTaskId && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert">
           {actionError}
         </div>
@@ -896,6 +901,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
           onSubmit={handleCreate}
           onCancel={() => setAdding(false)}
           saving={createTask.isPending}
+          error={actionError}
         />
       )}
 

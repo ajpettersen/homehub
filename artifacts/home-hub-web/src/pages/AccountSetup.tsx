@@ -31,8 +31,8 @@ export default function AccountSetup() {
       await requestJoin.mutateAsync({ data: { householdMemberEmail: email.trim() } });
       setSubmitted(true);
       await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-    } catch {
-      setError("Unable to submit this join request. Check the household member email and try again.");
+    } catch (err: any) {
+      setError(err?.data?.error || "Unable to submit this join request. Check the household member email and try again.");
     }
   };
 
@@ -112,7 +112,7 @@ export default function AccountSetup() {
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
             We’ll send your request to that household. A family member must approve your account before you can access family information.
           </p>
-          {error && <p className="mt-3 text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="mt-3 text-sm font-medium text-destructive">{error}</p>}
           <button type="submit" disabled={requestJoin.isPending} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-60">
             {requestJoin.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             {requestJoin.isPending ? "Submitting…" : "Request to join"}

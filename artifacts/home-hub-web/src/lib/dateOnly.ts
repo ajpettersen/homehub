@@ -1,6 +1,25 @@
 import { format, parseISO } from "date-fns";
 
 /**
+ * Validates a YYYY-MM-DD string is a real calendar date, without timezone shifting.
+ */
+export function isValidDateOnly(dateString: string | null | undefined): boolean {
+  if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return false;
+  const parts = dateString.split("-");
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+
+  if (year < 2000 || year > 2100) return false;
+  if (month < 1 || month > 12) return false;
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  if (day < 1 || day > daysInMonth) return false;
+
+  return true;
+}
+
+/**
  * Returns the user's local calendar day in the API's date-only format.
  * Do not use Date#toISOString() here: it converts the local day to UTC.
  */

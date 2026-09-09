@@ -87,26 +87,26 @@ export function EditableDraftWorkout({
                 onClick={() => handleMoveEx(i, "up")}
                 disabled={i === 0}
                 aria-label={`Move ${ex.name || `exercise ${i + 1}`} up`}
-                className="flex h-7 w-7 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm hover:bg-primary/10 hover:text-primary disabled:opacity-30"
+                className="flex h-10 w-10 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm hover:bg-primary/10 hover:text-primary disabled:opacity-30"
               >
-                <ChevronUp className="w-3 h-3" />
+                <ChevronUp className="w-5 h-5 sm:w-3 sm:h-3" />
               </button>
               <button
                 type="button"
                 onClick={() => handleMoveEx(i, "down")}
                 disabled={i === draft.exercises.length - 1}
                 aria-label={`Move ${ex.name || `exercise ${i + 1}`} down`}
-                className="flex h-7 w-7 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm hover:bg-primary/10 hover:text-primary disabled:opacity-30"
+                className="flex h-10 w-10 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm hover:bg-primary/10 hover:text-primary disabled:opacity-30"
               >
-                <ChevronDown className="w-3 h-3" />
+                <ChevronDown className="w-5 h-5 sm:w-3 sm:h-3" />
               </button>
               <button
                 type="button"
                 onClick={() => handleRemoveEx(i)}
                 aria-label={`Remove ${ex.name || `exercise ${i + 1}`}`}
-                className="flex h-7 w-7 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm transition-opacity hover:bg-destructive/90"
+                className="flex h-10 w-10 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm transition-opacity hover:bg-destructive/90"
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-5 h-5 sm:w-3 sm:h-3" />
               </button>
             </div>
 
@@ -116,7 +116,7 @@ export function EditableDraftWorkout({
                 value={ex.name} 
                 onChange={e => handleExChange(i, "name", e.target.value)}
                 placeholder="Exercise Name"
-                className="w-full bg-transparent border-b border-border/50 px-1 py-1 font-bold text-sm focus:outline-none focus:border-primary"
+                className="w-full h-10 sm:h-auto bg-transparent border-b border-border/50 px-1 py-1 font-bold text-sm focus:outline-none focus:border-primary"
               />
 
               <div className="flex flex-wrap gap-1">
@@ -127,7 +127,7 @@ export function EditableDraftWorkout({
                       key={mg}
                       type="button"
                       onClick={() => toggleMuscle(i, mg as MuscleGroup)}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors border ${
+                      className={`min-h-[32px] sm:min-h-0 px-2 py-1 sm:px-1.5 sm:py-0.5 rounded text-[10px] font-bold transition-colors border ${
                         active ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-transparent hover:border-border"
                       }`}
                     >
@@ -141,23 +141,23 @@ export function EditableDraftWorkout({
                 <div>
                   <label className="text-[10px] text-muted-foreground font-bold uppercase mb-0.5 block">Sets</label>
                   <input type="number" value={ex.sets || ""} onChange={e => handleExChange(i, "sets", parseInt(e.target.value) || null)}
-                    className="w-full bg-muted/30 border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary" />
+                    className="w-full h-10 sm:h-auto bg-muted/30 border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="text-[10px] text-muted-foreground font-bold uppercase mb-0.5 block">Reps</label>
                   <input type="number" value={ex.reps || ""} onChange={e => handleExChange(i, "reps", parseInt(e.target.value) || null)}
-                    className="w-full bg-muted/30 border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary" />
+                    className="w-full h-10 sm:h-auto bg-muted/30 border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="text-[10px] text-muted-foreground font-bold uppercase mb-0.5 block">Lbs</label>
                   <input type="number" value={ex.weightLbs || ""} onChange={e => handleExChange(i, "weightLbs", parseInt(e.target.value) || null)}
-                    className="w-full bg-muted/30 border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary" />
+                    className="w-full h-10 sm:h-auto bg-muted/30 border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="text-[10px] text-muted-foreground font-bold uppercase mb-0.5 block">Mins</label>
                   <input type="number" value={ex.durationSeconds ? Math.floor(ex.durationSeconds / 60) : ""} 
                     onChange={e => handleExChange(i, "durationSeconds", e.target.value ? parseFloat(e.target.value) * 60 : null)}
-                    className="w-full bg-muted/30 border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary" />
+                    className="w-full h-10 sm:h-auto bg-muted/30 border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary" />
                 </div>
               </div>
             </div>

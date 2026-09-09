@@ -2,6 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { Link } from "wouter";
 import { usePreferences } from "@/context/PreferencesContext";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useGetPeople, getGetPeopleQueryKey, useCreatePerson, useUpdatePerson, useDeletePerson,
+  useGetContractors, getGetContractorsQueryKey, useCreateContractor, useUpdateContractor, useDeleteContractor, useMatchContractors,
+  type Person, type Contractor
+} from "@workspace/api-client-react";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -31,20 +37,6 @@ const DEFAULT_GROUPS = [
   "Family friends",
 ];
 
-interface Person {
-  id: string;
-  propertyId: string | null;
-  name: string;
-  groups: string[];
-  photoUrl: string | null;
-  phone: string | null;
-  email: string | null;
-  notes: string | null;
-  lastContactedAt: string | null;
-  nextFollowUpAt: string | null;
-  createdAt: string;
-}
-
 interface PersonFormState {
   name: string;
   groups: string[];
@@ -54,20 +46,6 @@ interface PersonFormState {
   notes: string;
   lastContactedAt: string;
   nextFollowUpAt: string;
-}
-
-interface Contractor {
-  id: string;
-  propertyId: string | null;
-  name: string;
-  trade: string;
-  phone: string | null;
-  email: string | null;
-  notes: string | null;
-  pastWork: string | null;
-  preferred: boolean;
-  matchScore?: number;
-  createdAt: string;
 }
 
 interface ContractorFormState {
@@ -110,12 +88,14 @@ function PersonForm({
   onSave,
   onCancel,
   saving,
+  error,
 }: {
   initial: PersonFormState;
   availableGroups: string[];
   onSave: (form: PersonFormState) => void;
   onCancel: () => void;
   saving: boolean;
+  error?: string | null;
 }) {
   const [form, setForm] = useState<PersonFormState>(initial);
   const [newGroup, setNewGroup] = useState("");
@@ -290,6 +270,7 @@ function PersonForm({
         </div>
       </div>
 
+      {error && <p role="alert" className="mt-3 text-sm font-medium text-destructive">{error}</p>}
       <div className="mt-5 flex gap-2">
         <button type="button" onClick={onCancel} className="flex-1 rounded-xl border border-border py-2.5 text-sm font-bold hover:bg-muted">
           Cancel
@@ -303,7 +284,7 @@ function PersonForm({
 }
 
 function PersonCard({ person, onEdit, onDelete }: { person: Person; onEdit: () => void; onDelete: () => void }) {
-  const followUp = followUpLabel(person.nextFollowUpAt);
+  const followUp = followUpLabel(person.nextFollowUpAt ?? null);
   return (
     <Card className="group transition-shadow hover:shadow-md">
       <CardContent className="p-4">
@@ -370,11 +351,13 @@ function ContractorForm({
   onSave,
   onCancel,
   saving,
+  error,
 }: {
   initial: ContractorFormState;
   onSave: (form: ContractorFormState) => void;
   onCancel: () => void;
   saving: boolean;
+  error?: string | null;
 }) {
   const [form, setForm] = useState(initial);
   const set = <K extends keyof ContractorFormState>(key: K, value: ContractorFormState[K]) =>
@@ -439,6 +422,7 @@ function ContractorForm({
           Preferred contractor
         </label>
       </div>
+      {error && <p role="alert" className="mt-3 text-sm font-medium text-destructive">{error}</p>}
       <div className="mt-5 flex gap-2">
         <button type="button" onClick={onCancel} className="flex-1 rounded-xl border border-border py-2.5 text-sm font-bold hover:bg-muted">Cancel</button>
         <button type="submit" disabled={saving || !form.name.trim() || !form.trade.trim()} className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
@@ -485,87 +469,39 @@ function ContractorCard({ contractor, onEdit, onDelete }: { contractor: Contract
 export default function People() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { preferences } = usePreferences();
-  const [people, setPeople] = useState<Person[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+
+  const { data: people = [], isLoading: loadingPeople, isError: isPeopleError, error: peopleErrorObj, refetch: refetchPeople } = useGetPeople({
+    query: { queryKey: getGetPeopleQueryKey(), enabled: !!isSignedIn }
+  });
+  const { data: contractors = [], isLoading: loadingContractors, isError: isContractorsError, error: contractorsErrorObj, refetch: refetchContractors } = useGetContractors(undefined, { query: { queryKey: getGetContractorsQueryKey(), enabled: !!isSignedIn } });
+
+  const createPerson = useCreatePerson();
+  const updatePerson = useUpdatePerson();
+  const deletePersonMutation = useDeletePerson();
+  const createContractor = useCreateContractor();
+  const updateContractor = useUpdateContractor();
+  const deleteContractorMutation = useDeleteContractor();
+  const matchContractors = useMatchContractors();
+
   const [search, setSearch] = useState("");
   const [activeGroup, setActiveGroup] = useState("All people");
   const [form, setForm] = useState<PersonFormState | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [contractors, setContractors] = useState<Contractor[]>([]);
-  const [contractorsLoading, setContractorsLoading] = useState(true);
+
   const [contractorForm, setContractorForm] = useState<ContractorFormState | null>(null);
   const [editingContractorId, setEditingContractorId] = useState<string | null>(null);
-  const [savingContractor, setSavingContractor] = useState(false);
+
   const [deletingPerson, setDeletingPerson] = useState<Person | null>(null);
-  const [isDeletingPerson, setIsDeletingPerson] = useState(false);
   const [deletePersonError, setDeletePersonError] = useState<string | null>(null);
+
   const [deletingContractor, setDeletingContractor] = useState<Contractor | null>(null);
-  const [isDeletingContractor, setIsDeletingContractor] = useState(false);
   const [deleteContractorError, setDeleteContractorError] = useState<string | null>(null);
+
   const [problem, setProblem] = useState("");
   const [matches, setMatches] = useState<Contractor[] | null>(null);
-  const [matching, setMatching] = useState(false);
 
-  const loadPeople = useCallback(async () => {
-    try {
-      const response = await fetch("/api/people");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Unable to load people");
-      setPeople(data);
-      setError("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load people");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadContractors = useCallback(async () => {
-    try {
-      const response = await fetch("/api/contractors");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Unable to load contractors");
-      setContractors(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load contractors");
-    } finally {
-      setContractorsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!authLoaded) return;
-    if (!isSignedIn) {
-      setLoading(false);
-      setContractorsLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    const initializeAndLoad = async () => {
-      try {
-        const profileResponse = await fetch("/api/me", { credentials: "include" });
-        const profileData = await profileResponse.json();
-        if (!profileResponse.ok) {
-          throw new Error(profileData.error ?? "Unable to initialize household access");
-        }
-        if (!cancelled) await Promise.all([loadPeople(), loadContractors()]);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Unable to initialize household access");
-          setLoading(false);
-          setContractorsLoading(false);
-        }
-      }
-    };
-    void initializeAndLoad();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authLoaded, isSignedIn, loadContractors, loadPeople]);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const groups = useMemo(() => {
     const discovered = people.flatMap(person => person.groups);
@@ -582,11 +518,13 @@ export default function People() {
   }, [people, search, activeGroup]);
 
   const startAdd = () => {
+    setActionError(null);
     setEditingId(null);
     setForm(emptyForm());
   };
 
   const startEdit = (person: Person) => {
+    setActionError(null);
     setEditingId(person.id);
     setForm({
       name: person.name,
@@ -601,23 +539,18 @@ export default function People() {
   };
 
   const savePerson = async (values: PersonFormState) => {
-    setSaving(true);
+    setActionError(null);
     try {
-      const response = await fetch(editingId ? `/api/people/${editingId}` : "/api/people", {
-        method: editingId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Unable to save person");
-      setPeople(current => editingId ? current.map(person => person.id === editingId ? data : person) : [...current, data].sort((a, b) => a.name.localeCompare(b.name)));
+      if (editingId) {
+        await updatePerson.mutateAsync({ id: editingId, data: values });
+      } else {
+        await createPerson.mutateAsync({ data: values });
+      }
+      await queryClient.invalidateQueries({ queryKey: getGetPeopleQueryKey() });
       setForm(null);
       setEditingId(null);
-      setError("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save person");
-    } finally {
-      setSaving(false);
+      setActionError((err as any)?.data?.error || (err instanceof Error ? err.message : "Unable to save person"));
     }
   };
 
@@ -628,20 +561,13 @@ export default function People() {
 
   const performDeletePerson = async () => {
     if (!deletingPerson) return;
-    setIsDeletingPerson(true);
     setDeletePersonError(null);
     try {
-      const response = await fetch(`/api/people/${deletingPerson.id}`, { method: "DELETE" });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Unable to remove person");
-      }
-      setPeople(current => current.filter(item => item.id !== deletingPerson.id));
+      await deletePersonMutation.mutateAsync({ id: deletingPerson.id });
+      await queryClient.invalidateQueries({ queryKey: getGetPeopleQueryKey() });
       setDeletingPerson(null);
     } catch (err) {
-      setDeletePersonError(err instanceof Error ? err.message : "Unable to remove person");
-    } finally {
-      setIsDeletingPerson(false);
+      setDeletePersonError((err as any)?.data?.error || (err instanceof Error ? err.message : "Unable to remove person"));
     }
   };
 
@@ -652,11 +578,13 @@ export default function People() {
   }, [people]);
 
   const startAddContractor = () => {
+    setActionError(null);
     setEditingContractorId(null);
     setContractorForm(emptyContractorForm());
   };
 
   const startEditContractor = (contractor: Contractor) => {
+    setActionError(null);
     setEditingContractorId(contractor.id);
     setContractorForm({
       name: contractor.name,
@@ -670,29 +598,19 @@ export default function People() {
   };
 
   const saveContractor = async (values: ContractorFormState) => {
-    setSavingContractor(true);
+    setActionError(null);
     try {
-      const response = await fetch(editingContractorId ? `/api/contractors/${editingContractorId}` : "/api/contractors", {
-        method: editingContractorId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Unable to save contractor");
-      setContractors(current => {
-        const updated = editingContractorId
-          ? current.map(contractor => contractor.id === editingContractorId ? data : contractor)
-          : [...current, data];
-        return [...updated].sort((a, b) => Number(b.preferred) - Number(a.preferred) || a.name.localeCompare(b.name));
-      });
+      if (editingContractorId) {
+        await updateContractor.mutateAsync({ id: editingContractorId, data: values });
+      } else {
+        await createContractor.mutateAsync({ data: values });
+      }
+      await queryClient.invalidateQueries({ queryKey: getGetContractorsQueryKey() });
       setContractorForm(null);
       setEditingContractorId(null);
-      setError("");
       setMatches(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save contractor");
-    } finally {
-      setSavingContractor(false);
+      setActionError((err as any)?.data?.error || (err instanceof Error ? err.message : "Unable to save contractor"));
     }
   };
 
@@ -703,42 +621,26 @@ export default function People() {
 
   const performDeleteContractor = async () => {
     if (!deletingContractor) return;
-    setIsDeletingContractor(true);
     setDeleteContractorError(null);
     try {
-      const response = await fetch(`/api/contractors/${deletingContractor.id}`, { method: "DELETE" });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Unable to remove contractor");
-      }
-      setContractors(current => current.filter(item => item.id !== deletingContractor.id));
+      await deleteContractorMutation.mutateAsync({ id: deletingContractor.id });
+      await queryClient.invalidateQueries({ queryKey: getGetContractorsQueryKey() });
       setMatches(current => current?.filter(item => item.id !== deletingContractor.id) ?? null);
       setDeletingContractor(null);
     } catch (err) {
-      setDeleteContractorError(err instanceof Error ? err.message : "Unable to remove contractor");
-    } finally {
-      setIsDeletingContractor(false);
+      setDeleteContractorError((err as any)?.data?.error || (err instanceof Error ? err.message : "Unable to remove contractor"));
     }
   };
 
   const findContractor = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!problem.trim()) return;
-    setMatching(true);
+    setActionError(null);
     try {
-      const response = await fetch("/api/contractors/match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ problem }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Unable to search contractors");
+      const data = await matchContractors.mutateAsync({ data: { problem } });
       setMatches(data.matches);
-      setError("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to search contractors");
-    } finally {
-      setMatching(false);
+      setActionError((err as any)?.data?.error || (err instanceof Error ? err.message : "Unable to search contractors"));
     }
   };
 
@@ -748,216 +650,250 @@ export default function People() {
 
   if (!isSignedIn) {
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center rounded-3xl border border-primary/20 bg-primary/5 px-8 text-center">
-        <UsersRound className="h-9 w-9 text-primary" />
-        <h1 className="mt-4 font-serif text-3xl font-bold">Your household people, kept private</h1>
-        <p className="mt-3 text-muted-foreground">Sign in to view and manage contact details, follow-ups, and trusted contractors for your household.</p>
-        <Link href="/sign-in" className="mt-6 inline-flex rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90">Sign in to HomeHub</Link>
+      <div className="mx-auto max-w-5xl text-center py-20">
+        <h1 className="font-serif text-3xl font-bold">Please sign in</h1>
+        <p className="mt-2 text-muted-foreground">You must be signed in to view your household people.</p>
       </div>
     );
   }
 
-  return (
-    <div className="mx-auto max-w-5xl space-y-6 animate-in fade-in duration-300">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-serif text-4xl font-bold tracking-tight text-foreground md:text-5xl">People</h1>
-          <p className="mt-1 font-medium text-muted-foreground">Keep track of the people connected to your family.</p>
-        </div>
-        <button onClick={startAdd} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90">
-          <Plus className="w-4 h-4" /> Add person
-        </button>
+  if (loadingPeople || loadingContractors) {
+    return <div className="mx-auto max-w-5xl space-y-6 animate-pulse"><div className="h-12 w-48 rounded-xl bg-muted" /><div className="h-64 rounded-2xl bg-muted" /></div>;
+  }
+
+  const isError = isPeopleError || isContractorsError;
+  const combinedError = (peopleErrorObj as Error)?.message || (contractorsErrorObj as Error)?.message || "Unable to load data";
+
+  if (isError) {
+    return (
+      <div className="mx-auto max-w-5xl text-center py-20">
+        <h1 className="font-serif text-3xl font-bold text-destructive">Something went wrong</h1>
+        <p className="mt-2 text-muted-foreground">{combinedError}</p>
+        <button onClick={() => { refetchPeople(); refetchContractors(); }} className="mt-4 rounded-xl bg-primary px-4 py-2 font-bold text-primary-foreground">Try again</button>
       </div>
+    );
+  }
 
-      {form && (
-        <PersonForm
-          initial={form}
-          availableGroups={groups}
-          onSave={savePerson}
-          onCancel={() => { setForm(null); setEditingId(null); }}
-          saving={saving}
-        />
-      )}
+  const showDirectory = preferences.tabs.people.layout === "compact";
 
-      {error && (
-        <div className="flex items-center justify-between rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          <span>{error}</span>
-          <button onClick={() => setError("")}><X className="w-4 h-4" /></button>
+  return (
+    <div className="mx-auto max-w-5xl space-y-12">
+      <header>
+        <h1 className="font-serif text-4xl font-bold text-foreground">People</h1>
+        <p className="mt-2 text-lg text-muted-foreground">Keep track of friends, neighbors, and trusted contractors.</p>
+      </header>
+
+      {actionError && !form && !contractorForm && (
+        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive flex items-center justify-between">
+          {actionError}
+          <button onClick={() => setActionError(null)} className="text-destructive hover:opacity-80">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
       {dueFollowUps.length > 0 && (
-        <section className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <CalendarClock className="h-4 w-4 text-primary" />
-            <h2 className="font-bold">Follow-up due</h2>
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">{dueFollowUps.length}</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
+        <section>
+          <h2 className="font-serif text-2xl font-bold text-foreground mb-4">Follow-ups due</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {dueFollowUps.map(person => (
-              <button key={person.id} onClick={() => startEdit(person)}
-                className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-left text-sm font-semibold hover:border-primary/40">
-                <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                  {person.photoUrl ? <img src={person.photoUrl} alt="" className="h-full w-full object-cover" /> : initials(person.name)}
-                </span>
-                {person.name}
-                <span className={`text-xs ${person.nextFollowUpAt! < new Date().toISOString().slice(0, 10) ? "text-destructive" : "text-primary"}`}>{followUpLabel(person.nextFollowUpAt)}</span>
-              </button>
+              <PersonCard key={person.id} person={person} onEdit={() => startEdit(person)} onDelete={() => deletePerson(person)} />
             ))}
           </div>
         </section>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <label className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={event => setSearch(event.target.value)}
-            placeholder="Search people or notes…"
-            className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-3 text-sm outline-none focus:border-primary"
-          />
-        </label>
-        <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
-          {["All people", ...groups].map(group => (
-            <button
-              key={group}
-              onClick={() => setActiveGroup(group)}
-              className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${activeGroup === group ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-            >
-              {group}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {loading ? (
-        <div className={`grid gap-3 sm:grid-cols-2 ${preferences.tabs.people.layout === "cards" ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
-          {[1, 2, 3].map(item => <div key={item} className="h-32 animate-pulse rounded-2xl bg-muted" />)}
-        </div>
-      ) : filteredPeople.length === 0 ? (
-        <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border px-6 text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <UsersRound className="w-5 h-5" />
-          </div>
-          <h2 className="font-serif text-xl font-bold">{people.length === 0 ? "Start your people list" : "No people found"}</h2>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            {people.length === 0 ? "Add neighbors, teammates, school friends, and anyone else you want to remember." : "Try a different search or group."}
-          </p>
-          {people.length === 0 && (
-            <button onClick={startAdd} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90">
-              <Plus className="w-4 h-4" /> Add your first person
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className={`grid gap-3 sm:grid-cols-2 ${preferences.tabs.people.layout === "cards" ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
-          {filteredPeople.map(person => (
-            <PersonCard key={person.id} person={person} onEdit={() => startEdit(person)} onDelete={() => deletePerson(person)} />
-          ))}
-        </div>
-      )}
-
-      <section className="border-t border-border pt-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <section>
+        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="flex items-center gap-2">
-              <Wrench className="h-5 w-5 text-primary" />
-              <h2 className="font-serif text-3xl font-bold tracking-tight">Contractors</h2>
-            </div>
-            <p className="mt-1 text-sm font-medium text-muted-foreground">Remember trusted home-service professionals and find the right one fast.</p>
+            <h2 className="font-serif text-2xl font-bold text-foreground">Family & Friends</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">Everyone connected to your household.</p>
           </div>
-          <button onClick={startAddContractor} className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-bold text-background shadow-sm hover:bg-foreground/90">
+          <button onClick={startAdd} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+            <Plus className="h-4 w-4" /> Add person
+          </button>
+        </div>
+
+        {form && (
+          <div className="mb-6">
+            <PersonForm
+              initial={form}
+              availableGroups={groups}
+              onSave={savePerson}
+              onCancel={() => { setForm(null); setActionError(null); }}
+              saving={createPerson.isPending || updatePerson.isPending}
+              error={actionError}
+            />
+          </div>
+        )}
+
+        {people.length > 0 && (
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Search names, notes…"
+                className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-4 text-sm focus:border-primary focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {["All people", ...groups].map(group => (
+                <button
+                  key={group}
+                  onClick={() => setActiveGroup(group)}
+                  className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${activeGroup === group ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"}`}
+                >
+                  {group}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {people.length === 0 && !form ? (
+          <div className="rounded-2xl border-2 border-dashed border-border p-8 text-center">
+            <UserRound className="mx-auto h-8 w-8 text-muted-foreground/50" />
+            <h3 className="mt-4 font-bold text-foreground">No people added yet</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Keep track of neighbors, teachers, or friends.</p>
+            <button onClick={startAdd} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90">
+              <Plus className="h-4 w-4" /> Add person
+            </button>
+          </div>
+        ) : filteredPeople.length === 0 && !form ? (
+          <div className="rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+            No people match your search.
+          </div>
+        ) : showDirectory ? (
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <div className="divide-y divide-border">
+              {filteredPeople.map(person => (
+                <div key={person.id} className="group flex items-center justify-between gap-4 p-4 hover:bg-muted/30">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-xs font-bold text-primary">
+                      {person.photoUrl ? <img src={person.photoUrl} alt={person.name} className="h-full w-full object-cover" /> : initials(person.name) || <UserRound className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-sm">{person.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{person.groups.join(", ") || "No group"}</p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <div className="hidden sm:flex gap-1">
+                      {person.phone && <a href={`tel:${person.phone}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"><Phone className="h-4 w-4" /></a>}
+                      {person.email && <a href={`mailto:${person.email}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"><Mail className="h-4 w-4" /></a>}
+                    </div>
+                    <button onClick={() => startEdit(person)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-primary/10 hover:text-primary group-hover:opacity-100 focus:opacity-100"><Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => deletePerson(person)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus:opacity-100"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredPeople.map(person => (
+              <PersonCard key={person.id} person={person} onEdit={() => startEdit(person)} onDelete={() => deletePerson(person)} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-serif text-2xl font-bold text-foreground">Trusted Contractors</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">Plumbers, electricians, and services you’d hire again.</p>
+          </div>
+          <button onClick={startAddContractor} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
             <Plus className="h-4 w-4" /> Add contractor
           </button>
         </div>
 
-        <form onSubmit={findContractor} className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-          <label className="mb-2 flex items-center gap-2 text-sm font-bold">
-            <Search className="h-4 w-4 text-primary" /> What problem do you need help with?
-          </label>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input value={problem} onChange={event => setProblem(event.target.value)}
-              placeholder="e.g. The cabin water heater is leaking"
-              className="min-w-0 flex-1 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-primary" />
-            <button type="submit" disabled={matching || !problem.trim()} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-              {matching ? "Finding…" : "Find a contractor"}
-            </button>
-          </div>
-        </form>
-
-        {matches !== null && (
-          <div className="mt-4">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-bold">{matches.length ? "Best matches" : "No match found"}</h3>
-              <button onClick={() => setMatches(null)} className="text-xs font-bold text-muted-foreground hover:text-foreground">Clear results</button>
-            </div>
-            {matches.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
-                No saved contractor seems to match that problem yet. Add a contractor with their trade, past work, or specialty to make future searches smarter.
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {matches.map(contractor => <ContractorCard key={contractor.id} contractor={contractor} onEdit={() => startEditContractor(contractor)} onDelete={() => deleteContractor(contractor)} />)}
-              </div>
-            )}
-          </div>
-        )}
-
         {contractorForm && (
-          <div className="mt-5">
-            <ContractorForm initial={contractorForm} onSave={saveContractor}
-              onCancel={() => { setContractorForm(null); setEditingContractorId(null); }}
-              saving={savingContractor} />
+          <div className="mb-6">
+            <ContractorForm
+              initial={contractorForm}
+              onSave={saveContractor}
+              onCancel={() => { setContractorForm(null); setActionError(null); }}
+              saving={createContractor.isPending || updateContractor.isPending}
+              error={actionError}
+            />
           </div>
         )}
 
-        <div className="mt-5">
-          {contractorsLoading ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2].map(item => <div key={item} className="h-40 animate-pulse rounded-2xl bg-muted" />)}
-            </div>
-          ) : contractors.length === 0 ? (
-            <div className="flex min-h-44 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border px-6 text-center">
-              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary"><Wrench className="h-5 w-5" /></div>
-              <h3 className="font-serif text-xl font-bold">Build your contractor memory bank</h3>
-              <p className="mt-1 max-w-sm text-sm text-muted-foreground">Save plumbers, electricians, cleaners, and any service provider your household has used.</p>
-              <button onClick={startAddContractor} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" /> Add your first contractor</button>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {contractors.map(contractor => <ContractorCard key={contractor.id} contractor={contractor} onEdit={() => startEditContractor(contractor)} onDelete={() => deleteContractor(contractor)} />)}
+        <div className="mb-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <h3 className="font-bold text-foreground">Find a contractor</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Describe your project and we’ll match you with the best saved contractor.</p>
+          <form onSubmit={findContractor} className="mt-3 flex gap-2">
+            <input
+              value={problem}
+              onChange={event => setProblem(event.target.value)}
+              placeholder="e.g. The water heater is leaking"
+              className="min-w-0 flex-1 rounded-xl border border-border bg-background px-4 py-2 text-sm focus:border-primary focus:outline-none"
+            />
+            <button type="submit" disabled={matchContractors.isPending || !problem.trim()} className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2 text-sm font-bold text-background transition-colors hover:bg-foreground/90 disabled:opacity-50">
+              {matchContractors.isPending ? "Searching…" : "Search"}
+            </button>
+          </form>
+          {matches && (
+            <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <h4 className="font-bold text-primary">Best matches</h4>
+              {matches.length === 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">No contractors match this project.</p>
+              ) : (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {matches.map(contractor => (
+                    <ContractorCard key={contractor.id} contractor={contractor} onEdit={() => startEditContractor(contractor)} onDelete={() => deleteContractor(contractor)} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
+
+        {contractors.length === 0 && !contractorForm ? (
+          <div className="rounded-2xl border-2 border-dashed border-border p-8 text-center">
+            <Wrench className="mx-auto h-8 w-8 text-muted-foreground/50" />
+            <h3 className="mt-4 font-bold text-foreground">No contractors saved</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Save the people who keep your house running.</p>
+            <button onClick={startAddContractor} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted">
+              <Plus className="h-4 w-4" /> Add contractor
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {contractors.map(contractor => (
+              <ContractorCard key={contractor.id} contractor={contractor} onEdit={() => startEditContractor(contractor)} onDelete={() => deleteContractor(contractor)} />
+            ))}
+          </div>
+        )}
       </section>
 
       <ConfirmActionDialog
         open={!!deletingPerson}
-        onOpenChange={(isOpen) => {
-          if (!isOpen && !isDeletingPerson) setDeletingPerson(null);
-        }}
-        title="Remove Person"
-        description={`Remove ${deletingPerson?.name} from People?`}
+        onOpenChange={(open) => !open && setDeletingPerson(null)}
+        title="Remove person?"
+        description={`Are you sure you want to remove ${deletingPerson?.name}? This cannot be undone.`}
         confirmLabel="Remove"
-        destructive={true}
-        pending={isDeletingPerson}
-        error={deletePersonError}
         onConfirm={performDeletePerson}
+        pending={deletePersonMutation.isPending}
+        error={deletePersonError}
+        destructive
       />
 
       <ConfirmActionDialog
         open={!!deletingContractor}
-        onOpenChange={(isOpen) => {
-          if (!isOpen && !isDeletingContractor) setDeletingContractor(null);
-        }}
-        title="Remove Contractor"
-        description={`Remove ${deletingContractor?.name} from Contractors?`}
+        onOpenChange={(open) => !open && setDeletingContractor(null)}
+        title="Remove contractor?"
+        description={`Are you sure you want to remove ${deletingContractor?.name}? This cannot be undone.`}
         confirmLabel="Remove"
-        destructive={true}
-        pending={isDeletingContractor}
-        error={deleteContractorError}
         onConfirm={performDeleteContractor}
+        pending={deleteContractorMutation.isPending}
+        error={deleteContractorError}
+        destructive
       />
     </div>
   );

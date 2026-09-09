@@ -4,6 +4,7 @@ import { fixStaleMaintenanceDates, fixStaleChoreDates } from "./seed";
 import { runOneTimeProdCleanup } from "./prodDataRepair";
 import { startNotificationScheduler } from "./notifications";
 import { ensureWebPushSchema } from "./lib/webPush";
+import { startChatAttachmentFinalizer } from "./lib/chatAttachmentFinalizer";
 
 const rawPort = process.env["PORT"];
 
@@ -38,4 +39,5 @@ app.listen(port, async (err) => {
   await fixStaleMaintenanceDates();
   await fixStaleChoreDates();
   startNotificationScheduler();
+  startChatAttachmentFinalizer();
 });

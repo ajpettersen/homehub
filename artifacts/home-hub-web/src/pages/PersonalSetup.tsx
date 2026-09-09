@@ -61,7 +61,7 @@ export default function PersonalSetup() {
       });
       await handleComplete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to complete setup.");
+      setError((err as any)?.data?.error || (err instanceof Error ? err.message : "Failed to complete setup."));
     }
   };
 
@@ -74,7 +74,7 @@ export default function PersonalSetup() {
       });
       await handleComplete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to continue.");
+      setError((err as any)?.data?.error || (err instanceof Error ? err.message : "Failed to continue."));
     }
   };
 
@@ -117,7 +117,7 @@ export default function PersonalSetup() {
             </div>
 
             {error && (
-              <p className="text-sm text-destructive font-medium">{error}</p>
+              <p role="alert" className="text-sm text-destructive font-medium">{error}</p>
             )}
 
             <div className="mt-8 flex flex-col gap-3">

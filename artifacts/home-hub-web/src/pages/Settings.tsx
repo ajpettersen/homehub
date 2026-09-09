@@ -303,7 +303,7 @@ function AppearanceAndTabsSection() {
           {!canAdministerHousehold && (
             <p className="mt-3 text-xs text-muted-foreground">Only a household administrator can change household-wide tabs.</p>
           )}
-          {visibilityError && <p className="mt-3 text-sm font-medium text-destructive">{visibilityError}</p>}
+          {visibilityError && <p role="alert" className="mt-3 text-sm font-medium text-destructive">{visibilityError}</p>}
         </div>
 
         <div>
@@ -514,7 +514,7 @@ function TaskForm({ initial, members, onSave, onCancel, saving, creationOnly = f
         placeholder="Notes (optional)…" rows={2}
         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-muted-foreground focus:outline-none focus:border-primary resize-none"
       />
-      {error && <p className="text-sm font-medium text-destructive" role="alert">{error}</p>}
+      {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
       <div className="flex gap-2">
         <button type="button" onClick={onCancel}
           className="flex-1 py-1.5 rounded-lg border border-border text-sm font-bold hover:bg-muted transition-colors">
@@ -553,6 +553,7 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetMaintenanceTasksQueryKey(maintenanceQuery) });
 
   const handleAdd = (data: TaskFormState) => {
+    setSaveError("");
     createTask.mutate(
       {
         data: {
@@ -577,6 +578,7 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
   };
 
   const handleEdit = (id: string, data: TaskFormState) => {
+    setSaveError("");
     updateTask.mutate(
       {
         id,
@@ -788,7 +790,7 @@ function PropertyTasksSection({ property, onGoToTasks }: { property: any; onGoTo
         confirmLabel="Delete"
         destructive={true}
         pending={deleteTask.isPending}
-        error={deleteTask.isError ? "Failed to delete task. Please try again." : null}
+        error={deleteTask.error ? ((deleteTask.error as any).data?.error || (deleteTask.error as Error).message || "Failed to delete task. Please try again.") : null}
         onConfirm={() => {
           if (deletingTask) {
             deleteTask.mutate(
@@ -812,6 +814,7 @@ function NewPropertyForm({ onSave, onCancel, saving }: {
   onSave: (data: NewPropertyFormState) => void;
   onCancel: () => void;
   saving: boolean;
+  error?: string | null;
 }) {
   const [form, setForm] = useState<NewPropertyFormState>({ name: "", address: "", type: "cabin" });
 
@@ -879,7 +882,7 @@ function NewPropertyForm({ onSave, onCancel, saving }: {
 
 function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canManage, isDefault, onGoToTasks }: {
   property: any;
-  onSaveInfo: (data: PropertyFormState) => void;
+  onSaveInfo: (data: PropertyFormState) => Promise<void>;
   onDelete: () => Promise<void>;
   saving: boolean;
   deleting: boolean;
@@ -900,8 +903,18 @@ function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canMana
   const [tasksOpen, setTasksOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const handleSave = (e: React.FormEvent) => { e.preventDefault(); onSaveInfo(infoForm); setEditingInfo(false); };
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaveError(null);
+    try {
+      await onSaveInfo(infoForm);
+      setEditingInfo(false);
+    } catch (err) {
+      setSaveError((err as any)?.data?.error || (err as Error).message || "Failed to update property.");
+    }
+  };
   const handleDelete = async () => {
     setDeleteError(null);
     try {
@@ -990,8 +1003,9 @@ function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canMana
                 className="flex-[2] bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
                 placeholder="123 Main St, City, ST" />
             </div>
+            {saveError && <p role="alert" className="text-sm font-medium text-destructive">{saveError}</p>}
             <div className="flex gap-2">
-              <button type="button" onClick={() => setEditingInfo(false)}
+              <button type="button" onClick={() => { setEditingInfo(false); setSaveError(null); }}
                 className="px-3 py-1 rounded-lg border border-border text-xs font-bold hover:bg-muted transition-colors">Cancel</button>
               <button type="submit" disabled={saving}
                 className="px-3 py-1 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors disabled:opacity-50">
@@ -1079,7 +1093,7 @@ function PropertyRow({ property, onSaveInfo, onDelete, saving, deleting, canMana
 
 // ── MemberForm ────────────────────────────────────────────────────────────────
 function MemberForm({ initial, onSave, onCancel, saving, lockAdultRole = false }: {
-  initial: MemberFormState; onSave: (d: MemberFormState) => void; onCancel: () => void; saving: boolean; lockAdultRole?: boolean;
+  initial: MemberFormState; onSave: (d: MemberFormState) => void; onCancel: () => void; saving: boolean; lockAdultRole?: boolean; error?: string | null;
 }) {
   const [form, setForm] = useState<MemberFormState>(initial);
   const set = (k: keyof MemberFormState, v: string) => setForm(f => ({ ...f, [k]: v }));
@@ -1711,7 +1725,7 @@ function FamilyLinkingSection({ familyMembers }: { familyMembers: any[] }) {
           </div>
         </div>
         
-        {error && <p className="mt-3 text-sm font-medium text-destructive">{error}</p>}
+        {error && <p role="alert" className="mt-3 text-sm font-medium text-destructive">{error}</p>}
       </div>
     </AccordionSection>
   );
@@ -1846,7 +1860,7 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
             })}
           </div>
         </div>
-        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
       </div>
     </AccordionSection>
   );
@@ -1972,7 +1986,7 @@ function MergeDuplicateAdultsSection({ familyMembers }: { familyMembers: any[] }
               </div>
             </div>
 
-            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
             {success && <p className="text-sm font-medium text-green-700">{success}</p>}
 
             <button
@@ -2205,7 +2219,7 @@ function StoresSection({ canEdit }: { canEdit: boolean }) {
       { data },
       {
         onSuccess: () => { invalidate(); setAdding(false); },
-        onError: (err: any) => setErrorMsg(err.message || "Failed to add store")
+        onError: (err: any) => setErrorMsg(err.data?.error || err.message || "Failed to add store")
       }
     );
   };
@@ -2216,7 +2230,7 @@ function StoresSection({ canEdit }: { canEdit: boolean }) {
       { id, data },
       {
         onSuccess: () => { invalidate(); setEditingId(null); },
-        onError: (err: any) => setErrorMsg(err.message || "Failed to update store")
+        onError: (err: any) => setErrorMsg(err.data?.error || err.message || "Failed to update store")
       }
     );
   };
@@ -2254,7 +2268,7 @@ function StoresSection({ canEdit }: { canEdit: boolean }) {
         </p>
 
         {errorMsg && (
-          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm font-bold flex items-center gap-2">
+          <div role="alert" className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm font-bold flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
@@ -2347,7 +2361,7 @@ function StoresSection({ canEdit }: { canEdit: boolean }) {
         confirmLabel="Delete"
         destructive={true}
         pending={deleteStore.isPending}
-        error={deleteStore.isError ? "Failed to delete store. Please try again." : null}
+        error={deleteStore.error ? ((deleteStore.error as any).data?.error || (deleteStore.error as Error).message || "Failed to delete store. Please try again.") : null}
         onConfirm={() => {
           if (deletingStore) {
             deleteStore.mutate(
@@ -2395,8 +2409,10 @@ export default function Settings() {
   const deleteProperty = useDeleteProperty();
 
   const [addingMember, setAddingMember] = useState(false);
+  const [memberError, setMemberError] = useState<string | null>(null);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [addingProperty, setAddingProperty] = useState(false);
+  const [propertyError, setPropertyError] = useState<string | null>(null);
   const [deletingMember, setDeletingMember] = useState<any>(null);
 
   const invalidateMembers = () => queryClient.invalidateQueries({ queryKey: getGetFamilyMembersQueryKey() });
@@ -2479,9 +2495,12 @@ export default function Settings() {
         {canManageMembers && addingMember && (
           <div className="mb-5">
             <MemberForm initial={{ name: "", role: "child", color: COLORS[0], photoUrl: "" }}
-              onSave={data => createMember.mutate({ data: { name: data.name, role: data.role as "child" | "pet", color: data.color, photoUrl: data.photoUrl || null } },
-                { onSuccess: () => { invalidateMembers(); setAddingMember(false); } })}
-              onCancel={() => setAddingMember(false)} saving={createMember.isPending} />
+              onSave={data => {
+                setMemberError(null);
+                createMember.mutate({ data: { name: data.name, role: data.role as "child" | "pet", color: data.color, photoUrl: data.photoUrl || null } },
+                { onSuccess: () => { invalidateMembers(); setAddingMember(false); }, onError: (err) => setMemberError((err as any)?.data?.error || (err as Error).message || "Failed to add member") })
+              }}
+              onCancel={() => { setMemberError(null); setAddingMember(false); }} saving={createMember.isPending} error={memberError} />
           </div>
         )}
 
@@ -2492,9 +2511,12 @@ export default function Settings() {
                 <MemberForm
                   initial={{ name: member.name, role: member.role as Role, color: member.color, photoUrl: member.photoUrl ?? "" }}
                   lockAdultRole={member.role === "parent" && member.hasLinkedAccount}
-                  onSave={data => updateMember.mutate({ id: member.id, data: { name: data.name, role: data.role, color: data.color, photoUrl: data.photoUrl || null } },
-                    { onSuccess: () => { invalidateMembers(); setEditingMemberId(null); } })}
-                  onCancel={() => setEditingMemberId(null)} saving={updateMember.isPending} />
+                  onSave={data => {
+                    setMemberError(null);
+                    updateMember.mutate({ id: member.id, data: { name: data.name, role: data.role, color: data.color, photoUrl: data.photoUrl || null } },
+                    { onSuccess: () => { invalidateMembers(); setEditingMemberId(null); }, onError: (err) => setMemberError((err as any)?.data?.error || (err as Error).message || "Failed to update member") })
+                  }}
+                  onCancel={() => { setMemberError(null); setEditingMemberId(null); }} saving={updateMember.isPending} error={memberError} />
               </div>
             ) : (
               <MemberCard key={member.id} member={member}
@@ -2613,7 +2635,9 @@ export default function Settings() {
           )}
           {canManageProperties && addingProperty && (
             <NewPropertyForm
-              onSave={data => createProperty.mutate(
+              onSave={data => {
+                setPropertyError(null);
+                createProperty.mutate(
                 {
                   data: {
                     name: data.name,
@@ -2627,10 +2651,15 @@ export default function Settings() {
                     invalidateProps();
                     setAddingProperty(false);
                   },
+                  onError: (err) => setPropertyError((err as any)?.data?.error || (err as Error).message || "Failed to add property"),
                 },
-              )}
-              onCancel={() => setAddingProperty(false)}
+              )}}
+              onCancel={() => {
+                setPropertyError(null);
+                setAddingProperty(false);
+              }}
               saving={createProperty.isPending}
+              error={propertyError}
             />
           )}
           {properties?.map(property => (
@@ -2640,15 +2669,18 @@ export default function Settings() {
               isDefault={property.id === defaultPropertyId}
               canManage={canManageProperties}
               onGoToTasks={() => navigate("/tasks")}
-              onSaveInfo={data => updateProperty.mutate({
-                id: property.id,
-                data: {
-                  name: data.name,
-                  address: data.address || null,
-                  type: data.type,
-                  icon: data.type === "cabin" ? "mountain" : "home",
-                },
-              }, { onSuccess: invalidateProps })}
+              onSaveInfo={async data => {
+                await updateProperty.mutateAsync({
+                  id: property.id,
+                  data: {
+                    name: data.name,
+                    address: data.address || null,
+                    type: data.type,
+                    icon: data.type === "cabin" ? "mountain" : "home",
+                  },
+                });
+                invalidateProps();
+              }}
               onDelete={async () => {
                 await deleteProperty.mutateAsync({ id: property.id });
                 if (preferences.tabs.properties.defaultProperty === property.id) {

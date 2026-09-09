@@ -1195,6 +1195,48 @@ export const DeleteMealPlanEntryResponse = zod.void()
 
 
 /**
+ * @summary Atomically create or update meal plan slots
+ */
+export const upsertMealPlanEntriesBodyFillEmptyOnlyDefault = false;
+export const upsertMealPlanEntriesBodyItemsItemDayOfWeekMin = 0;
+export const upsertMealPlanEntriesBodyItemsItemDayOfWeekMax = 6;
+
+export const upsertMealPlanEntriesBodyItemsMax = 28;
+
+
+
+export const UpsertMealPlanEntriesBody = zod.object({
+  "fillEmptyOnly": zod.boolean().default(upsertMealPlanEntriesBodyFillEmptyOnlyDefault),
+  "items": zod.array(zod.object({
+  "weekStart": zod.coerce.date(),
+  "dayOfWeek": zod.number().min(upsertMealPlanEntriesBodyItemsItemDayOfWeekMin).max(upsertMealPlanEntriesBodyItemsItemDayOfWeekMax),
+  "mealType": zod.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+  "meal": zod.string(),
+  "notes": zod.string().nullish(),
+  "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "propertyId": zod.string()
+})).min(1).max(upsertMealPlanEntriesBodyItemsMax)
+})
+
+export const upsertMealPlanEntriesResponseDayOfWeekMin = 0;
+export const upsertMealPlanEntriesResponseDayOfWeekMax = 6;
+
+
+
+export const UpsertMealPlanEntriesResponseItem = zod.object({
+  "id": zod.string(),
+  "weekStart": zod.coerce.date(),
+  "dayOfWeek": zod.number().min(upsertMealPlanEntriesResponseDayOfWeekMin).max(upsertMealPlanEntriesResponseDayOfWeekMax),
+  "mealType": zod.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+  "meal": zod.string(),
+  "notes": zod.string().nullish(),
+  "rating": zod.enum(['love', 'ok', 'skip']).nullish(),
+  "propertyId": zod.string()
+})
+export const UpsertMealPlanEntriesResponse = zod.array(UpsertMealPlanEntriesResponseItem)
+
+
+/**
  * @summary Get per-member ratings for a meal plan entry
  */
 export const GetMealRatingsQueryParams = zod.object({
@@ -1966,6 +2008,22 @@ export const createWorkoutBodyDurationMinutesMax = 1440;
 
 export const createWorkoutBodyNotesMax = 4000;
 
+export const createWorkoutBodyExercisesItemNameMax = 120;
+
+
+export const createWorkoutBodyExercisesItemSetsMax = 100;
+
+export const createWorkoutBodyExercisesItemRepsMax = 1000;
+
+export const createWorkoutBodyExercisesItemWeightLbsMin = 0;
+export const createWorkoutBodyExercisesItemWeightLbsMax = 5000;
+
+export const createWorkoutBodyExercisesItemDurationSecondsMax = 86400;
+
+export const createWorkoutBodyExercisesItemNotesMax = 500;
+
+export const createWorkoutBodyExercisesMax = 30;
+
 
 
 export const CreateWorkoutBody = zod.object({
@@ -1974,7 +2032,16 @@ export const CreateWorkoutBody = zod.object({
   "title": zod.string().min(1).max(createWorkoutBodyTitleMax),
   "workoutDate": zod.coerce.date(),
   "durationMinutes": zod.number().min(1).max(createWorkoutBodyDurationMinutesMax).nullish(),
-  "notes": zod.string().max(createWorkoutBodyNotesMax).nullish()
+  "notes": zod.string().max(createWorkoutBodyNotesMax).nullish(),
+  "exercises": zod.array(zod.object({
+  "name": zod.string().min(1).max(createWorkoutBodyExercisesItemNameMax),
+  "muscleGroups": zod.array(zod.enum(['full_body', 'chest', 'back', 'shoulders', 'arms', 'core', 'glutes', 'quadriceps', 'hamstrings', 'calves', 'cardio', 'mobility'])).min(1).optional(),
+  "sets": zod.number().min(1).max(createWorkoutBodyExercisesItemSetsMax).nullish(),
+  "reps": zod.number().min(1).max(createWorkoutBodyExercisesItemRepsMax).nullish(),
+  "weightLbs": zod.number().min(createWorkoutBodyExercisesItemWeightLbsMin).max(createWorkoutBodyExercisesItemWeightLbsMax).nullish(),
+  "durationSeconds": zod.number().min(1).max(createWorkoutBodyExercisesItemDurationSecondsMax).nullish(),
+  "notes": zod.string().max(createWorkoutBodyExercisesItemNotesMax).nullish()
+})).max(createWorkoutBodyExercisesMax).optional()
 })
 
 export const createWorkoutResponseScheduledTimeRegExp = new RegExp('^\\d{2}:\\d{2}$');

@@ -5,6 +5,7 @@
  * HomeHub household management API
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateExerciseInput } from './createExerciseInput';
 
 export interface CreateWorkoutInput {
   /** @deprecated */
@@ -27,4 +28,6 @@ export interface CreateWorkoutInput {
   durationMinutes?: number | null;
   /** @maxLength 4000 */
   notes?: string | null;
+  /** @maxItems 30 */
+  exercises?: CreateExerciseInput[];
 }

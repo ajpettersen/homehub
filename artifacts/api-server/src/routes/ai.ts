@@ -15,8 +15,10 @@ import {
   maintenanceTasksTable,
   choresTable,
   chatMessagesTable,
+  chatMessageAttachmentsTable,
+  chatAttachmentCleanupQueueTable,
 } from "@workspace/db/schema";
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   getPropertyAuthorizationScope,
   type PropertyAuthorizationScope,
@@ -39,6 +41,13 @@ import {
   inferMaintenanceCatalogKey,
   type MaintenanceCatalogKey,
 } from "../lib/maintenanceCatalog";
+import {
+  deleteChatAttachment,
+  getChatAttachmentDownloadUrl,
+  uploadChatAttachment,
+  type StoredChatAttachment,
+} from "../lib/chatAttachmentStorage";
+import { upsertMealPlanSlot } from "../lib/mealPlanSlots";
 
 // ── Authorization helper ──────────────────────────────────────────────────────
 
@@ -1599,6 +1608,7 @@ Respond ONLY with valid JSON — no markdown, no extra text:
 // ── POST /ai/chat ─────────────────────────────────────────────────────────────
 // Household assistant — multi-turn, vision-capable, memory-aware, live family context
 router.post("/ai/chat", async (req, res) => {
+  const pendingObjectPaths: string[] = [];
   try {
     const { messages, images } = req.body as {
       messages: { role: "user" | "assistant"; content: string }[];
@@ -1684,6 +1694,15 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
     }));
 
     const trimmedImages = (images ?? []).slice(0, MAX_IMAGES);
+    const storedAttachments: StoredChatAttachment[] = [];
+    for (const rawImage of trimmedImages) {
+      const dataUrl = rawImage.startsWith("data:")
+        ? rawImage
+        : `data:${detectMimeType(rawImage)};base64,${rawImage}`;
+      const stored = await uploadChatAttachment(scope.householdId, dataUrl);
+      storedAttachments.push(stored);
+      pendingObjectPaths.push(stored.objectPath);
+    }
 
     // Build messages with optional vision blocks on the last user message
     const builtMessages: any[] = trimmedMessages.map((m, idx, arr) => {
@@ -1710,6 +1729,7 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
     };
     const conversation: any[] = [{ role: "system", content: SYSTEM }, ...builtMessages];
     const completedActions = new Set<string>();
+    const changedDomains = new Set<"meals" | "groceries" | "maintenance" | "chores">();
     const confirmations: string[] = [];
     const failures: string[] = [];
     let assistantMessage: any;
@@ -1738,6 +1758,7 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
       for (const toolCall of toolCalls) {
         const toolName = toolCall.type === "function" ? toolCall.function.name : "";
         let result: AiActionResult;
+        let completedNewAction = false;
         try {
           const args = toolCall.type === "function"
             ? JSON.parse(toolCall.function.arguments || "{}")
@@ -1747,7 +1768,10 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
             result = { ok: true, confirmation: "That action was already completed." };
           } else {
             result = await executeAiAction(toolName, args, toolContext);
-            if (result.ok) completedActions.add(fingerprint);
+            if (result.ok) {
+              completedActions.add(fingerprint);
+              completedNewAction = true;
+            }
           }
         } catch (error) {
           result = {
@@ -1758,6 +1782,12 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
 
         if (result.ok && result.confirmation) confirmations.push(result.confirmation);
         if (!result.ok) failures.push(result.error ?? "The action could not be completed");
+        if (completedNewAction) {
+          if (toolName === "add_meal_plan_entry") changedDomains.add("meals");
+          if (toolName === "add_grocery_item") changedDomains.add("groceries");
+          if (toolName === "create_maintenance_task") changedDomains.add("maintenance");
+          if (toolName === "add_chore") changedDomains.add("chores");
+        }
         conversation.push({
           role: "tool",
           tool_call_id: toolCall.id,
@@ -1783,24 +1813,113 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
       : [];
 
     if (lastUserMsg) {
-      await db.insert(chatMessagesTable).values([
-        {
-          householdId: scope.householdId,
-          role: "user",
-          content: typeof lastUserMsg.content === "string" ? lastUserMsg.content.slice(0, MAX_MSG_LEN) : "",
-        },
-        {
+      await db.transaction(async (tx) => {
+        const [userMessage] = await tx
+          .insert(chatMessagesTable)
+          .values({
+            householdId: scope.householdId,
+            role: "user",
+            content: typeof lastUserMsg.content === "string"
+              ? lastUserMsg.content.slice(0, MAX_MSG_LEN)
+              : "",
+          })
+          .returning({ id: chatMessagesTable.id });
+        await tx.insert(chatMessagesTable).values({
           householdId: scope.householdId,
           role: "assistant",
           content: reply.slice(0, MAX_MSG_LEN),
-        },
-      ]);
+        });
+        if (storedAttachments.length > 0) {
+          for (const attachment of storedAttachments) {
+            await tx.execute(sql`
+              SELECT pg_advisory_xact_lock(
+                hashtext(${`chat-attachment:${attachment.objectPath}`})
+              )
+            `);
+            const [staged] = await tx
+              .select({ objectPath: chatAttachmentCleanupQueueTable.objectPath })
+              .from(chatAttachmentCleanupQueueTable)
+              .where(eq(
+                chatAttachmentCleanupQueueTable.objectPath,
+                attachment.objectPath,
+              ))
+              .limit(1);
+            if (!staged) {
+              throw new Error("Assistant image upload expired before it could be saved");
+            }
+          }
+          await tx.insert(chatMessageAttachmentsTable).values(
+            storedAttachments.map((attachment) => ({
+              chatMessageId: userMessage.id,
+              objectPath: attachment.objectPath,
+              mimeType: attachment.mimeType,
+              sizeBytes: attachment.sizeBytes,
+            })),
+          );
+          await tx
+            .delete(chatAttachmentCleanupQueueTable)
+            .where(inArray(
+              chatAttachmentCleanupQueueTable.objectPath,
+              storedAttachments.map((attachment) => attachment.objectPath),
+            ));
+        }
+      });
     }
+    pendingObjectPaths.length = 0;
 
-    res.json({ reply, memorized: newMemories });
+    res.json({
+      reply,
+      memorized: newMemories,
+      changedDomains: [...changedDomains],
+    });
   } catch (err) {
+    const cleanupResults = await Promise.allSettled(
+      pendingObjectPaths.map(deleteChatAttachment),
+    );
+    const cleanupFailures = cleanupResults.filter((result) => result.status === "rejected");
+    if (cleanupFailures.length > 0) {
+      req.log.error(
+        { failedObjectCount: cleanupFailures.length },
+        "Failed to clean up assistant image uploads after chat failure",
+      );
+    }
     req.log.error({ err }, "Failed to generate AI chat response");
     res.status(500).json({ error: "Failed to generate response" });
+  }
+});
+
+router.get("/ai/chat/attachments/:id", async (req, res) => {
+  try {
+    const scope = await requireAiScope(req, res);
+    if (!scope) return;
+    const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const attachmentId = Number(rawId);
+    if (!Number.isInteger(attachmentId) || attachmentId <= 0) {
+      res.status(400).json({ error: "Invalid attachment id" });
+      return;
+    }
+    const [attachment] = await db
+      .select({ objectPath: chatMessageAttachmentsTable.objectPath })
+      .from(chatMessageAttachmentsTable)
+      .innerJoin(
+        chatMessagesTable,
+        eq(chatMessagesTable.id, chatMessageAttachmentsTable.chatMessageId),
+      )
+      .where(and(
+        eq(chatMessageAttachmentsTable.id, attachmentId),
+        eq(chatMessagesTable.householdId, scope.householdId),
+      ))
+      .limit(1);
+    if (!attachment) {
+      res.status(404).json({ error: "Attachment not found" });
+      return;
+    }
+    const downloadUrl = await getChatAttachmentDownloadUrl(attachment.objectPath);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.redirect(302, downloadUrl);
+  } catch (err) {
+    req.log.error({ err }, "Failed to serve assistant chat attachment");
+    res.status(500).json({ error: "Failed to load attachment" });
   }
 });
 
@@ -1811,6 +1930,7 @@ router.get("/ai/chat/history", async (req, res) => {
     if (!scope) return;
     const rows = await db
       .select({
+        id: chatMessagesTable.id,
         role: chatMessagesTable.role,
         content: chatMessagesTable.content,
       })
@@ -1819,9 +1939,34 @@ router.get("/ai/chat/history", async (req, res) => {
       .orderBy(desc(chatMessagesTable.createdAt), desc(chatMessagesTable.id))
       .limit(20);
 
-    res.json({ messages: rows.reverse() });
+    const attachmentRows = rows.length > 0
+      ? await db
+          .select({
+            id: chatMessageAttachmentsTable.id,
+            chatMessageId: chatMessageAttachmentsTable.chatMessageId,
+          })
+          .from(chatMessageAttachmentsTable)
+          .where(inArray(
+            chatMessageAttachmentsTable.chatMessageId,
+            rows.map((row) => row.id),
+          ))
+          .orderBy(chatMessageAttachmentsTable.id)
+      : [];
+    const imagesByMessage = new Map<number, string[]>();
+    for (const attachment of attachmentRows) {
+      const images = imagesByMessage.get(attachment.chatMessageId) ?? [];
+      images.push(`/api/ai/chat/attachments/${attachment.id}`);
+      imagesByMessage.set(attachment.chatMessageId, images);
+    }
+    res.json({
+      messages: rows.reverse().map((row) => ({
+        role: row.role,
+        content: row.content,
+        images: imagesByMessage.get(row.id) ?? [],
+      })),
+    });
   } catch (err) {
-    console.error("Get chat history error:", err);
+    req.log.error({ err }, "Failed to load AI chat history");
     res.status(500).json({ error: "Failed to load chat history" });
   }
 });
@@ -1832,13 +1977,41 @@ router.delete("/ai/chat/history", async (req, res) => {
     const scope = await requireAiScope(req, res);
     if (!scope) return;
 
+    const attachmentRows = await db
+      .select({ objectPath: chatMessageAttachmentsTable.objectPath })
+      .from(chatMessageAttachmentsTable)
+      .innerJoin(
+        chatMessagesTable,
+        eq(chatMessagesTable.id, chatMessageAttachmentsTable.chatMessageId),
+      )
+      .where(eq(chatMessagesTable.householdId, scope.householdId));
+    const deleteResults = await Promise.allSettled(
+      attachmentRows.map((attachment) => deleteChatAttachment(attachment.objectPath)),
+    );
+    const deleteFailures = deleteResults.filter((result) => result.status === "rejected");
+    if (deleteFailures.length > 0) {
+      req.log.error(
+        { failedObjectCount: deleteFailures.length },
+        "Failed to delete one or more assistant chat attachments",
+      );
+      res.status(503).json({ error: "Some chat photos could not be removed. Please try again." });
+      return;
+    }
     await db
       .delete(chatMessagesTable)
       .where(eq(chatMessagesTable.householdId, scope.householdId));
+    if (attachmentRows.length > 0) {
+      await db
+        .delete(chatAttachmentCleanupQueueTable)
+        .where(inArray(
+          chatAttachmentCleanupQueueTable.objectPath,
+          attachmentRows.map((attachment) => attachment.objectPath),
+        ));
+    }
 
     res.json({ ok: true });
   } catch (err) {
-    console.error("Clear chat history error:", err);
+    req.log.error({ err }, "Failed to clear AI chat history");
     res.status(500).json({ error: "Failed to clear chat history" });
   }
 });
@@ -2125,15 +2298,22 @@ async function executeAiAction(
       const mealType = cleanActionString(args.mealType, "mealType", 20);
       if (!(VALID_MEAL_TYPES as readonly string[]).includes(mealType)) throw new Error("Invalid meal type");
       const propertyId = authorizedPropertyId(args.propertyId, context.propertyIds);
-      const notes = optionalActionString(args.notes);
-      await db.insert(mealPlansTable).values({
-        weekStart: mondayForDate(date),
-        dayOfWeek: new Date(`${date}T00:00:00Z`).getUTCDay(),
-        mealType,
-        meal,
-        notes,
-        propertyId,
-      });
+      const notes = args.notes === undefined
+        ? undefined
+        : optionalActionString(args.notes);
+      await db.transaction((tx) =>
+        upsertMealPlanSlot(
+          tx,
+          {
+            weekStart: mondayForDate(date),
+            dayOfWeek: new Date(`${date}T00:00:00Z`).getUTCDay(),
+            mealType: mealType as "breakfast" | "lunch" | "dinner" | "snack",
+            meal,
+            notes,
+          },
+          propertyId,
+        ),
+      );
       return { ok: true, confirmation: `Done — I added ${meal} to ${date}'s ${mealType} slot.` };
     }
 

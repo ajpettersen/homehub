@@ -81,37 +81,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Who's Here */}
-        <div className="mt-8 p-4 bg-muted/30 rounded-2xl border border-border/50">
-          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
-            Who's here?
-          </label>
-          <div className="flex flex-col gap-1">
-            {familyMembers?.map(member => (
-              <button
-                key={member.id}
-                onClick={() => setActiveMember(member)}
-                className={`flex items-center gap-3 p-2 rounded-xl transition-all text-left ${
-                  activeMember?.id === member.id
-                    ? "bg-white shadow-sm border border-border"
-                    : "hover:bg-black/5 border border-transparent"
-                }`}
-              >
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner shrink-0"
-                  style={{ backgroundColor: member.color || "var(--color-primary)" }}
-                >
-                  {member.name.charAt(0)}
-                </div>
-                <span className="font-medium text-sm flex-1 truncate">{member.name}</span>
-                {activeMember?.id === member.id && (
-                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm shrink-0" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <button
           type="button"
           onClick={() => void handleSignOut()}

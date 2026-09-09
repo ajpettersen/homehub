@@ -91,6 +91,7 @@ export * from './maintenanceRecommendationResult';
 export * from './maintenanceTask';
 export * from './maintenanceTaskCategory';
 export * from './maintenanceTaskScheduleType';
+export * from './mealPlanBulkUpsertInput';
 export * from './mealPlanEntry';
 export * from './mealPlanEntryMealType';
 export * from './mealPlanEntryRating';

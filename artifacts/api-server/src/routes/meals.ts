@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { mealPlansTable, mealRatingsTable, familyMembersTable } from "@workspace/db";
+import { CreateMealPlanEntryBody, UpsertMealPlanEntriesBody } from "@workspace/api-zod";
 import { eq, and, inArray } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 import { extractAndSaveMealMemories } from "../lib/mealMemory";
+import { upsertMealPlanSlot } from "../lib/mealPlanSlots";
 
 const router = Router();
 
@@ -58,12 +60,12 @@ router.get("/meal-plans", async (req, res) => {
 router.post("/meal-plans", async (req, res) => {
   try {
     const scope = getApprovedHouseholdScope(res);
-    const { weekStart, dayOfWeek, mealType, meal, notes, rating, propertyId } = req.body;
-    if (!weekStart || dayOfWeek === undefined || !mealType || !meal || !propertyId) {
-      res.status(400).json({ error: "weekStart, dayOfWeek, mealType, meal, propertyId required" });
+    const parsed = CreateMealPlanEntryBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid meal plan entry" });
       return;
     }
-    const propertyIdNum = Number(propertyId);
+    const propertyIdNum = Number(parsed.data.propertyId);
     if (isNaN(propertyIdNum)) {
       res.status(400).json({ error: "Invalid propertyId" });
       return;
@@ -72,16 +74,66 @@ router.post("/meal-plans", async (req, res) => {
       res.status(403).json({ error: "Property not authorized" });
       return;
     }
-    const [entry] = await db
-      .insert(mealPlansTable)
-      .values({ weekStart, dayOfWeek: Number(dayOfWeek), mealType, meal, notes: notes ?? null, rating: rating ?? null, propertyId: propertyIdNum })
-      .returning();
-    if (rating === "love" || rating === "skip") {
+    const entry = await db.transaction((tx) =>
+      upsertMealPlanSlot(tx, parsed.data, propertyIdNum),
+    );
+    if (parsed.data.rating === "love" || parsed.data.rating === "skip") {
       await extractAndSaveMealMemories(scope.householdId, Number(entry.id));
     }
     res.status(201).json(entryToJson(entry));
   } catch (err) {
     req.log.error({ err }, "Failed to create meal plan entry");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/meal-plans/bulk-upsert", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const parsed = UpsertMealPlanEntriesBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid meal plan entries" });
+      return;
+    }
+    const inputs = parsed.data.items.map((item) => ({
+      item,
+      propertyId: Number(item.propertyId),
+    }));
+    if (inputs.some(({ propertyId }) =>
+      !Number.isInteger(propertyId) || !scope.propertyIds.includes(propertyId)
+    )) {
+      res.status(403).json({ error: "Property not authorized" });
+      return;
+    }
+    inputs.sort((a, b) => {
+      const aKey =
+        `${a.propertyId}:${String(a.item.weekStart)}:${a.item.dayOfWeek}:${a.item.mealType}`;
+      const bKey =
+        `${b.propertyId}:${String(b.item.weekStart)}:${b.item.dayOfWeek}:${b.item.mealType}`;
+      return aKey.localeCompare(bKey);
+    });
+    const entries = await db.transaction(async (tx) => {
+      const saved = [];
+      for (const { item, propertyId } of inputs) {
+        saved.push(await upsertMealPlanSlot(
+          tx,
+          item,
+          propertyId,
+          { fillEmptyOnly: parsed.data.fillEmptyOnly },
+        ));
+      }
+      return saved;
+    });
+    await Promise.all(
+      entries
+        .filter((entry) => entry.rating === "love" || entry.rating === "skip")
+        .map((entry) =>
+          extractAndSaveMealMemories(scope.householdId, Number(entry.id))
+        ),
+    );
+    res.json(entries.map(entryToJson));
+  } catch (err) {
+    req.log.error({ err }, "Failed to save meal plan entries");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -24,7 +24,7 @@ import {
 } from "@workspace/api-client-react";
 import { EditableDraftWorkout } from "./EditableDraftWorkout";
 import { useGetWorkout, getGetWorkoutQueryKey } from "@workspace/api-client-react";
-import { formatDateOnly } from "../../lib/dateOnly";
+import { formatDateOnly, isValidDateOnly } from "../../lib/dateOnly";
 
 function SwapHistoryButton({ workout, onSelect }: { workout: any; onSelect: (draft: WorkoutDraft) => void }) {
   const [isFetching, setIsFetching] = useState(false);
@@ -123,6 +123,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
   const [weekStart, setWeekStart] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (prefData) {
@@ -159,34 +160,80 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
       queryKey: getGetWorkoutQueryKey(selectedSessionId ?? ""),
     },
   });
-  const resolve = (id: string, action: "complete" | "skipped" | "cancelled" | "dismissed") => {
-    if (action === "complete") completeSession.mutate({ id, data: {} }, { onSuccess: invalidateSessions });
-    else updateSessionStatus.mutate({ id, data: { status: action } }, { onSuccess: invalidateSessions });
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [sessionErrors, setSessionErrors] = useState<Record<string, string>>({});
+
+  const setSessionError = (id: string, error: string | null) => {
+    setSessionErrors(prev => {
+      const next = { ...prev };
+      if (error) next[id] = error;
+      else delete next[id];
+      return next;
+    });
   };
-  const reschedule = (id: string) => {
+
+  const resolve = async (id: string, action: "complete" | "skipped" | "cancelled" | "dismissed") => {
+    if (resolvingId) return;
+    setResolvingId(id);
+    setSessionError(id, null);
+    try {
+      if (action === "complete") {
+        await completeSession.mutateAsync({ id, data: {} });
+      } else {
+        await updateSessionStatus.mutateAsync({ id, data: { status: action } });
+      }
+      invalidateSessions();
+    } catch (e) {
+      setSessionError(id, `Failed to mark session as ${action}.`);
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  const reschedule = async (id: string) => {
+    if (resolvingId) return;
     const scheduledDate = window.prompt("Move this session to (YYYY-MM-DD):");
     if (!scheduledDate) return;
-    rescheduleSession.mutate({ id, data: { scheduledDate, scheduledTimezone: prefData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone } }, { onSuccess: invalidateSessions });
+    if (!isValidDateOnly(scheduledDate)) {
+      setSessionError(id, "Invalid calendar date. Use a real date in YYYY-MM-DD format.");
+      return;
+    }
+    setResolvingId(id);
+    setSessionError(id, null);
+    try {
+      await rescheduleSession.mutateAsync({ id, data: { scheduledDate, scheduledTimezone: prefData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone } });
+      invalidateSessions();
+    } catch (e) {
+      setSessionError(id, "Failed to reschedule session.");
+    } finally {
+      setResolvingId(null);
+    }
   };
 
   const handleSavePref = async (e: React.FormEvent) => {
     e.preventDefault();
-    await updatePref.mutateAsync({ data: preferences });
-    queryClient.invalidateQueries({ queryKey: getGetWorkoutPreferencesQueryKey() });
-    setShowSettings(false);
-    setActionMessage("Preferences saved. You can generate the week now.");
+    setActionError(null);
+    try {
+      await updatePref.mutateAsync({ data: preferences });
+      queryClient.invalidateQueries({ queryKey: getGetWorkoutPreferencesQueryKey() });
+      setShowSettings(false);
+      setActionMessage("Preferences saved. You can generate the week now.");
+    } catch {
+      setActionError("Could not save preferences. Please try again.");
+    }
   };
 
   const handleGenerate = async () => {
     if (participantIds.length === 0) {
-      setActionMessage("Select at least one adult above before generating a plan.");
+      setActionError("Select at least one adult above before generating a plan.");
       return;
     }
     if (preferences.daysOfWeek.length === 0) {
       setShowSettings(true);
-      setActionMessage("Choose at least one workout day, then save your preferences.");
+      setActionError("Choose at least one workout day, then save your preferences.");
       return;
     }
+    setActionError(null);
     setActionMessage(null);
     try {
       const data = await generatePlan.mutateAsync({
@@ -199,13 +246,14 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
       setPlanItems(data.items);
     } catch (e) {
       console.error(e);
-      setActionMessage("The plan could not be generated. Please try again.");
+      setActionError("The plan could not be generated. Please try again.");
     }
   };
 
   const handleSavePlan = async () => {
     if (!planItems) return;
     setSaving(true);
+    setActionError(null);
     try {
       await savePlan.mutateAsync({
         data: {
@@ -220,7 +268,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
       onPlanSaved();
     } catch (e) {
       console.error(e);
-      setActionMessage("The schedule could not be saved. Please try again.");
+      setActionError("The schedule could not be saved. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -228,9 +276,10 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
 
   const handleGenerateDaily = async () => {
     if (participantIds.length === 0) {
-      setActionMessage("Select at least one adult above before generating a plan.");
+      setActionError("Select at least one adult above before generating a plan.");
       return;
     }
+    setActionError(null);
     setActionMessage(null);
     try {
       const draft = await draftWorkout.mutateAsync({
@@ -242,13 +291,14 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
       setDailyDraft({ ...draft, intent: "plan" });
     } catch (e) {
       console.error(e);
-      setActionMessage("The daily plan could not be generated. Please try again.");
+      setActionError("The daily plan could not be generated. Please try again.");
     }
   };
 
   const handleScheduleDaily = async () => {
     if (!dailyDraft || participantIds.length === 0) return;
     setSchedulingDaily(true);
+    setActionError(null);
     try {
       await scheduleSession.mutateAsync({
         data: {
@@ -275,7 +325,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
       onPlanSaved();
     } catch (e) {
       console.error(e);
-      setActionMessage("The workout could not be scheduled. Please try again.");
+      setActionError("The workout could not be scheduled. Please try again.");
     } finally {
       setSchedulingDaily(false);
     }
@@ -331,11 +381,16 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
           {Array.from({ length: 7 }, (_, day) => {
             const date = format(addDays(new Date(`${validWeekStart}T12:00:00`), day), "yyyy-MM-dd");
             const daySessions = sessionsQuery.data?.filter(item => (item.scheduledDate || item.workoutDate) === date) ?? [];
-            return <div data-testid={`plan-day-${date}`} key={date} className="snap-start shrink-0 w-32 min-h-28 p-3 text-left rounded-xl border border-border bg-background"><span className="block text-[10px] uppercase text-muted-foreground">{format(new Date(`${date}T12:00:00`), "EEE")}</span><strong className="font-serif text-xl">{format(new Date(`${date}T12:00:00`), "d")}</strong>{daySessions.length ? <div className="mt-2 space-y-1">{daySessions.map(session => <button data-testid={`button-plan-session-${session.id}`} key={session.id} onClick={() => setSelectedSessionId(session.id)} className={`block w-full rounded p-1 text-left text-[10px] font-bold ${selectedSessionId === session.id ? "bg-primary text-primary-foreground" : session.sessionStatus === "completed" ? "bg-green-100 text-green-800" : session.sessionStatus === "scheduled" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}><span className="block uppercase">{session.sessionStatus === "missed" ? "Needs confirmation" : session.sessionStatus}</span><span className="line-clamp-2">{session.title}</span></button>)}</div> : <span className="mt-4 block text-[10px] text-muted-foreground">Rest / open</span>}</div>;
+            return <div data-testid={`plan-day-${date}`} key={date} className="snap-start shrink-0 w-32 min-h-28 p-3 text-left rounded-xl border border-border bg-background"><span className="block text-[10px] uppercase text-muted-foreground">{format(new Date(`${date}T12:00:00`), "EEE")}</span><strong className="font-serif text-xl">{format(new Date(`${date}T12:00:00`), "d")}</strong>{daySessions.length ? <div className="mt-2 space-y-1">{daySessions.map(session => <button data-testid={`button-plan-session-${session.id}`} key={session.id} onClick={() => { setSelectedSessionId(session.id); setSessionError(session.id, null); }} className={`block w-full rounded p-1 text-left text-[10px] font-bold ${selectedSessionId === session.id ? "bg-primary text-primary-foreground" : session.sessionStatus === "completed" ? "bg-green-100 text-green-800" : session.sessionStatus === "scheduled" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}><span className="block uppercase">{session.sessionStatus === "missed" ? "Needs confirmation" : session.sessionStatus}</span><span className="line-clamp-2">{session.title}</span></button>)}</div> : <span className="mt-4 block text-[10px] text-muted-foreground">Rest / open</span>}</div>;
           })}
         </div>
         {sessionsQuery.isLoading ? (
           <p className="mt-3 text-sm text-muted-foreground">Loading this week…</p>
+        ) : sessionsQuery.isError ? (
+          <div className="mt-3 p-4 bg-destructive/10 rounded-xl text-center">
+            <p className="text-sm font-medium text-destructive mb-2" role="alert">Failed to load weekly schedule.</p>
+            <button type="button" onClick={() => sessionsQuery.refetch()} className="text-xs font-bold text-destructive hover:underline">Try again</button>
+          </div>
         ) : selectedSession ? (
           <div className="mt-3 rounded-xl bg-muted/50 p-4" data-testid="workout-session-detail">
             <div className="flex justify-between gap-3">
@@ -400,19 +455,20 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
               </div>
             ) : null}
 
+            {sessionErrors[selectedSession.id] && <p className="mt-4 text-sm font-medium text-destructive" role="alert">{sessionErrors[selectedSession.id]}</p>}
             <div className="mt-4 flex flex-wrap gap-2">
               {selectedSession.sessionStatus === "scheduled" && (
                 <>
-                  <button type="button" data-testid="button-complete-session" onClick={() => resolve(selectedSession.id, "complete")} className="rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background">Complete</button>
-                  <button type="button" data-testid="button-reschedule-session" onClick={() => reschedule(selectedSession.id)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold">Reschedule</button>
-                  <button type="button" data-testid="button-skip-session" onClick={() => resolve(selectedSession.id, "skipped")} className="rounded-lg border border-border px-3 py-2 text-xs font-bold">Skip</button>
+                  <button type="button" disabled={resolvingId === selectedSession.id} data-testid="button-complete-session" onClick={() => resolve(selectedSession.id, "complete")} className="rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background disabled:opacity-50">Complete</button>
+                  <button type="button" disabled={resolvingId === selectedSession.id} data-testid="button-reschedule-session" onClick={() => reschedule(selectedSession.id)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold disabled:opacity-50">Reschedule</button>
+                  <button type="button" disabled={resolvingId === selectedSession.id} data-testid="button-skip-session" onClick={() => resolve(selectedSession.id, "skipped")} className="rounded-lg border border-border px-3 py-2 text-xs font-bold disabled:opacity-50">Skip</button>
                 </>
               )}
               {selectedSession.sessionStatus === "missed" && (
                 <>
-                  <button type="button" onClick={() => resolve(selectedSession.id, "complete")} className="rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background">Yes, completed it</button>
-                  <button type="button" onClick={() => reschedule(selectedSession.id)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold">Reschedule</button>
-                  <button type="button" onClick={() => resolve(selectedSession.id, "dismissed")} className="rounded-lg border border-border px-3 py-2 text-xs font-bold">Dismiss</button>
+                  <button type="button" disabled={resolvingId === selectedSession.id} onClick={() => resolve(selectedSession.id, "complete")} className="rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background disabled:opacity-50">Yes, completed it</button>
+                  <button type="button" disabled={resolvingId === selectedSession.id} onClick={() => reschedule(selectedSession.id)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold disabled:opacity-50">Reschedule</button>
+                  <button type="button" disabled={resolvingId === selectedSession.id} onClick={() => resolve(selectedSession.id, "dismissed")} className="rounded-lg border border-border px-3 py-2 text-xs font-bold disabled:opacity-50">Dismiss</button>
                 </>
               )}
             </div>
@@ -475,7 +531,8 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
               <><Sparkles className="w-5 h-5" /> Generate Today's Plan</>
             )}
           </button>
-          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-muted-foreground" role="status">{actionMessage}</p>}
+          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-green-700" role="status">{actionMessage}</p>}
+          {actionError && <p className="mt-3 text-center text-sm font-medium text-destructive" role="alert">{actionError}</p>}
         </div>
       )}
 
@@ -500,7 +557,8 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
             </h3>
             <EditableDraftWorkout draft={dailyDraft} onUpdate={setDailyDraft} />
           </div>
-          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-muted-foreground" role="status">{actionMessage}</p>}
+          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-green-700" role="status">{actionMessage}</p>}
+          {actionError && <p className="mt-3 text-center text-sm font-medium text-destructive" role="alert">{actionError}</p>}
         </div>
       )}
 
@@ -597,7 +655,8 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
               <><Sparkles className="w-5 h-5" /> Generate Weekly Plan</>
             )}
           </button>
-          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-muted-foreground" role="status">{actionMessage}</p>}
+          {actionMessage && <p className="mt-3 text-center text-sm font-medium text-green-700" role="status">{actionMessage}</p>}
+          {actionError && <p className="mt-3 text-center text-sm font-medium text-destructive" role="alert">{actionError}</p>}
         </div>
       ) : planMode === "weekly" && planItems ? (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
@@ -613,7 +672,7 @@ export function WorkoutWeeklyPlan({ participantIds, onPlanSaved, onOpenCoach, on
               </button>
             </div>
           </div>
-
+          {actionError && <p className="text-center text-sm font-medium text-destructive" role="alert">{actionError}</p>}
           <div className="space-y-6">
             {planItems.map((item, idx) => (
               <div key={idx} className="bg-card border border-border p-4 rounded-3xl shadow-sm relative">

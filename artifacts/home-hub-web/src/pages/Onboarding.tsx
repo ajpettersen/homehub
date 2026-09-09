@@ -544,7 +544,7 @@ function StepReview({ state, onBack, onFinish, isSubmitting, submitError, progre
         ) : (
           <div className="w-full space-y-4">
             {submitError && (
-              <div className="p-4 bg-destructive/10 text-destructive rounded-xl w-full text-center font-medium animate-in shake">
+              <div role="alert" className="p-4 bg-destructive/10 text-destructive rounded-xl w-full text-center font-medium animate-in shake">
                 {submitError}
               </div>
             )}
@@ -730,7 +730,7 @@ export default function Onboarding({
       // Completion naturally flows as the gate in App.tsx detects onboardingCompleted: true
     } catch (err: any) {
       console.error(err);
-      setSubmitError(err.message || "An error occurred during setup.");
+      setSubmitError(err.data?.error || err.message || "An error occurred during setup.");
       setIsSubmitting(false);
     }
   };

@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import {
   useGetMealPlans, getGetMealPlansQueryKey,
   useCreateMealPlanEntry, useDeleteMealPlanEntry, useUpdateMealPlanEntry,
+  useUpsertMealPlanEntries,
   useGetGroceryLists, getGetGroceryListsQueryKey,
   useCreateGroceryList, useDeleteGroceryList,
   useGetGroceryItems, getGetGroceryItemsQueryKey,
@@ -86,10 +87,10 @@ function apiDayToIndex(d: number): number {
 const RATING_CYCLE = ["love", "ok", "skip"] as const;
 type RatingKey = typeof RATING_CYCLE[number];
 
-const RATING_META: Record<RatingKey, { emoji: string; label: string; bg: string }> = {
-  love: { emoji: "❤️", label: "Love it",        bg: "bg-red-100 border-red-300" },
-  ok:   { emoji: "👍", label: "It's okay",      bg: "bg-amber-100 border-amber-300" },
-  skip: { emoji: "🙅", label: "Skip next time", bg: "bg-muted border-border" },
+const RATING_META: Record<RatingKey, { Icon: React.ComponentType<any>; label: string; bg: string }> = {
+  love: { Icon: ThumbsUp, label: "Love it",        bg: "bg-red-100 border-red-300" },
+  ok:   { Icon: CheckCircle2, label: "It's okay",      bg: "bg-amber-100 border-amber-300" },
+  skip: { Icon: ThumbsDown, label: "Skip next time", bg: "bg-muted border-border" },
 };
 
 /** Cycle rating: undefined → love → ok → skip → undefined */
@@ -263,7 +264,7 @@ function MemberRatingRow({
               key={member.id}
               onClick={() => handleMemberRate(member, rating)}
               title={`${member.name}: ${rating ? RATING_META[rating].label : "No rating — tap to rate"}`}
-              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold border transition-all ${
+              className={`flex min-h-[32px] items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border transition-all ${
                 meta
                   ? `${meta.bg} text-foreground`
                   : isActive
@@ -277,7 +278,7 @@ function MemberRatingRow({
               >
                 {member.name.charAt(0)}
               </span>
-              {meta ? <span>{meta.emoji}</span> : <span className="opacity-50">+</span>}
+              {meta ? <meta.Icon className="w-3 h-3" /> : <span className="opacity-50">+</span>}
             </button>
           );
         })}
@@ -308,10 +309,10 @@ function MealSlot({
   meal?: any;
   mealType: { type: MealType; label: string; Icon: React.ComponentType<any>; color: string; bg: string };
   dayLabel: string;
-  onAdd: (text: string, sourceUrl?: string) => void;
-  onEdit: (id: string, text: string) => void;
-  onDelete: () => void;
-  onNote: (id: string, notes: string) => void;
+  onAdd: (text: string, sourceUrl?: string) => Promise<void>;
+  onEdit: (id: string, text: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onNote: (id: string, notes: string) => Promise<void>;
   onSaveToCookbook: (name: string, sourceUrl?: string) => void;
   onImportUrl: (recipe: ImportedUrlRecipe, sourceUrl: string) => Promise<void>;
   propertyId: string;
@@ -332,13 +333,23 @@ function MealSlot({
   const [importingImage, setImportingImage] = useState(false);
   const [pendingUrl, setPendingUrl] = useState<string | undefined>();
   const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [mealError, setMealError] = useState("");
+  const [isPending, setIsPending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const startEdit = () => {
-    if (meal) return;
+  const startEdit = async () => {
+    if (meal || isPending) return;
+    setMealError("");
     // If a recipe is pending, fill directly without opening the editor
     if (pendingFill) {
-      onAdd(pendingFill);
+      setIsPending(true);
+      try {
+        await onAdd(pendingFill);
+      } catch (e) {
+        setMealError(e instanceof Error ? e.message : "Failed to add meal");
+      } finally {
+        setIsPending(false);
+      }
       return;
     }
     setEditing(true);
@@ -346,18 +357,41 @@ function MealSlot({
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
-  const commit = () => {
-    if (value.trim()) {
-      if (meal) onEdit(meal.id, value.trim());
-      else onAdd(value.trim());
+  const commit = async () => {
+    if (!value.trim() || isPending) {
+      if (!value.trim()) setEditing(false);
+      return;
     }
-    setEditing(false);
-    setValue("");
+    setMealError("");
+    setIsPending(true);
+    try {
+      if (meal) await onEdit(meal.id, value.trim());
+      else await onAdd(value.trim());
+      setEditing(false);
+      setValue("");
+    } catch (err: any) {
+      setMealError(err.message || "Failed to save");
+    } finally {
+      setIsPending(false);
+    }
   };
 
-  const commitNote = () => {
-    if (meal) onNote(meal.id, noteValue);
-    setShowNotes(false);
+  const commitNote = async () => {
+    if (isPending) return;
+    setMealError("");
+    if (meal) {
+      setIsPending(true);
+      try {
+        await onNote(meal.id, noteValue);
+        setShowNotes(false);
+      } catch (err: any) {
+        setMealError(err.message || "Failed to save note");
+      } finally {
+        setIsPending(false);
+      }
+    } else {
+      setShowNotes(false);
+    }
   };
 
   React.useEffect(() => {
@@ -382,24 +416,27 @@ function MealSlot({
           <input
             ref={inputRef}
             value={value}
+            disabled={isPending}
             onChange={event => setValue(event.target.value)}
             onKeyDown={event => {
-              if (event.key === "Enter") commit();
+              if (event.key === "Enter") void commit();
               if (event.key === "Escape") {
                 setEditing(false);
                 setValue("");
+                setMealError("");
               }
             }}
             placeholder={`Search past ${mealType.label.toLowerCase()}s or enter a new meal…`}
-            className="min-w-0 flex-1 rounded-xl border-2 border-primary/40 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            className="min-w-0 flex-1 rounded-xl border-2 border-primary/40 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none disabled:opacity-50"
           />
-          <button type="button" onClick={commit} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Check className="h-4 w-4" />
+          <button type="button" disabled={isPending} onClick={() => void commit()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-50">
+            {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
           </button>
-          <button type="button" onClick={() => { setEditing(false); setValue(""); }} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
+          <button type="button" disabled={isPending} onClick={() => { setEditing(false); setValue(""); setMealError(""); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground disabled:opacity-50">
+            <X className="h-5 w-5" />
           </button>
         </div>
+        {mealError && <p role="alert" className="px-1 text-xs font-medium text-destructive">{mealError}</p>}
         {matchingMeals.filter(suggestion => suggestion.toLowerCase() !== meal.meal.toLowerCase()).length > 0 && (
           <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-sm">
             {matchingMeals
@@ -408,13 +445,23 @@ function MealSlot({
                 <button
                   key={suggestion.toLowerCase()}
                   type="button"
+                  disabled={isPending}
                   onMouseDown={event => event.preventDefault()}
-                  onClick={() => {
-                    onEdit(meal.id, suggestion);
-                    setEditing(false);
-                    setValue("");
+                  onClick={async () => {
+                    if (isPending) return;
+                    setIsPending(true);
+                    setMealError("");
+                    try {
+                      await onEdit(meal.id, suggestion);
+                      setEditing(false);
+                      setValue("");
+                    } catch (e) {
+                      setMealError(e instanceof Error ? e.message : "Failed to save");
+                    } finally {
+                      setIsPending(false);
+                    }
                   }}
-                  className="w-full rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-primary/10 hover:text-primary"
+                  className="w-full rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-primary/10 hover:text-primary disabled:opacity-50"
                 >
                   {suggestion}
                 </button>
@@ -470,10 +517,23 @@ function MealSlot({
           >
             <Pencil className="h-3 w-3" />
           </button>
-          <button onClick={onDelete} className="w-5 h-5 flex items-center justify-center text-muted-foreground/40 hover:text-destructive transition-all rounded-md shrink-0">
-            <X className="w-3 h-3" />
+          <button disabled={isPending} onClick={async () => {
+            if (isPending) return;
+            setIsPending(true);
+            setMealError("");
+            try {
+              await onDelete();
+            } catch (e) {
+              setMealError(e instanceof Error ? e.message : "Failed to delete meal");
+            } finally {
+              setIsPending(false);
+            }
+          }} className="w-5 h-5 flex items-center justify-center text-muted-foreground/40 hover:text-destructive transition-all rounded-md shrink-0 disabled:opacity-50">
+            {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
           </button>
         </div>
+
+        {mealError && <p role="alert" className="px-3 pb-1 text-xs font-medium text-destructive">{mealError}</p>}
 
         {/* Per-member ratings */}
         {members.length > 0 && (
@@ -511,18 +571,21 @@ function MealSlot({
 
         {/* Notes editor */}
         {showNotes && (
-          <div className="px-2 pb-2 flex gap-1">
-            <input
-              autoFocus
-              value={noteValue}
-              onChange={e => setNoteValue(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") commitNote(); if (e.key === "Escape") setShowNotes(false); }}
-              placeholder="Add a note…"
-              className="flex-1 text-xs bg-background border border-border rounded-lg px-2 py-1 focus:outline-none focus:border-primary"
-            />
-            <button onClick={commitNote} className="w-6 h-6 flex items-center justify-center bg-primary text-primary-foreground rounded-lg shrink-0">
-              <Check className="w-3 h-3" />
-            </button>
+          <div className="px-2 pb-2">
+            <div className="flex gap-1">
+              <input
+                autoFocus
+                value={noteValue}
+                onChange={e => { setNoteValue(e.target.value); setMealError(""); }}
+                onKeyDown={e => { if (e.key === "Enter") void commitNote(); if (e.key === "Escape") { setShowNotes(false); setMealError(""); } }}
+                placeholder="Add a note…"
+                className="flex-1 text-xs bg-background border border-border rounded-lg px-3 py-2 min-h-9 focus:outline-none focus:border-primary"
+              />
+              <button onClick={() => void commitNote()} className="w-9 min-h-9 flex items-center justify-center bg-primary text-primary-foreground rounded-lg shrink-0">
+                <Check className="w-4 h-4" />
+              </button>
+            </div>
+            {mealError && <p role="alert" className="mt-1 text-xs font-medium text-destructive">{mealError}</p>}
           </div>
         )}
 
@@ -558,8 +621,8 @@ function MealSlot({
       <div>
         <RecipeImport
           propertyId={propertyId}
-          onSaved={recipe => {
-            onAdd(recipe.name);
+          onSaved={async recipe => {
+            await onAdd(recipe.name);
             setImportingImage(false);
           }}
         />
@@ -583,20 +646,21 @@ function MealSlot({
             value={value}
             onChange={e => setValue(e.target.value)}
             onKeyDown={e => {
-              if (e.key === "Enter") commit();
-              if (e.key === "Escape") { setEditing(false); setValue(""); }
+              if (e.key === "Enter") void commit();
+              if (e.key === "Escape") { setEditing(false); setValue(""); setMealError(""); }
             }}
-            onBlur={e => { if (!e.relatedTarget) commit(); }}
+            onBlur={e => { if (!e.relatedTarget) void commit(); }}
             placeholder={`Search past ${mealType.label.toLowerCase()}s or add a new one…`}
             className="flex-1 text-sm bg-background border-2 border-primary/40 rounded-xl px-3 py-2 focus:outline-none focus:border-primary min-w-0"
           />
-          <button onClick={commit} className="w-8 h-8 flex items-center justify-center bg-primary text-primary-foreground rounded-lg shrink-0">
-            <Check className="w-4 h-4" />
+          <button onClick={() => void commit()} className="w-11 h-11 flex items-center justify-center bg-primary text-primary-foreground rounded-lg shrink-0">
+            <Check className="w-5 h-5" />
           </button>
-          <button type="button" onClick={() => setEditing(false)} className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground rounded-lg shrink-0">
-            <X className="w-4 h-4" />
+          <button type="button" onClick={() => { setEditing(false); setMealError(""); }} className="w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-foreground rounded-lg shrink-0">
+            <X className="w-5 h-5" />
           </button>
         </div>
+        {mealError && <p role="alert" className="px-1 text-xs font-medium text-destructive">{mealError}</p>}
         {matchingMeals.length > 0 && (
           <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-sm">
             <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Past meals & cookbook</p>
@@ -604,13 +668,23 @@ function MealSlot({
               <button
                 key={suggestion.toLowerCase()}
                 type="button"
+                disabled={isPending}
                 onMouseDown={event => event.preventDefault()}
-                onClick={() => {
-                  onAdd(suggestion);
-                  setEditing(false);
-                  setValue("");
+                onClick={async () => {
+                  if (isPending) return;
+                  setIsPending(true);
+                  setMealError("");
+                  try {
+                    await onAdd(suggestion);
+                    setEditing(false);
+                    setValue("");
+                  } catch (e) {
+                    setMealError(e instanceof Error ? e.message : "Failed to add meal");
+                  } finally {
+                    setIsPending(false);
+                  }
                 }}
-                className="w-full rounded-lg px-2 py-2 text-left text-xs font-semibold text-foreground hover:bg-primary/10 hover:text-primary"
+                className="w-full rounded-lg px-2 py-2 text-left text-xs font-semibold text-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-50"
               >
                 {suggestion}
               </button>
@@ -618,10 +692,10 @@ function MealSlot({
           </div>
         )}
         <div className="flex flex-wrap gap-3 px-1">
-          <button type="button" onClick={() => { setEditing(false); setImportingUrl(true); }} className="text-xs text-primary/70 hover:text-primary flex min-h-8 items-center gap-1 transition-colors">
+          <button type="button" onClick={() => { setEditing(false); setImportingUrl(true); }} className="text-xs text-primary/70 hover:text-primary flex min-h-[44px] items-center gap-1 transition-colors">
             <Link className="w-3 h-3" /> From URL
           </button>
-          <button type="button" onClick={() => { setEditing(false); setImportingImage(true); }} className="text-xs text-primary/70 hover:text-primary flex min-h-8 items-center gap-1 transition-colors">
+          <button type="button" onClick={() => { setEditing(false); setImportingImage(true); }} className="text-xs text-primary/70 hover:text-primary flex min-h-[44px] items-center gap-1 transition-colors">
             <BookOpen className="w-3 h-3" /> From screenshot
           </button>
         </div>
@@ -644,29 +718,29 @@ function MealSlot({
   );
 }
 
-const RATING_BADGE: Record<string, { label: string; emoji: string; cls: string }> = {
-  love: { label: "Love it",        emoji: "❤️", cls: "bg-red-50 text-red-600 border-red-200" },
-  ok:   { label: "It's okay",      emoji: "👍", cls: "bg-amber-50 text-amber-600 border-amber-200" },
-  skip: { label: "Skip next time", emoji: "🙅", cls: "bg-muted text-muted-foreground border-border" },
+const RATING_BADGE: Record<string, { label: string; Icon: React.ComponentType<any>; cls: string }> = {
+  love: { label: "Love it",        Icon: ThumbsUp, cls: "bg-red-50 text-red-600 border-red-200" },
+  ok:   { label: "It's okay",      Icon: CheckCircle2, cls: "bg-amber-50 text-amber-600 border-amber-200" },
+  skip: { label: "Skip next time", Icon: ThumbsDown, cls: "bg-muted text-muted-foreground border-border" },
 };
-const ALL_CATEGORIES: Record<string, { label: string; emoji: string }> = {
-  produce:   { label: "Produce",            emoji: "🥦" },
-  deli:      { label: "Deli & Lunch Meat",  emoji: "🥪" },
-  meat:      { label: "Meat & Seafood",     emoji: "🥩" },
-  dairy:     { label: "Dairy & Eggs",       emoji: "🧀" },
-  bread:     { label: "Bread & Bakery",     emoji: "🍞" },
-  grains:    { label: "Grains & Pasta",     emoji: "🌾" },
-  canned:    { label: "Canned & Pantry",    emoji: "🥫" },
-  snacks:    { label: "Snacks",             emoji: "🍿" },
-  frozen:    { label: "Frozen",             emoji: "🧊" },
-  beverages: { label: "Beverages",          emoji: "🧃" },
-  household: { label: "Household",          emoji: "🧺" },
-  other:     { label: "Other",              emoji: "📦" },
+const ALL_CATEGORIES: Record<string, { label: string }> = {
+  produce:   { label: "Produce" },
+  deli:      { label: "Deli & Lunch Meat" },
+  meat:      { label: "Meat & Seafood" },
+  dairy:     { label: "Dairy & Eggs" },
+  bread:     { label: "Bread & Bakery" },
+  grains:    { label: "Grains & Pasta" },
+  canned:    { label: "Canned & Pantry" },
+  snacks:    { label: "Snacks" },
+  frozen:    { label: "Frozen" },
+  beverages: { label: "Beverages" },
+  household: { label: "Household" },
+  other:     { label: "Other" },
 };
 
-const GROCERY_CATEGORIES = Object.entries(ALL_CATEGORIES).map(([key, { label, emoji }]) => ({
+const GROCERY_CATEGORIES = Object.entries(ALL_CATEGORIES).map(([key, { label }]) => ({
   key,
-  label: `${emoji} ${label}`,
+  label,
 }));
 const LEGACY_MAP: Record<string, string> = {
   protein: "meat",
@@ -689,13 +763,15 @@ function GrocerySection({ propertyId, meals, recipes, inventory }: { propertyId:
 
   const { data: lists } = useGetGroceryLists({ query: { queryKey: getGetGroceryListsQueryKey() } });
   const createList = useCreateGroceryList();
+  const hasAttemptedCreate = useRef(false);
 
   const propertyLists = lists?.filter(list => String(list.propertyId) === String(propertyId)) ?? [];
   const mainList = propertyLists[0];
 
   // Auto-create a "Weekly Shopping" list if none exist
   React.useEffect(() => {
-    if (lists && propertyLists.length === 0 && propertyId && !createList.isPending) {
+    if (lists && propertyLists.length === 0 && propertyId && !createList.isPending && !hasAttemptedCreate.current) {
+      hasAttemptedCreate.current = true;
       createList.mutate(
         { data: { name: "Weekly Shopping", propertyId } },
         { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() }) }
@@ -703,11 +779,21 @@ function GrocerySection({ propertyId, meals, recipes, inventory }: { propertyId:
     }
   }, [lists, propertyId]);
 
-  if (!mainList) return (
-    <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
-      <Loader2 className="w-5 h-5 animate-spin" /> Setting up shopping list…
-    </div>
-  );
+  if (!mainList) {
+    if (createList.isError) {
+      return (
+        <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
+          <p className="text-sm font-medium text-destructive">Failed to setup shopping list.</p>
+          <button onClick={() => { hasAttemptedCreate.current = false; createList.reset(); }} className="px-3 py-1.5 text-xs font-bold bg-primary/10 text-primary rounded-lg">Retry</button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
+        <Loader2 className="w-5 h-5 animate-spin" /> Setting up shopping list…
+      </div>
+    );
+  }
 
   return <GroceryListDetail list={mainList} meals={meals} recipes={recipes} inventory={inventory} />;
 }
@@ -921,11 +1007,9 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
   const bySection = storeDepartments
     .map(dept => {
       const key = dept.categoryKey;
-      const emoji = ALL_CATEGORIES[key]?.emoji ?? "📦";
       return {
         key,
         label: dept.displayName,
-        emoji,
         items: unchecked.filter(i => resolveCategory(i.category) === key),
       };
     })
@@ -937,16 +1021,14 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
     bySection.push({
       key: "other",
       label: "Other",
-      emoji: "📦",
       items: unmappedItems,
     });
   }
 
   const categoryOptions = storeDepartments.map(dept => {
-    const emoji = ALL_CATEGORIES[dept.categoryKey]?.emoji ?? "📦";
     return {
       key: dept.categoryKey,
-      label: `${emoji} ${dept.displayName}`,
+      label: dept.displayName,
     };
   });
 
@@ -1007,7 +1089,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
         <div className="relative">
           <button
             onClick={() => setStorePicker(v => !v)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 border border-border/60 text-sm font-medium hover:bg-muted transition-colors"
+            className="flex min-h-11 items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 border border-border/60 text-sm font-medium hover:bg-muted transition-colors"
           >
             <Store className="w-4 h-4 text-muted-foreground" />
             <span className="text-foreground">{store.name}</span>
@@ -1092,7 +1174,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
             <button
               type="button"
               onClick={() => setCatalogCategory("")}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold ${catalogCategory === "" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
+              className={`shrink-0 rounded-full border px-3 py-1.5 min-h-9 text-xs font-bold ${catalogCategory === "" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
             >
               All
             </button>
@@ -1101,7 +1183,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
                 key={`catalog-${cat.key}`}
                 type="button"
                 onClick={() => setCatalogCategory(cat.key as GroceryCategoryKey)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold ${catalogCategory === cat.key ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
+                className={`shrink-0 rounded-full border px-3 py-1.5 min-h-9 text-xs font-bold ${catalogCategory === cat.key ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
               >
                 {cat.label}
               </button>
@@ -1144,7 +1226,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
                   key={cat.key}
                   type="button"
                   onClick={() => setNewCategory(cat.key as GroceryCategoryKey)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors ${newCategory === cat.key ? "bg-primary text-primary-foreground border-primary" : "bg-muted/50 border-border/50 text-muted-foreground hover:bg-muted"}`}
+                  className={`px-2.5 py-1.5 min-h-[36px] rounded-lg text-xs font-bold border transition-colors ${newCategory === cat.key ? "bg-primary text-primary-foreground border-primary" : "bg-muted/50 border-border/50 text-muted-foreground hover:bg-muted"}`}
                 >
                   {cat.label}
                 </button>
@@ -1154,10 +1236,10 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
           {addItemError && <p role="alert" className="text-sm font-medium text-destructive">{addItemError}</p>}
           {addItemMessage && <p role="status" className="text-sm font-medium text-primary">{addItemMessage}</p>}
           <div className="flex gap-2">
-            <button type="button" onClick={() => { setAddingOpen(false); setAddItemError(""); setAddItemMessage(""); }} className="flex-1 py-2 rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors">
+            <button type="button" onClick={() => { setAddingOpen(false); setAddItemError(""); setAddItemMessage(""); }} className="min-h-[44px] flex-1 rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={addItem.isPending} className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50">
+            <button type="submit" disabled={addItem.isPending} className="min-h-[44px] flex-1 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50">
               Add custom item
             </button>
           </div>
@@ -1165,7 +1247,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
       ) : (
         <button
           onClick={() => setAddingOpen(true)}
-          className="w-full flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-primary/30 text-primary font-bold hover:bg-primary/5 hover:border-primary/50 transition-all"
+          className="min-h-[48px] w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-primary/30 text-primary font-bold hover:bg-primary/5 hover:border-primary/50 transition-all"
         >
           <Plus className="w-4 h-4" /> Add Item
         </button>
@@ -1179,7 +1261,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
       {bySection.map(group => (
         <div key={group.key}>
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-1">
-            {group.emoji} {group.label}
+            {group.label}
           </p>
           <div className="space-y-1">
             {group.items.map(item => (
@@ -1259,7 +1341,7 @@ export default function Meals() {
   const [weekOffset, setWeekOffset] = useState(0);
   const baseMonday = mondayOfWeek(new Date());
   const monday = addWeeks(baseMonday, weekOffset);
-  const weekStart = monday.toISOString();
+  const weekStart = format(monday, "yyyy-MM-dd");
 
   const { activeMember } = useActiveMember();
 
@@ -1278,6 +1360,7 @@ export default function Meals() {
   const createMeal = useCreateMealPlanEntry();
   const deleteMeal = useDeleteMealPlanEntry();
   const updateMeal = useUpdateMealPlanEntry();
+  const upsertMeals = useUpsertMealPlanEntries();
 
   // Tab + UI state — declared before the recipe query so `activeTab` is in scope
   const [planWeekOpen, setPlanWeekOpen] = useState(false);
@@ -1385,9 +1468,9 @@ export default function Meals() {
     return meals?.find(m => m.dayOfWeek === apiDay && m.mealType === type);
   };
 
-  const handleAdd = (dayIndex: number, type: MealType, text: string, sourceUrl?: string) => {
-    if (!houseProperty) return;
-    createMeal.mutate(
+  const handleAdd = async (dayIndex: number, type: MealType, text: string, sourceUrl?: string) => {
+    if (!houseProperty) throw new Error("Please set up a home first.");
+    await createMeal.mutateAsync(
       {
         data: {
           weekStart,
@@ -1396,13 +1479,14 @@ export default function Meals() {
           meal: text,
           propertyId: houseProperty.id,
         },
-      },
-      { onSuccess: invalidateMeals }
+      }
     );
+    invalidateMeals();
   };
 
-  const handleDelete = (id: string) => {
-    deleteMeal.mutate({ id }, { onSuccess: invalidateMeals });
+  const handleDelete = async (id: string) => {
+    await deleteMeal.mutateAsync({ id });
+    invalidateMeals();
   };
 
   const handleDeleteWeek = async () => {
@@ -1420,12 +1504,14 @@ export default function Meals() {
     }
   };
 
-  const handleNote = (id: string, notes: string) => {
-    updateMeal.mutate({ id, data: { notes } }, { onSuccess: invalidateMeals });
+  const handleNote = async (id: string, notes: string) => {
+    await updateMeal.mutateAsync({ id, data: { notes } });
+    invalidateMeals();
   };
 
-  const handleEditMeal = (id: string, meal: string) => {
-    updateMeal.mutate({ id, data: { meal } }, { onSuccess: invalidateMeals });
+  const handleEditMeal = async (id: string, meal: string) => {
+    await updateMeal.mutateAsync({ id, data: { meal } });
+    invalidateMeals();
   };
 
   const handleSaveToCookbook = (name: string, sourceUrl?: string) => {
@@ -1578,50 +1664,50 @@ export default function Meals() {
         ["dinner", day.dinner],
       ] as [MealType, string][]) {
         if (typeof value !== "string" || !value.trim()) continue;
-        if (getMeal(idx, mType)) continue; // don't overwrite existing entries
 
         newMeals.push({ dayIndex: idx, type: mType, text: value.trim() });
       }
     }
 
     if (newMeals.length > 0) {
-      await Promise.all(
-        newMeals.map(m =>
-          createMeal.mutateAsync({
-            data: {
-              weekStart,
-              dayOfWeek: dayIndexToApi(m.dayIndex),
-              mealType: m.type,
-              meal: m.text,
-              propertyId: houseProperty.id,
-            },
-          })
-        )
-      );
-      invalidateMeals();
+      await upsertMeals.mutateAsync({
+        data: {
+          fillEmptyOnly: true,
+          items: newMeals.map((meal) => ({
+            weekStart,
+            dayOfWeek: dayIndexToApi(meal.dayIndex),
+            mealType: meal.type,
+            meal: meal.text,
+            propertyId: String(houseProperty.id),
+          })),
+        },
+      });
 
-      const existingRecipeNames = new Set((recipes ?? []).map(recipe => recipe.name.trim().toLowerCase()));
-      const suggestedRecipeNames = [...new Set(
-        newMeals
-          .map(meal => meal.text.trim())
-          .filter(name => !/eat(?:ing)? out|restaurant|takeout|leftovers?/i.test(name))
-      )];
-      await Promise.allSettled(
-        suggestedRecipeNames
-          .filter(name => !existingRecipeNames.has(name.toLowerCase()))
-          .map(name => createRecipe.mutateAsync({
-            data: {
-              name,
-              propertyId: String(houseProperty.id),
-              sourceUrl: null,
-              notes: null,
-              ingredients: [],
-              instructions: [],
-              sourceType: "ai",
-            },
-          }))
-      );
-      invalidateRecipes();
+      try {
+        const existingRecipeNames = new Set((recipes ?? []).map(recipe => recipe.name.trim().toLowerCase()));
+        const suggestedRecipeNames = [...new Set(
+          newMeals
+            .map(meal => meal.text.trim())
+            .filter(name => !/eat(?:ing)? out|restaurant|takeout|leftovers?/i.test(name))
+        )];
+        await Promise.allSettled(
+          suggestedRecipeNames
+            .filter(name => !existingRecipeNames.has(name.toLowerCase()))
+            .map(name => createRecipe.mutateAsync({
+              data: {
+                name,
+                propertyId: String(houseProperty.id),
+                sourceUrl: null,
+                notes: null,
+                ingredients: [],
+                instructions: [],
+                sourceType: "ai",
+              },
+            }))
+        );
+      } finally {
+        await Promise.all([invalidateMeals(), invalidateRecipes()]);
+      }
     }
   };
 
@@ -1646,50 +1732,54 @@ export default function Meals() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Week navigation */}
-          <div className="flex shrink-0 items-center bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-            <button
-              onClick={() => setWeekOffset(w => w - 1)}
-              className="px-3 py-2.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span
-              className="min-w-[7.75rem] px-3 py-2.5 text-center text-sm font-bold text-foreground"
-              aria-label={`Viewing ${format(monday, "MMMM d")} through ${format(addDays(monday, 6), "MMMM d, yyyy")}`}
-            >
-              {format(monday, "MMM d")}–{format(addDays(monday, 6), "MMM d")}
-            </span>
-            <button
-              onClick={() => setWeekOffset(w => w + 1)}
-              className="px-3 py-2.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+          {houseProperty && (
+            <>
+              {/* Week navigation */}
+              <div className="flex shrink-0 items-center bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                <button
+                  onClick={() => setWeekOffset(w => w - 1)}
+                  className="px-3 py-2.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span
+                  className="min-w-[7.75rem] px-3 py-2.5 text-center text-sm font-bold text-foreground"
+                  aria-label={`Viewing ${format(monday, "MMMM d")} through ${format(addDays(monday, 6), "MMMM d, yyyy")}`}
+                >
+                  {format(monday, "MMM d")}–{format(addDays(monday, 6), "MMM d")}
+                </span>
+                <button
+                  onClick={() => setWeekOffset(w => w + 1)}
+                  className="px-3 py-2.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
 
-          {/* AI Plan */}
-          <button
-            onClick={() => setPlanWeekOpen(true)}
-            className="flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
-            data-testid="button-open-plan-week"
-          >
-            <Sparkles className="w-4 h-4" />
-            Plan My Week
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setDeleteWeekError("");
-              setDeleteWeekOpen(true);
-            }}
-            disabled={!meals?.length || isDeletingWeek}
-            className="flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl border border-destructive/30 bg-card text-destructive font-bold text-sm hover:bg-destructive/5 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            data-testid="button-delete-week"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete Week
-          </button>
+              {/* AI Plan */}
+              <button
+                onClick={() => setPlanWeekOpen(true)}
+                className="flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
+                data-testid="button-open-plan-week"
+              >
+                <Sparkles className="w-4 h-4" />
+                Plan My Week
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteWeekError("");
+                  setDeleteWeekOpen(true);
+                }}
+                disabled={!meals?.length || isDeletingWeek}
+                className="flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl border border-destructive/30 bg-card text-destructive font-bold text-sm hover:bg-destructive/5 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                data-testid="button-delete-week"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Week
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1735,7 +1825,7 @@ export default function Meals() {
       </AlertDialog>
 
       {/* Tabs */}
-      <div className="grid w-full max-w-2xl grid-cols-4 gap-1 rounded-xl bg-muted/50 p-1 mb-6">
+      <div className="grid w-full max-w-2xl grid-cols-4 gap-1 rounded-xl bg-muted/50 p-1 mb-6" role="tablist" aria-label="Meal and shopping views">
         {[
           { key: "meals",    label: "Meal Plan" },
           { key: "shopping", label: "Shopping List" },
@@ -1745,6 +1835,8 @@ export default function Meals() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as any)}
+            role="tab"
+            aria-selected={activeTab === tab.key}
             className={`min-w-0 px-1.5 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all ${activeTab === tab.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             {tab.label}
@@ -1752,8 +1844,14 @@ export default function Meals() {
         ))}
       </div>
 
-      {/* Pending recipe banner */}
-      {pendingRecipeName && activeTab === "meals" && (
+      {!houseProperty && (
+        <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
+          <BookOpen className="h-8 w-8 opacity-20" />
+          <p className="text-sm font-medium">Please set up a home first to manage meals and shopping.</p>
+        </div>
+      )}
+
+      {houseProperty && pendingRecipeName && activeTab === "meals" && (
         <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-primary/5 border border-primary/20 rounded-2xl">
           <Bookmark className="w-4 h-4 text-primary shrink-0" />
           <p className="text-sm font-medium flex-1">
@@ -1813,14 +1911,14 @@ export default function Meals() {
                         mealType={mt}
                         dayLabel={day}
                         pendingFill={!existing && pendingRecipeName ? pendingRecipeName : undefined}
-                        onAdd={(text, sourceUrl) => {
-                          handleAdd(idx, mt.type, text, sourceUrl);
+                        onAdd={async (text, sourceUrl) => {
+                          await handleAdd(idx, mt.type, text, sourceUrl);
                           // Clear pending recipe after any successful add
                           if (pendingRecipeName) setPendingRecipeName(null);
                         }}
                         onEdit={handleEditMeal}
-                        onDelete={() => {
-                          if (existing) handleDelete(existing.id);
+                        onDelete={async () => {
+                          if (existing) await handleDelete(existing.id);
                         }}
                         onNote={handleNote}
                         onSaveToCookbook={handleSaveToCookbook}
@@ -1918,6 +2016,7 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
   const deleteRecipe = useDeleteRecipe();
 
   const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState("");
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
   const [newNotes, setNewNotes] = useState("");
@@ -1928,6 +2027,8 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
   const [generationError, setGenerationError] = useState<Record<string, string>>({});
   const [cookingRecipeId, setCookingRecipeId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [noteError, setNoteError] = useState("");
 
   React.useEffect(() => {
     if (focusRecipeName && recipes) {
@@ -1944,9 +2045,15 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetRecipesQueryKey(params) });
 
+  const getMutationError = (error: unknown) => {
+    const apiError = error as { data?: { error?: string }; message?: string };
+    return apiError.data?.error || apiError.message || "Something went wrong.";
+  };
+
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
+    setAddError("");
     createRecipe.mutate(
       { data: { name: newName.trim(), propertyId, sourceUrl: newUrl.trim() || null, notes: newNotes.trim() || null } },
       {
@@ -1955,6 +2062,9 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
           setAdding(false);
           invalidate();
         },
+        onError: (err) => {
+          setAddError(getMutationError(err));
+        }
       }
     );
   };
@@ -1964,8 +2074,10 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
   };
 
   const handleSaveNotes = (id: string) => {
+    setNoteError("");
     updateRecipe.mutate({ id, data: { notes: editNotes || null } }, {
       onSuccess: () => { setEditingId(null); invalidate(); },
+      onError: (err) => setNoteError(getMutationError(err)),
     });
   };
 
@@ -2054,7 +2166,7 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
         </p>
         <button
           onClick={() => setAdding(v => !v)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
+          className="flex min-h-9 items-center gap-1.5 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" /> Add Recipe
         </button>
@@ -2089,18 +2201,19 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
             <button
               type="button"
               onClick={() => setAdding(false)}
-              className="flex-1 py-2 rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors"
+              className="flex-1 min-h-[44px] rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={createRecipe.isPending || !newName.trim()}
-              className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="flex-1 min-h-[44px] rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               Save Recipe
             </button>
           </div>
+          {addError && <p role="alert" className="text-xs font-medium text-destructive">{addError}</p>}
         </form>
       )}
 
@@ -2141,8 +2254,8 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
                       <span className="text-xs text-muted-foreground">{recipe.timesCooked}× made</span>
                     )}
                     {ratingBadge && (
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${ratingBadge.cls}`}>
-                        {ratingBadge.emoji} {ratingBadge.label}
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium flex items-center gap-1 ${ratingBadge.cls}`}>
+                        <ratingBadge.Icon className="w-3 h-3" /> {ratingBadge.label}
                       </span>
                     )}
                   </div>
@@ -2263,29 +2376,32 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
 
                   {/* Notes */}
                   {isEditingNotes ? (
-                    <div className="flex gap-2">
-                      <textarea
-                        autoFocus
-                        value={editNotes}
-                        onChange={e => setEditNotes(e.target.value)}
-                        rows={2}
-                        placeholder="Add notes…"
-                        className="flex-1 text-xs bg-background border border-border rounded-xl px-3 py-2 focus:outline-none focus:border-primary resize-none"
-                      />
-                      <div className="flex flex-col gap-1">
-                        <button
-                          onClick={() => handleSaveNotes(recipe.id)}
-                          className="w-7 h-7 flex items-center justify-center bg-primary text-primary-foreground rounded-lg"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="w-7 h-7 flex items-center justify-center border border-border rounded-lg text-muted-foreground"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex gap-2">
+                        <textarea
+                          autoFocus
+                          value={editNotes}
+                          onChange={e => { setEditNotes(e.target.value); setNoteError(""); }}
+                          rows={2}
+                          placeholder="Add notes…"
+                          className="flex-1 text-xs bg-background border border-border rounded-xl px-3 py-2 focus:outline-none focus:border-primary resize-none"
+                        />
+                        <div className="flex flex-col gap-1">
+                          <button
+                            onClick={() => handleSaveNotes(recipe.id)}
+                            className="w-7 h-7 flex items-center justify-center bg-primary text-primary-foreground rounded-lg"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => { setEditingId(null); setNoteError(""); }}
+                            className="w-7 h-7 flex items-center justify-center border border-border rounded-lg text-muted-foreground"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
+                      {noteError && <p role="alert" className="text-xs font-medium text-destructive">{noteError}</p>}
                     </div>
                   ) : (
                     <button

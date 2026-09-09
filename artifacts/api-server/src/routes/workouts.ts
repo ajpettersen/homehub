@@ -285,6 +285,14 @@ router.post("/workouts", async (req, res) => {
         workoutId: created.id,
         memberId: member.id,
       })));
+      if (parsed.data.exercises?.length) {
+        await insertExercises(
+          tx,
+          created.id,
+          scope.householdId,
+          parsed.data.exercises,
+        );
+      }
       return created;
     });
     res.status(201).json(await formatWorkout(workout));

@@ -5,7 +5,7 @@ import {
   useGetTodoItems, getGetTodoItemsQueryKey, 
   useUpdateTodoItem, useAddTodoItem, useBulkAddTodoItems,
   useCreateTodoList, useDeleteTodoList,
-  useDeleteTodoItem, useMoveTodoListToTop
+  useDeleteTodoItem, useMoveTodoListToTop, getGetDashboardQueryKey
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,7 @@ export default function Tasks() {
     isError: listsFailed,
     refetch: retryLists,
   } = useGetTodoLists({ query: { queryKey: getGetTodoListsQueryKey(), retry: false, enabled: activeTab === "todos" } });
-  
+
   const createList = useCreateTodoList();
   const [newListName, setNewListName] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -71,11 +71,11 @@ export default function Tasks() {
         </div>
 
         {/* Tab switcher */}
-        <div className="flex bg-muted/30 p-1 rounded-xl border border-border/50 shadow-sm shrink-0 self-start sm:self-auto">
+        <div className="flex bg-muted/30 p-1 rounded-xl border border-border/50 shadow-sm shrink-0 self-start sm:self-auto min-h-11">
           <button
             data-testid="tab-todos"
             onClick={() => handleTabChange("todos")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all min-h-full ${
               activeTab === "todos" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
@@ -84,7 +84,7 @@ export default function Tasks() {
           <button
             data-testid="tab-maintenance"
             onClick={() => handleTabChange("maintenance")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all min-h-full ${
               activeTab === "maintenance" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
@@ -100,9 +100,12 @@ export default function Tasks() {
       ) : (
         <div className="animate-in fade-in duration-300">
           <div className="flex justify-end mb-4">
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <Dialog open={isCreateOpen} onOpenChange={(open) => {
+              setIsCreateOpen(open);
+              if (!open) setCreateListError("");
+            }}>
               <DialogTrigger asChild>
-                <Button className="min-h-10 shrink-0 gap-1.5 px-3 shadow-md sm:gap-2 sm:px-4">
+                <Button className="min-h-11 shrink-0 gap-1.5 px-4 shadow-md sm:gap-2">
                   <Plus className="h-4 w-4"/><span className="hidden min-[360px]:inline">New List</span>
                 </Button>
               </DialogTrigger>
@@ -113,12 +116,12 @@ export default function Tasks() {
                 <form onSubmit={handleCreateList} className="space-y-4 pt-4">
                   <div>
                     <label className="text-sm font-medium mb-1 block">List Name</label>
-                     <Input value={newListName} onChange={(e) => { setNewListName(e.target.value); setCreateListError(""); }} autoFocus required />
+                     <Input className="min-h-11" value={newListName} onChange={(e) => { setNewListName(e.target.value); setCreateListError(""); }} autoFocus required />
                   </div>
                    {createListError && <p className="text-sm text-destructive" role="alert">{createListError}</p>}
                   <div className="flex justify-end gap-2">
-                    <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                    <Button type="submit" disabled={createList.isPending}>
+                    <DialogClose asChild><Button type="button" variant="outline" className="min-h-11">Cancel</Button></DialogClose>
+                    <Button type="submit" disabled={createList.isPending} className="min-h-11">
                       {createList.isPending ? 'Creating...' : 'Create List'}
                     </Button>
                   </div>
@@ -165,34 +168,57 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
     isError: itemsFailed,
     refetch: retryItems,
   } = useGetTodoItems(list.id, { query: { enabled: !!list.id, queryKey: getGetTodoItemsQueryKey(list.id), retry: false } });
-  
+
   const updateItem = useUpdateTodoItem();
   const addItem = useAddTodoItem();
   const bulkAddItems = useBulkAddTodoItems();
   const deleteItem = useDeleteTodoItem();
   const deleteList = useDeleteTodoList();
   const moveToTop = useMoveTodoListToTop();
-  
+
   const [newItemContent, setNewItemContent] = useState("");
   const [newItemDueDate, setNewItemDueDate] = useState("");
   const [editingDueDateId, setEditingDueDateId] = useState<string | null>(null);
-  const [dueDateError, setDueDateError] = useState<{ itemId: string; message: string } | null>(null);
+
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
+  const [dueDateErrors, setDueDateErrors] = useState<Record<string, string>>({});
   const [addError, setAddError] = useState("");
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [bulkDefaultDueDate, setBulkDefaultDueDate] = useState(() => getLocalDateOnly());
   const [bulkError, setBulkError] = useState("");
   const [bulkResult, setBulkResult] = useState("");
-  const [itemActionError, setItemActionError] = useState("");
+  const [listActionError, setListActionError] = useState("");
+
+  const clearItemError = (id: string) => {
+    setItemErrors(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const clearDueDateError = (id: string) => {
+    setDueDateErrors(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const invalidateTasks = () => {
+    queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
+    queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+  };
 
   const handleToggle = (item: any) => {
-    if (updateItem.isPending) return;
-    setItemActionError("");
+    if (updateItem.isPending && updateItem.variables?.id === item.id) return;
+    clearItemError(item.id);
     updateItem.mutate(
       { id: item.id, data: { completed: !item.completed } },
       {
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) }),
-        onError: () => setItemActionError("Could not update that task. Please try again."),
+        onSuccess: invalidateTasks,
+        onError: () => setItemErrors(prev => ({ ...prev, [item.id]: "Could not update task." })),
       }
     );
   };
@@ -221,7 +247,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
         onSuccess: () => {
           setNewItemContent("");
           setNewItemDueDate("");
-          queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
+          invalidateTasks();
         },
         onError: () => setAddError("Could not add task. Please try again."),
       }
@@ -229,16 +255,17 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
   };
 
   const handleDueDateChange = (itemId: string, dueDate: string | null) => {
+    if (updateItem.isPending && updateItem.variables?.id === itemId) return;
+    clearDueDateError(itemId);
     updateItem.mutate(
       { id: itemId, data: { dueDate } },
       {
         onSuccess: () => {
           setEditingDueDateId(null);
-          setDueDateError(null);
-          queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
+          invalidateTasks();
         },
-        onError: () => setDueDateError({ itemId, message: "Could not update due date. Please try again." }),
-      },
+        onError: () => setDueDateErrors(prev => ({ ...prev, [itemId]: "Could not update date." })),
+      }
     );
   };
 
@@ -267,11 +294,11 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
       {
         onSuccess: (result) => {
           setBulkText("");
-          setBulkResult(`${result.items.length} tasks added.`);
-          queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
+          setBulkResult(`${result.items.length} tasks added successfully.`);
+          invalidateTasks();
         },
         onError: () => setBulkError("Could not add tasks. No tasks were added."),
-      },
+      }
     );
   };
 
@@ -286,21 +313,21 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
 
   const confirmDeleteTask = () => {
     if (!deleteTaskTarget) return;
-    setItemActionError("");
+    clearItemError(deleteTaskTarget.id);
     deleteItem.mutate({ id: deleteTaskTarget.id }, {
       onSuccess: () => {
         setDeleteTaskTarget(null);
-        queryClient.invalidateQueries({ queryKey: getGetTodoItemsQueryKey(list.id) });
+        invalidateTasks();
       },
-      onError: () => setItemActionError("Could not delete that task. Please try again."),
+      onError: () => setItemErrors(prev => ({ ...prev, [deleteTaskTarget.id]: "Could not delete task." })),
     });
   };
 
   const handleMoveToTop = () => {
-    setItemActionError("");
+    setListActionError("");
     moveToTop.mutate({ id: list.id }, {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() }),
-      onError: () => setItemActionError("Could not move this list. Please try again."),
+      onError: () => setListActionError("Could not move this list. Please try again."),
     });
   };
 
@@ -310,13 +337,13 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
 
   const confirmDeleteList = () => {
     if (!deleteListTarget) return;
-    setItemActionError("");
+    setListActionError("");
     deleteList.mutate({ id: deleteListTarget.id }, {
       onSuccess: () => {
         setDeleteListTarget(null);
         queryClient.invalidateQueries({ queryKey: getGetTodoListsQueryKey() });
       },
-      onError: () => setItemActionError("Could not delete this list. Please try again."),
+      onError: () => setListActionError("Could not delete this list. Please try again."),
     });
   };
 
@@ -324,7 +351,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
     <Card className="flex flex-col border-border bg-card/50 shadow-sm">
       <div className="group flex items-center justify-between border-b border-border bg-muted/20 p-3 sm:p-4">
         <div className="flex flex-col">
-          <h3 className="font-serif text-lg font-bold sm:text-xl">{list.name}</h3>
+          <h3 className="font-serif text-lg font-bold sm:text-xl break-words min-w-0">{list.name}</h3>
           {list.assigneeName && <Badge variant="secondary" className="w-fit mt-1">{list.assigneeName}</Badge>}
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -336,26 +363,26 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
               disabled={moveToTop.isPending}
               title="Move to top"
               data-testid={`button-move-to-top-${list.id}`}
-              className="text-muted-foreground hover:text-primary"
+              className="text-muted-foreground hover:text-primary min-h-[44px] min-w-[44px]"
             >
-              <ArrowUp className="w-4 h-4" />
+              <ArrowUp className="w-5 h-5" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground transition-opacity hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100">
-            <Trash2 className="w-4 h-4" />
+          <Button variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground transition-opacity hover:text-destructive min-h-[44px] min-w-[44px] sm:opacity-0 sm:group-hover:opacity-100">
+            <Trash2 className="w-5 h-5" />
           </Button>
         </div>
       </div>
-      <CardContent className="flex-1 space-y-1 overflow-visible p-2 sm:space-y-2 sm:p-4">
-        {itemActionError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{itemActionError}</p>}
+      <CardContent className="flex-1 space-y-2 overflow-visible p-3 sm:p-4">
+        {listActionError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{listActionError}</p>}
         {isLoading ? (
           <div className="animate-pulse space-y-2">
-            {[1,2].map(i => <div key={i} className="h-10 bg-muted rounded-lg w-full"></div>)}
+            {[1,2].map(i => <div key={i} className="h-12 bg-muted rounded-lg w-full"></div>)}
           </div>
         ) : itemsFailed || !items ? (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center" role="alert">
             <p className="text-sm font-medium text-destructive">Tasks in this list couldn’t load.</p>
-            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void retryItems()}>
+            <Button type="button" variant="outline" size="sm" className="mt-3 min-h-11" onClick={() => void retryItems()}>
               Try again
             </Button>
           </div>
@@ -365,43 +392,48 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
           items.map((item: any) => (
             <div
               key={item.id} 
-              className={`group flex items-start gap-2 rounded-lg border p-2 transition-all sm:gap-3 sm:p-3 ${
+              className={`group flex items-start gap-3 rounded-lg border p-3 transition-all ${
                 item.completed 
                   ? "bg-muted/30 border-transparent opacity-60" 
                   : "bg-background border-border hover:border-primary/50 shadow-sm"
               }`}
             >
-              <label className={updateItem.isPending ? "cursor-wait opacity-60" : "cursor-pointer"} aria-label={`${item.completed ? "Mark incomplete" : "Mark complete"}: ${item.content}`}>
-                <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+              <label className={`pt-0.5 shrink-0 ${updateItem.isPending && updateItem.variables?.id === item.id ? "cursor-wait opacity-60" : "cursor-pointer"}`} aria-label={`${item.completed ? "Mark incomplete" : "Mark complete"}: ${item.content}`}>
+                <div className={`w-6 h-6 rounded border flex items-center justify-center transition-colors focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 ${
                   item.completed ? "bg-accent border-accent text-accent-foreground" : "border-input bg-background"
                 }`}>
-                  {item.completed && <Check className="w-3 h-3" />}
+                  {item.completed && <Check className="w-4 h-4" />}
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={item.completed}
+                    disabled={updateItem.isPending && updateItem.variables?.id === item.id}
+                    onChange={() => handleToggle(item)}
+                  />
                 </div>
-                <input
-                  type="checkbox"
-                  className="sr-only"
-                  checked={item.completed}
-                   disabled={updateItem.isPending}
-                  onChange={() => handleToggle(item)}
-                />
               </label>
-              <div className="flex-1">
-                <span className={`block font-medium leading-tight ${item.completed ? "line-through decoration-2 decoration-foreground/30 text-muted-foreground" : "text-foreground"}`}>
+              <div className="flex-1 min-w-0">
+                <span className={`block font-medium leading-tight break-words ${item.completed ? "line-through decoration-2 decoration-foreground/30 text-muted-foreground" : "text-foreground"}`}>
                   {item.content}
                 </span>
                 {(item.dueDate || item.assigneeName) && (
-                  <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
+                  <div className="flex gap-2 mt-1.5 text-xs text-muted-foreground font-medium">
                     {item.dueDate && <span>{formatDateOnly(item.dueDate, "MMM d")}</span>}
                     {item.assigneeName && <span>• {item.assigneeName}</span>}
                   </div>
                 )}
-                <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2">
+
+                {itemErrors[item.id] && (
+                  <p className="mt-1 text-xs text-destructive font-medium" role="alert">{itemErrors[item.id]}</p>
+                )}
+
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-2">
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="hidden h-7 px-2 text-xs sm:inline-flex"
-                    disabled={updateItem.isPending}
+                    className="hidden min-h-[36px] px-2.5 text-xs sm:inline-flex bg-muted/50 hover:bg-muted"
+                    disabled={updateItem.isPending && updateItem.variables?.id === item.id}
                     onClick={() => handleDueDateChange(item.id, relativeDateOnly(1))}
                   >
                     Tomorrow
@@ -410,8 +442,8 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="hidden h-7 px-2 text-xs sm:inline-flex"
-                    disabled={updateItem.isPending}
+                    className="hidden min-h-[36px] px-2.5 text-xs sm:inline-flex bg-muted/50 hover:bg-muted"
+                    disabled={updateItem.isPending && updateItem.variables?.id === item.id}
                     onClick={() => handleDueDateChange(item.id, relativeDateOnly(7))}
                   >
                     Next week
@@ -420,15 +452,15 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 gap-1 px-2 text-xs"
-                    disabled={updateItem.isPending}
+                    className="min-h-[36px] gap-1.5 px-2.5 text-xs bg-muted/50 hover:bg-muted"
+                    disabled={updateItem.isPending && updateItem.variables?.id === item.id}
                     onClick={() => {
                       setEditingDueDateId(editingDueDateId === item.id ? null : item.id);
-                      setDueDateError(null);
+                      clearDueDateError(item.id);
                     }}
                     aria-expanded={editingDueDateId === item.id}
                   >
-                    <CalendarClock className="h-3 w-3" aria-hidden="true" />
+                    <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
                     <span className="sm:hidden">Date</span>
                     <span className="hidden sm:inline">Pick date</span>
                   </Button>
@@ -437,11 +469,11 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-destructive"
-                      disabled={updateItem.isPending}
+                      className="min-h-[36px] gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 bg-muted/50"
+                      disabled={updateItem.isPending && updateItem.variables?.id === item.id}
                       onClick={() => handleDueDateChange(item.id, null)}
                     >
-                      <X className="h-3 w-3" aria-hidden="true" />
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
                       Clear
                     </Button>
                   )}
@@ -449,7 +481,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                     <Input
                       type="date"
                       defaultValue={item.dueDate ?? ""}
-                      className="h-8 w-40 text-xs"
+                      className="min-h-[36px] w-auto text-xs"
                       aria-label={`Due date for ${item.content}`}
                       onChange={(e) => {
                         if (!e.target.value || isValidDate(e.target.value)) {
@@ -458,9 +490,9 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                       }}
                     />
                   )}
-                  {dueDateError && dueDateError.itemId === item.id && (
-                    <p className="basis-full text-xs text-destructive" role="alert">
-                      {dueDateError.message}
+                  {dueDateErrors[item.id] && (
+                    <p className="basis-full text-xs text-destructive font-medium" role="alert">
+                      {dueDateErrors[item.id]}
                     </p>
                   )}
                 </div>
@@ -469,25 +501,25 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                 type="button" 
                 variant="ghost" 
                 size="icon" 
-                className="h-7 w-7 shrink-0 text-muted-foreground transition-opacity hover:text-destructive sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100"
+                className="min-h-[44px] min-w-[44px] shrink-0 text-muted-foreground transition-opacity hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100"
                 onClick={(e) => handleDeleteItem(item.id, e)}
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-4 h-4" />
               </Button>
             </div>
           ))
         )}
       </CardContent>
-      <div className="border-t border-border bg-card p-3 sm:p-4">
-        <form onSubmit={handleAdd} className="space-y-2">
+      <div className="border-t border-border bg-card p-3 sm:p-4 rounded-b-xl">
+        <form onSubmit={handleAdd} className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row">
-          <Input 
-            value={newItemContent} 
-            onChange={(e) => { setNewItemContent(e.target.value); setAddError(""); }}
-            placeholder="Add a task..." 
-            className="flex-1"
-            aria-label={`New task for ${list.name}`}
-          />
+            <Input
+              value={newItemContent}
+              onChange={(e) => { setNewItemContent(e.target.value); setAddError(""); }}
+              placeholder="Add a task..."
+              className="flex-1 min-h-11"
+              aria-label={`New task for ${list.name}`}
+            />
             <Input
               type="date"
               value={newItemDueDate}
@@ -496,15 +528,18 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
               aria-label="Due date"
             />
             <Button type="submit" variant="secondary" className="min-h-11" disabled={addItem.isPending}>
-              <Plus className="w-4 h-4" aria-hidden="true" />
-              <span className="sr-only">Add task</span>
+              <Plus className="w-5 h-5 mr-1 sm:mr-0" aria-hidden="true" />
+              <span className="sm:hidden font-bold">Add Task</span>
             </Button>
           </div>
-          {addError && <p className="text-sm text-destructive" role="alert">{addError}</p>}
+          {addError && <p className="text-sm text-destructive font-medium" role="alert">{addError}</p>}
         </form>
         <Dialog open={isBulkOpen} onOpenChange={(open: boolean) => {
           setIsBulkOpen(open);
-          if (!open) setBulkError("");
+          if (!open) {
+            setBulkError("");
+            setBulkResult("");
+          }
         }}>
           <DialogTrigger asChild>
             <Button type="button" variant="outline" className="mt-3 min-h-11 w-full">Add multiple tasks</Button>
@@ -520,7 +555,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                   id={`bulk-due-${list.id}`}
                   type="date"
                   value={bulkDefaultDueDate}
-                  onChange={(e) => { setBulkDefaultDueDate(e.target.value); setBulkError(""); }}
+                  onChange={(e) => { setBulkDefaultDueDate(e.target.value); setBulkError(""); setBulkResult(""); }}
                   className="min-h-11"
                   required
                 />
@@ -530,19 +565,19 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                 <Textarea
                   id={`bulk-tasks-${list.id}`}
                   value={bulkText}
-                  onChange={(e) => { setBulkText(e.target.value); setBulkError(""); }}
+                  onChange={(e) => { setBulkText(e.target.value); setBulkError(""); setBulkResult(""); }}
                   placeholder={"Book plumber\nPack bags | 2026-07-15"}
-                  className="min-h-40 text-base"
+                  className="min-h-[160px] text-base"
                   aria-describedby={`bulk-help-${list.id}`}
                   required
                 />
-                <p id={`bulk-help-${list.id}`} className="mt-1 text-sm text-muted-foreground">
+                <p id={`bulk-help-${list.id}`} className="mt-1.5 text-sm text-muted-foreground">
                   Use “Task name | YYYY-MM-DD” to override the default date. Up to 50 tasks.
                 </p>
               </div>
-              {bulkError && <p className="text-sm text-destructive" role="alert">{bulkError}</p>}
-              {bulkResult && <p className="text-sm text-primary" role="status">{bulkResult}</p>}
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              {bulkError && <p className="text-sm text-destructive font-medium" role="alert">{bulkError}</p>}
+              {bulkResult && <p className="text-sm text-primary font-bold bg-primary/10 px-3 py-2 rounded-lg" role="status">{bulkResult}</p>}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end mt-2">
                 <DialogClose asChild><Button type="button" variant="outline" className="min-h-11">Close</Button></DialogClose>
                 <Button type="submit" className="min-h-11" disabled={bulkAddItems.isPending}>
                   {bulkAddItems.isPending ? "Adding tasks..." : "Add tasks"}
@@ -560,7 +595,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
         confirmLabel="Delete task"
         destructive
         pending={deleteItem.isPending}
-        error={itemActionError && deleteItem.isError ? itemActionError : null}
+        error={deleteTaskTarget && itemErrors[deleteTaskTarget.id] ? itemErrors[deleteTaskTarget.id] : null}
         onConfirm={confirmDeleteTask}
       />
       <ConfirmActionDialog
@@ -571,7 +606,7 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
         confirmLabel="Delete list"
         destructive
         pending={deleteList.isPending}
-        error={itemActionError && deleteList.isError ? itemActionError : null}
+        error={listActionError && deleteList.isError ? listActionError : null}
         onConfirm={confirmDeleteList}
       />
     </Card>

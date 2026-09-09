@@ -5,7 +5,6 @@ import { Dumbbell, Sparkles, X, Activity } from "lucide-react";
 import { 
   useCreateWorkout, 
   useDraftWorkout, 
-  useAddExercise, 
   getGetWorkoutsQueryKey,
   WorkoutDraft
 } from "@workspace/api-client-react";
@@ -15,7 +14,6 @@ export function CreateWorkoutModal({ onClose, defaultMember, members }: { onClos
   const queryClient = useQueryClient();
   const createWorkout = useCreateWorkout();
   const draftWorkout = useDraftWorkout();
-  const addExercise = useAddExercise();
   
   const [tab, setTab] = useState<"manual" | "ai">("manual");
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(
@@ -88,32 +86,26 @@ export function CreateWorkoutModal({ onClose, defaultMember, members }: { onClos
     setIsLogging(true);
     
     try {
-      const newWorkout = await createWorkout.mutateAsync({
+      await createWorkout.mutateAsync({
         data: {
           participantIds: selectedMemberIds,
           title: draft.title,
           workoutDate: format(new Date(), "yyyy-MM-dd"),
           durationMinutes: draft.durationMinutes,
           notes: draft.notes || null,
-        }
+          exercises: draft.exercises
+            .filter((exercise) => exercise.name.trim())
+            .map((exercise) => ({
+              name: exercise.name,
+              muscleGroups: exercise.muscleGroups,
+              sets: exercise.sets ?? null,
+              reps: exercise.reps ?? null,
+              weightLbs: exercise.weightLbs ?? null,
+              durationSeconds: exercise.durationSeconds ?? null,
+              notes: exercise.notes || null,
+            })),
+        },
       });
-
-      for (const ex of draft.exercises) {
-        if (!ex.name) continue;
-        await addExercise.mutateAsync({
-          id: newWorkout.id,
-          data: {
-            name: ex.name,
-            muscleGroups: ex.muscleGroups,
-            sets: ex.sets || null,
-            reps: ex.reps || null,
-            weightLbs: ex.weightLbs || null,
-            durationSeconds: ex.durationSeconds || null,
-            notes: ex.notes || null
-          }
-        });
-      }
-
       queryClient.invalidateQueries({ queryKey: getGetWorkoutsQueryKey() });
       onClose();
     } catch (e) {
@@ -224,21 +216,24 @@ export function CreateWorkoutModal({ onClose, defaultMember, members }: { onClos
                 />
               </div>
 
-              <div className="pt-4 flex gap-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex-1 py-3 font-bold rounded-xl border border-border text-foreground hover:bg-muted transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createWorkout.isPending}
-                  className="flex-1 py-3 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md shadow-primary/20"
-                >
-                  {createWorkout.isPending ? "Creating..." : "Start Workout"}
-                </button>
+              <div className="pt-4 flex flex-col gap-3">
+                {createWorkout.isError && <p className="text-sm font-medium text-destructive text-center" role="alert">Could not create workout. Please try again.</p>}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 py-3 font-bold rounded-xl border border-border text-foreground hover:bg-muted transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={createWorkout.isPending}
+                    className="flex-1 py-3 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md shadow-primary/20"
+                  >
+                    {createWorkout.isPending ? "Creating..." : "Start Workout"}
+                  </button>
+                </div>
               </div>
             </form>
           )}
@@ -263,6 +258,7 @@ export function CreateWorkoutModal({ onClose, defaultMember, members }: { onClos
               >
                 {draftWorkout.isPending ? "Generating Draft..." : <><Sparkles className="w-5 h-5" /> Generate Draft</>}
               </button>
+              {draftWorkout.isError && <p className="text-sm font-medium text-destructive text-center" role="alert">Could not generate draft. Please try again.</p>}
             </form>
           )}
 
@@ -270,22 +266,25 @@ export function CreateWorkoutModal({ onClose, defaultMember, members }: { onClos
             <div className="space-y-4 animate-in slide-in-from-bottom-2">
               <EditableDraftWorkout draft={draft} onUpdate={setDraft} />
               
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setDraft(null)}
-                  disabled={isLogging}
-                  className="flex-1 py-3 font-bold rounded-xl border border-border text-foreground hover:bg-muted transition-colors"
-                >
-                  Discard
-                </button>
-                <button
-                  onClick={handleLogDraft}
-                  disabled={isLogging}
-                  className="flex-1 py-3 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md shadow-primary/20 flex items-center justify-center gap-2"
-                >
-                  {isLogging ? "Logging..." : <><Activity className="w-5 h-5" /> Log This Workout</>}
-                </button>
+              <div className="flex flex-col gap-3 pt-2">
+                {createWorkout.isError && <p className="text-sm font-medium text-destructive text-center" role="alert">Could not log workout. Your draft is still here; please try again.</p>}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDraft(null)}
+                    disabled={isLogging}
+                    className="flex-1 py-3 font-bold rounded-xl border border-border text-foreground hover:bg-muted transition-colors"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    onClick={handleLogDraft}
+                    disabled={isLogging}
+                    className="flex-1 py-3 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md shadow-primary/20 flex items-center justify-center gap-2"
+                  >
+                    {isLogging ? "Logging..." : <><Activity className="w-5 h-5" /> Log This Workout</>}
+                  </button>
+                </div>
               </div>
             </div>
           )}

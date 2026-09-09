@@ -1112,6 +1112,27 @@ paths:
         "204":
           description: Deleted
 
+  /meal-plans/bulk-upsert:
+    post:
+      operationId: upsertMealPlanEntries
+      tags: [meals]
+      summary: Atomically create or update meal plan slots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MealPlanBulkUpsertInput"
+      responses:
+        "200":
+          description: Saved meal plan entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MealPlanEntry"
+
   /meal-ratings:
     get:
       operationId: getMealRatings
@@ -2763,6 +2784,11 @@ components:
           type: string
           nullable: true
           maxLength: 4000
+        exercises:
+          type: array
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/CreateExerciseInput"
       required:
         - title
         - workoutDate
@@ -4091,6 +4117,22 @@ components:
         - mealType
         - meal
         - propertyId
+
+    MealPlanBulkUpsertInput:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        fillEmptyOnly:
+          type: boolean
+          default: false
+        items:
+          type: array
+          minItems: 1
+          maxItems: 28
+          items:
+            $ref: "#/components/schemas/CreateMealPlanEntryInput"
 
     UpdateMealPlanEntryInput:
       type: object

@@ -246,54 +246,6 @@ export interface WorkoutDetail {
   createdAt: string;
 }
 
-export interface CreateWorkoutInput {
-  /** @deprecated */
-  memberId?: string;
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
-  participantIds?: string[];
-  /**
-     * @minLength 1
-     * @maxLength 160
-     */
-  title: string;
-  workoutDate: string;
-  /**
-     * @minimum 1
-     * @maximum 1440
-     */
-  durationMinutes?: number | null;
-  /** @maxLength 4000 */
-  notes?: string | null;
-}
-
-export interface UpdateWorkoutInput {
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
-  participantIds?: string[];
-  /**
-     * @minLength 1
-     * @maxLength 160
-     */
-  title?: string;
-  workoutDate?: string;
-  /**
-     * @minimum 1
-     * @maximum 1440
-     * @nullable
-     */
-  durationMinutes?: number | null;
-  /**
-     * @maxLength 4000
-     * @nullable
-     */
-  notes?: string | null;
-}
-
 export interface CreateExerciseInput {
   /**
      * @minLength 1
@@ -323,6 +275,56 @@ export interface CreateExerciseInput {
      */
   durationSeconds?: number | null;
   /** @maxLength 500 */
+  notes?: string | null;
+}
+
+export interface CreateWorkoutInput {
+  /** @deprecated */
+  memberId?: string;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  participantIds?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  title: string;
+  workoutDate: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
+  durationMinutes?: number | null;
+  /** @maxLength 4000 */
+  notes?: string | null;
+  /** @maxItems 30 */
+  exercises?: CreateExerciseInput[];
+}
+
+export interface UpdateWorkoutInput {
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  participantIds?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  title?: string;
+  workoutDate?: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     * @nullable
+     */
+  durationMinutes?: number | null;
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
   notes?: string | null;
 }
 
@@ -1445,6 +1447,15 @@ export interface CreateMealPlanEntryInput {
   notes?: string | null;
   rating?: CreateMealPlanEntryInputRating;
   propertyId: string;
+}
+
+export interface MealPlanBulkUpsertInput {
+  fillEmptyOnly?: boolean;
+  /**
+     * @minItems 1
+     * @maxItems 28
+     */
+  items: CreateMealPlanEntryInput[];
 }
 
 export type UpdateMealPlanEntryInputRating = typeof UpdateMealPlanEntryInputRating[keyof typeof UpdateMealPlanEntryInputRating] | null;

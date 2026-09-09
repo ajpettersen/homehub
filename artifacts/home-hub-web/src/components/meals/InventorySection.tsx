@@ -72,6 +72,15 @@ export function InventorySection({ propertyId }: { propertyId: string }) {
     }
   };
 
+  if (!propertyId) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
+        <Box className="h-8 w-8 opacity-20" />
+        <p className="text-sm font-medium">Please set up a home first to use inventory.</p>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
@@ -149,10 +158,10 @@ export function InventorySection({ propertyId }: { propertyId: string }) {
           </details>
           {addError && <p className="text-sm font-medium text-destructive">{addError}</p>}
           <div className="flex gap-2">
-            <button type="button" onClick={() => { setAddingOpen(false); setAddError(""); }} className="flex-1 py-2 rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors">
+            <button type="button" onClick={() => { setAddingOpen(false); setAddError(""); }} className="min-h-[44px] flex-1 rounded-xl border-2 border-border font-bold text-sm hover:bg-muted transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={addItem.isPending} className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50">
+            <button type="submit" disabled={addItem.isPending} className="min-h-[44px] flex-1 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50">
               Add item
             </button>
           </div>
@@ -160,7 +169,7 @@ export function InventorySection({ propertyId }: { propertyId: string }) {
       ) : (
         <button
           onClick={() => setAddingOpen(true)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-primary/30 text-primary font-bold hover:bg-primary/5 hover:border-primary/50 transition-all"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-[48px] rounded-2xl border-2 border-dashed border-primary/30 text-primary font-bold hover:bg-primary/5 hover:border-primary/50 transition-all"
         >
           <Plus className="w-4 h-4" /> Add Item Manually
         </button>

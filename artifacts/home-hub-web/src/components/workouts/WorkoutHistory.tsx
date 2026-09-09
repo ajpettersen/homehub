@@ -79,30 +79,30 @@ function ExerciseRow({
           type="button"
           onClick={onMoveUp}
           disabled={isFirst || isReordering}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
+          className="flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
           title="Move up"
           aria-label={`Move ${exercise.name} up`}
         >
-          <ChevronUp className="w-4 h-4" />
+          <ChevronUp className="w-5 h-5 sm:w-4 sm:h-4" />
         </button>
         <button
           type="button"
           onClick={onMoveDown}
           disabled={isLast || isReordering}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
+          className="flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground transition-colors"
           title="Move down"
           aria-label={`Move ${exercise.name} down`}
         >
-          <ChevronDown className="w-4 h-4" />
+          <ChevronDown className="w-5 h-5 sm:w-4 sm:h-4" />
         </button>
         <button
           type="button"
           onClick={onDelete}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          className="flex h-10 w-10 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           title="Delete exercise"
           aria-label={`Delete ${exercise.name}`}
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-5 h-5 sm:w-4 sm:h-4" />
         </button>
       </div>
     </div>
@@ -227,6 +227,7 @@ function AddExerciseForm({ workoutId, onAdded, onCancel }: { workoutId: string; 
         </div>
 
         <div className="pt-2">
+          {addExercise.isError && <p className="text-sm font-medium text-destructive mb-2" role="alert">Could not add exercise. Please try again.</p>}
           <button type="submit" disabled={addExercise.isPending}
             className="w-full bg-primary text-primary-foreground font-bold rounded-lg py-2.5 hover:bg-primary/90 transition-colors disabled:opacity-50">
             {addExercise.isPending ? "Adding..." : "Save Exercise"}
