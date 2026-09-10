@@ -1,3 +1,5 @@
+import path from "node:path";
+import fs from "node:fs";
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
@@ -53,5 +55,20 @@ app.use(
 );
 
 app.use("/api", router);
+
+// Replit's deployment router combines the frontend and backend into one URL
+// automatically. Outside Replit there's no such magic, so in production this
+// same server also serves the frontend's already-built files directly.
+if (process.env.NODE_ENV === "production") {
+  const staticDir = path.resolve(import.meta.dirname, "../../home-hub-web/dist/public");
+  if (fs.existsSync(staticDir)) {
+    app.use(express.static(staticDir));
+    app.get(/^\/(?!api\/).*/, (_req, res) => {
+      res.sendFile(path.join(staticDir, "index.html"));
+    });
+  } else {
+    logger.warn({ staticDir }, "Built frontend not found; skipping static file serving");
+  }
+}
 
 export default app;

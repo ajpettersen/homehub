@@ -72,6 +72,17 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    // Local dev only: Replit's deployment infra routes /api to the backend
+    // automatically, but two separate local dev servers need this bridged
+    // by hand. Point API_PROXY_TARGET at wherever the api-server is running.
+    proxy: process.env.API_PROXY_TARGET
+      ? {
+          '/api': {
+            target: process.env.API_PROXY_TARGET,
+            changeOrigin: true,
+          },
+        }
+      : undefined,
   },
   preview: {
     port,
