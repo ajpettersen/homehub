@@ -2,4 +2,13 @@
 nixPkgs = ["nodejs_24"]
 
 [phases.install]
-cmds = ["npm install -g pnpm@12.3.4", "pnpm install --frozen-lockfile"]
+cmds = ["npx --yes pnpm@12.3.4 install --frozen-lockfile"]
+
+[phases.build]
+cmds = [
+  "BASE_PATH=/ PORT=5173 npx --yes pnpm@12.3.4 --filter @workspace/home-hub-web run build",
+  "npx --yes pnpm@12.3.4 --filter @workspace/api-server run build"
+]
+
+[start]
+cmd = "node artifacts/api-server/dist/index.mjs"
