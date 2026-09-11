@@ -1211,23 +1211,34 @@ function AiMemorySection() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/ai/memories");
+      if (!res.ok) throw new Error("Could not load memories");
       const data = await res.json();
       setMemories(data.memories ?? []);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
+      setError(null);
+    } catch {
+      setError("Could not load memories. Please try again.");
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const handleDelete = async (id: number) => {
     setDeletingId(id);
-    await fetch(`/api/ai/memories/${id}`, { method: "DELETE" });
-    setMemories(prev => prev.filter(m => m.id !== id));
-    setDeletingId(null);
+    try {
+      const res = await fetch(`/api/ai/memories/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Could not delete this memory");
+      setMemories(prev => prev.filter(m => m.id !== id));
+      setError(null);
+    } catch {
+      setError("Could not delete this memory. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   if (loading) return (
@@ -1236,6 +1247,7 @@ function AiMemorySection() {
 
   if (memories.length === 0) return (
     <div className="flex flex-col items-center gap-3 py-8 text-center">
+      {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
       <div className="w-12 h-12 rounded-full bg-primary/8 flex items-center justify-center">
         <Sparkles className="w-5 h-5 text-primary/50" />
       </div>
@@ -1253,6 +1265,7 @@ function AiMemorySection() {
       <p className="text-xs text-muted-foreground mb-3">
         These facts are injected into every AI response — meal plans, workout suggestions, and the chat assistant all use them automatically.
       </p>
+      {error && <p role="alert" className="text-sm font-medium text-destructive mb-2">{error}</p>}
       {memories.map(m => (
         <div key={m.id} className="group flex items-start gap-3 px-3.5 py-3 rounded-xl bg-primary/5 border border-primary/10 hover:border-primary/20 transition-colors">
           <Brain className="w-3.5 h-3.5 text-primary/60 mt-0.5 shrink-0" />
@@ -1607,9 +1620,10 @@ function FamilyLinkingSection({ familyMembers }: { familyMembers: any[] }) {
                   <button 
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(inviteLink);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
+                      navigator.clipboard.writeText(inviteLink).then(() => {
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }).catch(() => {});
                     }}
                     className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90"
                   >
