@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   useGetChores, getGetChoresQueryKey,
   useCompleteChore,
@@ -73,6 +73,21 @@ function ChoreCard({
 
   const assignee = members.find(m => m.id === chore.assigneeId);
 
+  // A brief bounce the moment a chore flips to done — small reward for
+  // finishing it, gone before it can feel like it's in the way.
+  const [justCompleted, setJustCompleted] = useState(false);
+  const wasDoneRef = useRef(isDone);
+  useEffect(() => {
+    if (isDone && !wasDoneRef.current) {
+      setJustCompleted(true);
+      const timer = setTimeout(() => setJustCompleted(false), 600);
+      wasDoneRef.current = isDone;
+      return () => clearTimeout(timer);
+    }
+    wasDoneRef.current = isDone;
+    return undefined;
+  }, [isDone]);
+
   const urgency = isPending
     ? "border-primary/50 bg-primary/5"
     : overdue
@@ -110,7 +125,7 @@ function ChoreCard({
             </button>
           )}
           {isDone && (
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-green-500 flex items-center justify-center shadow-sm">
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-green-500 flex items-center justify-center shadow-sm ${justCompleted ? "animate-bounce" : ""}`}>
               <Check className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
           )}

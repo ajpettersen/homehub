@@ -215,6 +215,7 @@ function MemberRatingRow({
   );
   const upsert = useUpsertMealRating();
   const deleteMr = useDeleteMealRating();
+  const [rateError, setRateError] = useState("");
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: mealRatingsKey });
 
@@ -223,16 +224,20 @@ function MemberRatingRow({
   );
 
   const handleMemberRate = (member: FamilyMember, current: RatingKey | undefined) => {
+    setRateError("");
     const next = cycleRating(current);
     if (next) {
       upsert.mutate(
         { data: { mealPlanId: mealId, memberId: member.id, rating: next } },
-        { onSuccess: invalidate }
+        { onSuccess: invalidate, onError: () => setRateError("Rating didn't save — try again.") },
       );
     } else {
       const existing = ratingByMember.get(member.id);
       if (existing) {
-        deleteMr.mutate({ id: existing.id }, { onSuccess: invalidate });
+        deleteMr.mutate(
+          { id: existing.id },
+          { onSuccess: invalidate, onError: () => setRateError("Rating didn't clear — try again.") },
+        );
       }
     }
   };
@@ -252,6 +257,9 @@ function MemberRatingRow({
           <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
           <span className="text-[10px] text-amber-600 font-medium">Some family members prefer to skip this one</span>
         </div>
+      )}
+      {rateError && (
+        <p role="alert" className="text-[10px] text-destructive font-medium px-2 pb-1">{rateError}</p>
       )}
       <div className="flex items-center gap-1 px-2 pb-2 flex-wrap">
         {shownMembers.map(member => {
@@ -817,6 +825,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
   const [newQty, setNewQty] = useState("");
   const [addingOpen, setAddingOpen] = useState(false);
   const [catalogCategory, setCatalogCategory] = useState<GroceryCategoryKey | "">("");
+  const [itemActionError, setItemActionError] = useState("");
   const [addItemMessage, setAddItemMessage] = useState("");
   const [addItemError, setAddItemError] = useState("");
   const [storePicker, setStorePicker] = useState(false);
@@ -872,6 +881,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
         (items ?? []).filter(i => !i.checked).map(i => i.name.toLowerCase().trim())
       );
 
+      const failedItems: string[] = [];
       for (const item of data.items) {
         const matchedNames = getMatchedInventoryNames([{ name: item.name }], inventory);
         if (matchedNames.length > 0) {
@@ -887,17 +897,24 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
         const key = item.name.toLowerCase().trim();
         if (seenNames.has(key)) continue;
         seenNames.add(key);
-        await new Promise<void>((resolve) => {
+        const added = await new Promise<boolean>((resolve) => {
           addItem.mutate(
             { id: list.id, data: { name: item.name, quantity: item.quantity ?? null, category: item.category } },
-            { onSuccess: () => resolve(), onError: () => resolve() }
+            { onSuccess: () => resolve(true), onError: () => resolve(false) }
           );
         });
+        if (!added) failedItems.push(item.name);
       }
       setGeneratedInventoryMatches([...inventoryMatches.values()]);
 
       queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(list.id) });
       queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
+
+      if (failedItems.length > 0) {
+        setAiShoppingError(
+          `Added the rest, but ${failedItems.length} item${failedItems.length === 1 ? "" : "s"} didn't save: ${failedItems.join(", ")}. You can add ${failedItems.length === 1 ? "it" : "them"} manually.`,
+        );
+      }
     } catch (err) {
       console.error("Build from meals error:", err);
       setAiShoppingError(err instanceof Error ? err.message : "Failed to build list — please try again.");
@@ -948,20 +965,33 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
   };
 
   const handleCheck = (item: any) => {
-    updateItem.mutate({ id: item.id, data: { checked: !item.checked } }, { onSuccess: invalidate });
+    setItemActionError("");
+    updateItem.mutate(
+      { id: item.id, data: { checked: !item.checked } },
+      { onSuccess: invalidate, onError: () => setItemActionError(`Couldn't update ${item.name}. Please try again.`) },
+    );
   };
 
   const handleDelete = (id: string) => {
-    deleteItem.mutate({ id }, { onSuccess: invalidate });
+    const item = (items ?? []).find(i => i.id === id);
+    setItemActionError("");
+    deleteItem.mutate(
+      { id },
+      { onSuccess: invalidate, onError: () => setItemActionError(`Couldn't remove ${item?.name ?? "that item"}. Please try again.`) },
+    );
   };
 
   const handleSetStore = (storeId: string) => {
+    setItemActionError("");
     updateStore.mutate(
       { id: list.id, data: { storeId } },
-      { onSuccess: () => {
+      {
+        onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetGroceryListsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetGroceryItemsQueryKey(list.id) });
-      }}
+        },
+        onError: () => setItemActionError("Couldn't change the store. Please try again."),
+      },
     );
     setStorePicker(false);
   };
@@ -1122,6 +1152,10 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
           Delete list
         </button>
       </div>
+
+      {itemActionError && (
+        <p role="alert" className="text-sm font-medium text-destructive">{itemActionError}</p>
+      )}
 
       <AlertDialog open={deleteListOpen} onOpenChange={setDeleteListOpen}>
         <AlertDialogContent>
@@ -2098,6 +2132,7 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [noteError, setNoteError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   React.useEffect(() => {
     if (focusRecipeName && recipes) {
@@ -2139,7 +2174,15 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
   };
 
   const handleDelete = (id: string) => {
-    deleteRecipe.mutate({ id }, { onSuccess: invalidate });
+    const recipe = (recipes ?? []).find(r => r.id === id);
+    setDeleteError("");
+    deleteRecipe.mutate(
+      { id },
+      {
+        onSuccess: invalidate,
+        onError: (error) => setDeleteError(`Couldn't remove ${recipe?.name ?? "that recipe"}: ${getMutationError(error)}`),
+      },
+    );
   };
 
   const handleSaveNotes = (id: string) => {
@@ -2252,6 +2295,9 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
       )}
 
       {/* Recipe list */}
+      {deleteError && (
+        <p role="alert" className="text-sm font-medium text-destructive mb-3">{deleteError}</p>
+      )}
       {(recipes ?? []).length === 0 && !adding && (
         <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
           <BookOpen className="w-10 h-10 opacity-20" />

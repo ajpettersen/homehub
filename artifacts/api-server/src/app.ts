@@ -60,8 +60,12 @@ app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     if (process.env.NODE_ENV !== "production") return callback(null, true);
-    if (ALLOWED_ORIGINS.has(origin)) return callback(null, true);
-    callback(new Error("Not allowed by CORS"));
+    // No CORS headers for a disallowed origin — no error, no distinct status
+    // code. The server still responds normally; it's the browser, seeing no
+    // Access-Control-Allow-Origin, that refuses to hand the response to that
+    // origin's JS. (Throwing here instead falls through to Express's default
+    // error handler and returns a bare, confusing 500.)
+    callback(null, ALLOWED_ORIGINS.has(origin));
   },
 }));
 app.use(express.json({ limit: '15mb' }));
