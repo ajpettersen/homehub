@@ -41,7 +41,7 @@ function ChatBubble({ msg }: { msg: Message }) {
           <Sparkles className="w-3.5 h-3.5 text-primary" />
         </div>
       )}
-      <div className={`max-w-[80%] space-y-1.5 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
+      <div className={`max-w-[90%] sm:max-w-[80%] space-y-1.5 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
         {msg.images?.map((src, i) => (
           <img key={i} src={src} alt="attached" className="rounded-xl max-h-40 object-cover border border-border" />
         ))}
@@ -110,6 +110,16 @@ function HouseholdChat() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+
+  // Keep the newest message in view. Without this, new replies can land
+  // below the fold of the chat's own small scroll region and the person
+  // has to go hunt for them — especially disorienting on a phone screen.
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [messages, loading]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -386,7 +396,10 @@ function HouseholdChat() {
       )}
 
       {/* Messages */}
-      <div className={`overflow-y-auto px-5 transition-all ${isEmpty && !historyError ? "h-0" : "max-h-[420px] py-4"}`}>
+      <div
+        ref={messagesScrollRef}
+        className={`overflow-y-auto overscroll-contain px-5 transition-all ${isEmpty && !historyError ? "h-0" : "max-h-[480px] py-4"}`}
+      >
         <div className="space-y-4">
           {historyLoading && <p className="text-xs text-muted-foreground text-center py-2">Loading conversation…</p>}
           {historyError && (
