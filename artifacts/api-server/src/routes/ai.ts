@@ -12,6 +12,7 @@ import {
   contractorsTable,
   groceryListsTable,
   groceryItemsTable,
+  recipesTable,
   maintenanceTasksTable,
   choresTable,
   chatMessagesTable,
@@ -215,6 +216,78 @@ export function deletableMemoryWhere(householdId: number, actorMemberId: number,
       eq(aiMemoriesTable.subjectFamilyMemberId, actorMemberId),
     ),
   );
+}
+
+type GeneratedMealRecipe = {
+  prepTime: string; cookTime: string; servings: number; difficulty: string;
+  ingredients: string[]; steps: string[]; tips: string;
+};
+
+async function generateAiMealRecipe(meal: string, memoriesCtx: string): Promise<GeneratedMealRecipe> {
+  const recipeResp = await openai.chat.completions.create({
+    model: "gpt-5.6-luna",
+    max_completion_tokens: 2_500,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "meal_recipe",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["prepTime", "cookTime", "servings", "difficulty", "ingredients", "steps", "tips"],
+          properties: {
+            prepTime: { type: "string" },
+            cookTime: { type: "string" },
+            servings: { type: "integer" },
+            difficulty: { type: "string" },
+            ingredients: { type: "array", maxItems: 100, items: { type: "string" } },
+            steps: { type: "array", maxItems: 100, items: { type: "string" } },
+            tips: { type: "string" },
+          },
+        },
+      },
+    },
+    messages: [
+      {
+        role: "user",
+        content: `You are a family meal planner.
+Generate a complete recipe for: "${meal}"
+${memoriesCtx}
+Make it approachable, kid-friendly where possible, and realistic for a weeknight dinner.
+
+Return a complete recipe in the required JSON format:
+{
+  "prepTime": "15 mins",
+  "cookTime": "30 mins",
+  "servings": 5,
+  "difficulty": "Easy",
+  "ingredients": [
+    "2 lbs chicken breast",
+    "1 cup pasta sauce"
+  ],
+  "steps": [
+    "Preheat oven to 375°F.",
+    "Season chicken with salt and pepper."
+  ],
+  "tips": "Optional single tip for best results"
+}`,
+      },
+    ],
+  });
+
+  const recipeContent = recipeResp.choices[0]?.message?.content;
+  if (!recipeContent) throw new Error("Meal-recipe AI response was empty");
+  const recipe = JSON.parse(recipeContent) as GeneratedMealRecipe;
+  if (
+    !Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0 ||
+    !Array.isArray(recipe.steps) || recipe.steps.length === 0 ||
+    !recipe.ingredients.every(item => typeof item === "string" && item.trim() && item.length <= 300) ||
+    !recipe.steps.every(step => typeof step === "string" && step.trim() && step.length <= 2_000)
+  ) {
+    throw new Error("Meal-recipe AI response was incomplete");
+  }
+  return recipe;
 }
 
 async function getMemoriesContext(householdId: number, actorMemberId: number | null): Promise<string> {
@@ -946,73 +1019,7 @@ router.post("/ai/meal-recipe", async (req, res) => {
     }
 
     const memoriesCtx = await getMemoriesContext(scope.householdId, scope.linkedFamilyMemberId);
-
-    const recipeResp = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 2_500,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "meal_recipe",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            required: ["prepTime", "cookTime", "servings", "difficulty", "ingredients", "steps", "tips"],
-            properties: {
-              prepTime: { type: "string" },
-              cookTime: { type: "string" },
-              servings: { type: "integer" },
-              difficulty: { type: "string" },
-              ingredients: { type: "array", maxItems: 100, items: { type: "string" } },
-              steps: { type: "array", maxItems: 100, items: { type: "string" } },
-              tips: { type: "string" },
-            },
-          },
-        },
-      },
-      messages: [
-        {
-          role: "user",
-          content: `You are a family meal planner.
-Generate a complete recipe for: "${meal}"
-${memoriesCtx}
-Make it approachable, kid-friendly where possible, and realistic for a weeknight dinner.
-
-Return a complete recipe in the required JSON format:
-{
-  "prepTime": "15 mins",
-  "cookTime": "30 mins",
-  "servings": 5,
-  "difficulty": "Easy",
-  "ingredients": [
-    "2 lbs chicken breast",
-    "1 cup pasta sauce"
-  ],
-  "steps": [
-    "Preheat oven to 375°F.",
-    "Season chicken with salt and pepper."
-  ],
-  "tips": "Optional single tip for best results"
-}`,
-        },
-      ],
-    });
-
-    const recipeContent = recipeResp.choices[0]?.message?.content;
-    if (!recipeContent) throw new Error("Meal-recipe AI response was empty");
-    const recipe = JSON.parse(recipeContent) as {
-      prepTime: string; cookTime: string; servings: number; difficulty: string;
-      ingredients: string[]; steps: string[]; tips: string;
-    };
-    if (
-      !Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0 ||
-      !Array.isArray(recipe.steps) || recipe.steps.length === 0 ||
-      !recipe.ingredients.every(item => typeof item === "string" && item.trim() && item.length <= 300) ||
-      !recipe.steps.every(step => typeof step === "string" && step.trim() && step.length <= 2_000)
-    ) {
-      throw new Error("Meal-recipe AI response was incomplete");
-    }
+    const recipe = await generateAiMealRecipe(meal, memoriesCtx);
 
     let imageBase64: string | undefined;
     if (generateImage) {
@@ -1678,13 +1685,17 @@ ${peopleCtx}
 Shopping lists:
 ${groceryListLines}
 
-You can take household actions with the available tools:
-- Use a tool only when the user explicitly asks you to add, create, or schedule something.
+You can take household actions with the available tools, including adding AND removing meal-plan entries and shopping-list items, starting a new shopping list, and generating a full recipe straight into the cookbook:
+- Use a tool only when the user explicitly asks you to add, remove, create, save, or schedule something. Removing/deleting something needs the same explicit ask as adding it — never clear or delete on a vague or ambiguous request.
 - Never claim an action was completed unless its tool result says it succeeded. After every successful action, clearly confirm what you did.
 - Use the supplied property, family member, and shopping-list IDs exactly. Do not invent IDs.
 - When the household has a House/Home property and the user does not name a property, use that for meals and chores; otherwise ask a clarification instead of guessing.
 - A single reminder is a one-time maintenance task. Use recurring only when the user asks for a repeated task.
 - For dates such as "Thursday" or "in 3 months", calculate an exact YYYY-MM-DD date using today: ${snapshotNow.toISOString().slice(0, 10)}.
+- When asked to plan out several dinners (e.g. "plan this week" or "add these 7 dinners"), add each meal with its own add_meal_plan_entry call, one per date — do not skip dates that already have a meal unless the user asked to replace them.
+- When asked to also save recipes for planned meals, call save_recipe_to_cookbook separately for each meal the user wants saved; it already writes a complete recipe, so don't also try to describe the recipe yourself in add_meal_plan_entry's notes.
+- Before removing a meal, item, or list, or saving a recipe that might already exist, rely on the tool's own result rather than guessing whether it's there — the tools already check and will tell you if something doesn't exist or is a duplicate.
+- For a request with many independent actions (a whole week of meals, several grocery items, several recipes), call multiple tools in the same turn rather than one at a time — you have room for it, and it finishes faster.
 
 Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be specific — never generic when you have context. If they share a photo, describe what you see and give concrete advice based on it.`;
 
@@ -1734,8 +1745,14 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
     const failures: string[] = [];
     let assistantMessage: any;
     let reply = "";
+    // Bulk requests ("plan all 7 dinners, make a list, save the recipes")
+    // can need a dozen-plus separate tool calls; 4 rounds cut those off
+    // silently partway through. This is generous enough for that whole
+    // workflow in one go while still bounding a runaway loop.
+    const MAX_TOOL_ROUNDS = 16;
+    let ranOutOfRounds = false;
 
-    for (let round = 0; round < 4; round += 1) {
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const chatResponse = await openai.chat.completions.create({
         model: "gpt-5.6-luna",
         reasoning_effort: "none",
@@ -1787,6 +1804,8 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
           if (toolName === "add_grocery_item") changedDomains.add("groceries");
           if (toolName === "create_maintenance_task") changedDomains.add("maintenance");
           if (toolName === "add_chore") changedDomains.add("chores");
+          if (toolName === "remove_meal_plan_entry") changedDomains.add("meals");
+          if (toolName === "remove_grocery_item" || toolName === "create_grocery_list") changedDomains.add("groceries");
         }
         conversation.push({
           role: "tool",
@@ -1794,11 +1813,15 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
           content: JSON.stringify(result),
         });
       }
+      if (round === MAX_TOOL_ROUNDS - 1) ranOutOfRounds = true;
     }
 
     if (!reply) {
       const outcomes = [...confirmations, ...failures].join("\n");
       reply = outcomes || assistantMessage?.content || "Sorry, I couldn't generate a response.";
+    }
+    if (ranOutOfRounds) {
+      reply += "\n\nThat was a lot of actions, so I paused here rather than run indefinitely. If anything's still missing, just ask me to keep going.";
     }
 
     const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
@@ -2099,6 +2122,7 @@ const OPTIONAL_ACTION_FIELDS: Record<string, string[]> = {
   add_grocery_item: ["quantity", "listId", "listName", "propertyId"],
   create_maintenance_task: ["description", "frequencyDays"],
   add_chore: ["dueDate", "assigneeId", "points"],
+  remove_grocery_item: ["listId", "listName"],
 };
 
 function cleanActionString(value: unknown, field: string, maxLength = 300): string {
@@ -2200,6 +2224,72 @@ const AI_ACTION_TOOLS = [
           points: { type: ["integer", "null"], description: "Optional reward points, defaults to 10" },
         },
         required: ["title", "propertyId", "frequency"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "remove_meal_plan_entry",
+      description: "Remove the meal planned for a specific calendar date and meal slot. Only call this when the user explicitly asks to remove, delete, or clear a planned meal.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          date: { type: "string", description: "Calendar date in YYYY-MM-DD format. Resolve relative dates using today's date from the system prompt." },
+          mealType: { type: "string", enum: VALID_MEAL_TYPES, description: "The meal slot" },
+          propertyId: { type: "integer", description: "ID of the property for this meal" },
+        },
+        required: ["date", "mealType", "propertyId"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "remove_grocery_item",
+      description: "Remove an item from a household shopping list by name. Only call this when the user explicitly asks to remove or delete a grocery or shopping item.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string", description: "Item name to remove, matched against the shopping list" },
+          listId: { type: ["integer", "null"], description: "Existing shopping list ID from the household context, when known" },
+          listName: { type: ["string", "null"], description: "Shopping list name, when the user specified one" },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "create_grocery_list",
+      description: "Create a brand-new, empty shopping list. Only call this when the user explicitly asks to start a new or separate shopping list — do not call this for adding items to an existing list.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string", description: "Name for the new shopping list" },
+          propertyId: { type: "integer", description: "ID of the property this list belongs to" },
+        },
+        required: ["name", "propertyId"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "save_recipe_to_cookbook",
+      description: "Generate a complete recipe (ingredients and step-by-step instructions) for a named meal and save it to the household cookbook. Only call this when the user explicitly asks to save, add, or create a recipe in the cookbook.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          meal: { type: "string", description: "The meal or recipe name" },
+          propertyId: { type: "integer", description: "ID of the property this recipe belongs to" },
+        },
+        required: ["meal", "propertyId"],
       },
     },
   },
@@ -2411,6 +2501,81 @@ async function executeAiAction(
         ok: true,
         confirmation: `Done — I added the chore “${title}”${assigneeName ? ` for ${assigneeName}` : ""}${dueDate ? `, due ${dueDate}` : ""}.`,
       };
+    }
+
+    if (name === "remove_meal_plan_entry") {
+      const date = parseActionDate(args.date, "date");
+      const mealType = cleanActionString(args.mealType, "mealType", 20);
+      if (!(VALID_MEAL_TYPES as readonly string[]).includes(mealType)) throw new Error("Invalid meal type");
+      const propertyId = authorizedPropertyId(args.propertyId, context.propertyIds);
+      const weekStart = mondayForDate(date);
+      const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
+      const [deleted] = await db
+        .delete(mealPlansTable)
+        .where(and(
+          eq(mealPlansTable.propertyId, propertyId),
+          eq(mealPlansTable.weekStart, weekStart),
+          eq(mealPlansTable.dayOfWeek, dayOfWeek),
+          eq(mealPlansTable.mealType, mealType as "breakfast" | "lunch" | "dinner" | "snack"),
+        ))
+        .returning({ meal: mealPlansTable.meal });
+      if (!deleted) return { ok: false, error: `There is no meal planned for ${date}'s ${mealType} slot.` };
+      return { ok: true, confirmation: `Done — I removed ${deleted.meal} from ${date}'s ${mealType} slot.` };
+    }
+
+    if (name === "remove_grocery_item") {
+      const itemName = cleanActionString(args.name, "name", 200);
+      const list = resolveGroceryList(args, context);
+      if (!list) throw new Error("I couldn't tell which shopping list to use; ask which list, or name it.");
+      const items = await db
+        .select({ id: groceryItemsTable.id, name: groceryItemsTable.name })
+        .from(groceryItemsTable)
+        .where(eq(groceryItemsTable.listId, list.id));
+      const normalizedTarget = itemName.toLowerCase();
+      const match = items.find((item) => item.name.trim().toLowerCase() === normalizedTarget)
+        ?? items.find((item) => item.name.trim().toLowerCase().includes(normalizedTarget));
+      if (!match) throw new Error(`I couldn't find "${itemName}" on ${list.name}.`);
+      await db.delete(groceryItemsTable).where(eq(groceryItemsTable.id, match.id));
+      return { ok: true, confirmation: `Done — I removed ${match.name} from ${list.name}.` };
+    }
+
+    if (name === "create_grocery_list") {
+      const listName = cleanActionString(args.name, "name", 100);
+      const propertyId = authorizedPropertyId(args.propertyId, context.propertyIds);
+      const nameTaken = context.groceryLists.some(
+        (list) => list.propertyId === propertyId && list.name.toLowerCase() === listName.toLowerCase(),
+      );
+      if (nameTaken) throw new Error(`A shopping list named "${listName}" already exists.`);
+      const [createdList] = await db
+        .insert(groceryListsTable)
+        .values({ name: listName, propertyId })
+        .returning({ id: groceryListsTable.id, name: groceryListsTable.name, propertyId: groceryListsTable.propertyId });
+      context.groceryLists.push(createdList);
+      return { ok: true, confirmation: `Done — I created a new shopping list called "${listName}".` };
+    }
+
+    if (name === "save_recipe_to_cookbook") {
+      const meal = cleanActionString(args.meal, "meal", 300);
+      const propertyId = authorizedPropertyId(args.propertyId, context.propertyIds);
+      const existing = await db
+        .select({ name: recipesTable.name })
+        .from(recipesTable)
+        .where(eq(recipesTable.propertyId, propertyId));
+      if (existing.some((recipe) => recipe.name.trim().toLowerCase() === meal.toLowerCase())) {
+        throw new Error(`"${meal}" is already in the cookbook.`);
+      }
+      const generated = await generateAiMealRecipe(meal, "");
+      await db.insert(recipesTable).values({
+        name: meal,
+        propertyId,
+        ingredients: generated.ingredients.map((item) => ({ name: item.trim(), category: "other" })),
+        instructions: generated.steps,
+        servings: Number.isInteger(generated.servings) ? generated.servings : null,
+        prepMinutes: Number.parseInt(generated.prepTime ?? "", 10) || null,
+        cookMinutes: Number.parseInt(generated.cookTime ?? "", 10) || null,
+        sourceType: "ai",
+      });
+      return { ok: true, confirmation: `Done — I generated and saved a full recipe for ${meal} to your cookbook.` };
     }
 
     return { ok: false, error: `Unknown assistant action: ${name}` };
