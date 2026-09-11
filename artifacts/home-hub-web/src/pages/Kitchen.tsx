@@ -1518,8 +1518,30 @@ export default function Meals() {
     if (!houseProperty) return;
     if (cookbookNames.has(name.toLowerCase().trim())) return;
     createRecipe.mutate(
-      { data: { name, propertyId: String(houseProperty.id), sourceUrl: sourceUrl ?? null, notes: null } },
-      { onSuccess: invalidateRecipes }
+      {
+        data: {
+          name,
+          propertyId: String(houseProperty.id),
+          sourceUrl: sourceUrl ?? null,
+          notes: null,
+          // Marks this as AI-originated so it's eligible for automatic
+          // ingredient/instruction generation below, and so re-opening it
+          // later (if generation hasn't finished yet) retries automatically.
+          sourceType: "ai",
+        },
+      },
+      {
+        onSuccess: (saved) => {
+          invalidateRecipes();
+          // Fire-and-forget: fills in the recipe in the background. If it
+          // fails (or the tab closes mid-request), opening the entry later
+          // in the Cookbook retries automatically, since it's still marked
+          // AI-sourced with no instructions yet.
+          void fetchAndSaveAiRecipeDetails(saved, (args) => updateRecipe.mutateAsync(args))
+            .then(invalidateRecipes)
+            .catch(() => {});
+        },
+      }
     );
   };
 
@@ -2007,6 +2029,53 @@ export default function Meals() {
   );
 }
 
+// Asks the AI for a full recipe (ingredients + steps) for an existing
+// AI-sourced cookbook entry and saves the result onto it. Shared so both the
+// Cookbook's own "open to fill in details" flow and the "save straight from
+// an AI meal suggestion" flow produce the same fully-detailed recipe.
+async function fetchAndSaveAiRecipeDetails(
+  recipe: { id: string; name: string; instructions: string[] },
+  updateRecipeMutateAsync: (args: { id: string; data: Record<string, unknown> }) => Promise<unknown>,
+): Promise<void> {
+  if (recipe.instructions.length > 0) return;
+  const response = await fetch("/api/ai/meal-recipe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ meal: recipe.name, generateImage: false }),
+  });
+  const data = await response.json().catch(() => null) as {
+    recipe?: {
+      ingredients?: string[];
+      steps?: string[];
+      servings?: number;
+      prepTime?: string;
+      cookTime?: string;
+    };
+    error?: string;
+  } | null;
+  if (!response.ok || !data?.recipe) {
+    throw new Error(data?.error || "Could not create this recipe.");
+  }
+  const details = data.recipe;
+  const ingredients = (details.ingredients ?? [])
+    .filter(item => typeof item === "string" && item.trim())
+    .map(item => ({ name: item.trim(), category: "other" }));
+  const instructions = (details.steps ?? []).filter(step => typeof step === "string" && step.trim());
+  if (!ingredients.length || !instructions.length) throw new Error("The generated recipe was incomplete.");
+
+  await updateRecipeMutateAsync({
+    id: recipe.id,
+    data: {
+      ingredients,
+      instructions,
+      servings: Number.isInteger(details.servings) ? details.servings : null,
+      prepMinutes: Number.parseInt(details.prepTime ?? "", 10) || null,
+      cookMinutes: Number.parseInt(details.cookTime ?? "", 10) || null,
+      sourceType: "ai",
+    },
+  });
+}
+
 function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, onClearFocus }: { propertyId: string; onUseRecipe?: (name: string) => void; inventory?: KitchenInventoryItem[]; focusRecipeName?: string | null; onClearFocus?: () => void }) {
   const queryClient = useQueryClient();
   const params = { propertyId };
@@ -2086,42 +2155,7 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
     setGeneratingId(recipe.id);
     setGenerationError(current => ({ ...current, [recipe.id]: "" }));
     try {
-      const response = await fetch("/api/ai/meal-recipe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ meal: recipe.name, generateImage: false }),
-      });
-      const data = await response.json().catch(() => null) as {
-        recipe?: {
-          ingredients?: string[];
-          steps?: string[];
-          servings?: number;
-          prepTime?: string;
-          cookTime?: string;
-        };
-        error?: string;
-      } | null;
-      if (!response.ok || !data?.recipe) {
-        throw new Error(data?.error || "Could not create this recipe.");
-      }
-      const details = data.recipe;
-      const ingredients = (details.ingredients ?? [])
-        .filter(item => typeof item === "string" && item.trim())
-        .map(item => ({ name: item.trim(), category: "other" }));
-      const instructions = (details.steps ?? []).filter(step => typeof step === "string" && step.trim());
-      if (!ingredients.length || !instructions.length) throw new Error("The generated recipe was incomplete.");
-
-      await updateRecipe.mutateAsync({
-        id: recipe.id,
-        data: {
-          ingredients,
-          instructions,
-          servings: Number.isInteger(details.servings) ? details.servings : null,
-          prepMinutes: Number.parseInt(details.prepTime ?? "", 10) || null,
-          cookMinutes: Number.parseInt(details.cookTime ?? "", 10) || null,
-          sourceType: "ai",
-        },
-      });
+      await fetchAndSaveAiRecipeDetails(recipe, (args) => updateRecipe.mutateAsync(args));
       await invalidate();
     } catch (error) {
       setGenerationError(current => ({
