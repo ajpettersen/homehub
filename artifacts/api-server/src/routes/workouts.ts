@@ -30,7 +30,7 @@ import {
   UpdateWorkoutPreferencesBody,
 } from "@workspace/api-zod";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
-import { claudeJson } from "../lib/claude";
+import { openai } from "@workspace/integrations-openai-ai-server";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
 
 const router = Router();
@@ -864,20 +864,16 @@ const draftJsonSchema = {
   },
 } as const;
 
-async function aiJson(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>, schema: any, _name: string) {
-  const system = messages
-    .filter(m => m.role === "system")
-    .map(m => m.content)
-    .join("\n\n");
-  const turns = messages
-    .filter((m): m is { role: "user" | "assistant"; content: string } => m.role !== "system")
-    .map(m => ({ role: m.role, content: m.content }));
-  return claudeJson<any>({
-    maxTokens: 16000,
-    system: system || undefined,
-    messages: turns.length > 0 ? turns : [{ role: "user", content: "Proceed." }],
-    schema,
+async function aiJson(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>, schema: any, name: string) {
+  const response = await openai.chat.completions.create({
+    model: "gpt-5.6-luna",
+    max_completion_tokens: 8192,
+    response_format: { type: "json_schema", json_schema: { name, strict: true, schema } },
+    messages,
   });
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error("AI returned no structured content");
+  return JSON.parse(content);
 }
 
 async function householdContext(householdId: number) {

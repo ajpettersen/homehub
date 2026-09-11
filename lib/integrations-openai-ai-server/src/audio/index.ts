@@ -1,6 +1,5 @@
 export {
   openai,
-  isOpenAiConfigured,
   detectAudioFormat,
   convertToWav,
   ensureCompatibleFormat,

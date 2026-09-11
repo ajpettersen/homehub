@@ -22,7 +22,6 @@
     "test:store-management": "node ./test/run-test.mjs store-management.test.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.124.0",
     "@clerk/express": "^2.1.40",
     "@clerk/shared": "^4.25.2",
     "@workspace/api-zod": "workspace:*",
