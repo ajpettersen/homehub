@@ -43,7 +43,7 @@ import {
 } from "../lib/maintenanceCatalog";
 import {
   deleteChatAttachment,
-  getChatAttachmentDownloadUrl,
+  getChatAttachment,
   uploadChatAttachment,
   type StoredChatAttachment,
 } from "../lib/chatAttachmentStorage";
@@ -1914,9 +1914,14 @@ router.get("/ai/chat/attachments/:id", async (req, res) => {
       res.status(404).json({ error: "Attachment not found" });
       return;
     }
-    const downloadUrl = await getChatAttachmentDownloadUrl(attachment.objectPath);
+    const blob = await getChatAttachment(attachment.objectPath);
+    if (!blob) {
+      res.status(404).json({ error: "Attachment not found" });
+      return;
+    }
     res.setHeader("Cache-Control", "private, no-store");
-    res.redirect(302, downloadUrl);
+    res.setHeader("Content-Type", blob.mimeType);
+    res.send(blob.bytes);
   } catch (err) {
     req.log.error({ err }, "Failed to serve assistant chat attachment");
     res.status(500).json({ error: "Failed to load attachment" });

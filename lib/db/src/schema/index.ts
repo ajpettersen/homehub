@@ -28,3 +28,4 @@ export * from "./chatMessageAttachments";
 export * from "./chatAttachmentCleanupQueue";
 export * from "./notificationPreferences";
 export * from "./oneTimeCleanups";
+export * from "./chatAttachmentBlobs";

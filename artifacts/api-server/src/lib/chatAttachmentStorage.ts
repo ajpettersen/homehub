@@ -1,7 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { db, chatAttachmentCleanupQueueTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import {
+  db,
+  chatAttachmentBlobsTable,
+  chatAttachmentCleanupQueueTable,
+} from "@workspace/db";
 
-const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+// Attachment bytes live in Postgres (chat_attachment_blobs) rather than an
+// external object store. The original implementation used Replit's private
+// object storage via a sidecar that only exists inside Replit's
+// infrastructure; images are small (≤8 MB), transient unless a message
+// persists them, and low-volume for a single household, so the database is
+// the simplest portable home for them.
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -10,66 +20,11 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/gif",
 ]);
 
-type SignedMethod = "GET" | "PUT" | "DELETE";
-
 export type StoredChatAttachment = {
   objectPath: string;
   mimeType: string;
   sizeBytes: number;
 };
-
-function getPrivateObjectDir(): string {
-  const privateDir = process.env.PRIVATE_OBJECT_DIR?.replace(/\/+$/, "");
-  if (!privateDir) {
-    throw new Error("Private object storage is not configured");
-  }
-  return privateDir.startsWith("/") ? privateDir : `/${privateDir}`;
-}
-
-function parseObjectPath(objectPath: string): {
-  bucketName: string;
-  objectName: string;
-} {
-  const parts = objectPath.replace(/^\/+/, "").split("/");
-  const [bucketName, ...objectNameParts] = parts;
-  if (!bucketName || objectNameParts.length === 0) {
-    throw new Error("Invalid private object path");
-  }
-  return {
-    bucketName,
-    objectName: objectNameParts.join("/"),
-  };
-}
-
-async function signObjectUrl(
-  objectPath: string,
-  method: SignedMethod,
-  ttlSec: number,
-): Promise<string> {
-  const { bucketName, objectName } = parseObjectPath(objectPath);
-  const response = await fetch(
-    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bucket_name: bucketName,
-        object_name: objectName,
-        method,
-        expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
-      }),
-      signal: AbortSignal.timeout(30_000),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Could not authorize private object storage (${response.status})`);
-  }
-  const data = await response.json() as { signed_url?: unknown };
-  if (typeof data.signed_url !== "string") {
-    throw new Error("Private object storage returned an invalid signed URL");
-  }
-  return data.signed_url;
-}
 
 function decodeImageDataUrl(dataUrl: string): {
   bytes: Buffer;
@@ -97,8 +52,7 @@ export async function uploadChatAttachment(
   dataUrl: string,
 ): Promise<StoredChatAttachment> {
   const { bytes, mimeType, extension } = decodeImageDataUrl(dataUrl);
-  const objectPath =
-    `${getPrivateObjectDir()}/chat/${householdId}/${randomUUID()}.${extension}`;
+  const objectPath = `/db/chat/${householdId}/${randomUUID()}.${extension}`;
   await db
     .insert(chatAttachmentCleanupQueueTable)
     .values({
@@ -109,33 +63,30 @@ export async function uploadChatAttachment(
       target: chatAttachmentCleanupQueueTable.objectPath,
       set: { deleteAfter: new Date(Date.now() + 60 * 60 * 1000) },
     });
-  const uploadUrl = await signObjectUrl(objectPath, "PUT", 15 * 60);
-  const uploadResponse = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type": mimeType,
-      "Content-Length": String(bytes.length),
-    },
-    body: bytes,
-    signal: AbortSignal.timeout(60_000),
+  await db.insert(chatAttachmentBlobsTable).values({
+    objectPath,
+    mimeType,
+    bytes,
   });
-  if (!uploadResponse.ok) {
-    throw new Error(`Assistant image upload failed (${uploadResponse.status})`);
-  }
   return { objectPath, mimeType, sizeBytes: bytes.length };
 }
 
-export function getChatAttachmentDownloadUrl(objectPath: string): Promise<string> {
-  return signObjectUrl(objectPath, "GET", 5 * 60);
+export async function getChatAttachment(
+  objectPath: string,
+): Promise<{ bytes: Buffer; mimeType: string } | null> {
+  const [row] = await db
+    .select({
+      bytes: chatAttachmentBlobsTable.bytes,
+      mimeType: chatAttachmentBlobsTable.mimeType,
+    })
+    .from(chatAttachmentBlobsTable)
+    .where(eq(chatAttachmentBlobsTable.objectPath, objectPath))
+    .limit(1);
+  return row ?? null;
 }
 
 export async function deleteChatAttachment(objectPath: string): Promise<void> {
-  const deleteUrl = await signObjectUrl(objectPath, "DELETE", 5 * 60);
-  const response = await fetch(deleteUrl, {
-    method: "DELETE",
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok && response.status !== 404) {
-    throw new Error(`Assistant image deletion failed (${response.status})`);
-  }
+  await db
+    .delete(chatAttachmentBlobsTable)
+    .where(eq(chatAttachmentBlobsTable.objectPath, objectPath));
 }
