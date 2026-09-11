@@ -2261,6 +2261,16 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  {/* Start guided (read-aloud) cooking, right from the list */}
+                  {recipe.instructions.length > 0 && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setCookingRecipeId(recipe.id); }}
+                      title="Cook with guided, read-aloud steps"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground/60 hover:text-primary hover:bg-primary/10 transition-all"
+                    >
+                      <Headphones className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   {/* Use in meal plan */}
                   {onUseRecipe && (
                     <button
