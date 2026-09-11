@@ -1,6 +1,14 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
-import { textToSpeech } from "@workspace/integrations-openai-ai-server/audio";
+import { isOpenAiConfigured, textToSpeech } from "@workspace/integrations-openai-ai-server/audio";
+import type Anthropic from "@anthropic-ai/sdk";
+import {
+  claude,
+  claudeJson,
+  claudeText,
+  imageBlockFromDataUrl,
+  textFromResponse,
+  CLAUDE_MAIN_MODEL,
+} from "../lib/claude";
 import { db } from "@workspace/db";
 import {
   mealPlansTable,
@@ -270,22 +278,16 @@ function extractAndSaveMemories(
         ? `Already known:\n${existingMemories.map(m => `- ${m}`).join("\n")}`
         : "Nothing stored yet.";
 
-      const res = await openai.chat.completions.create({
-        model: "gpt-5.6-luna",
-        max_completion_tokens: 256,
+      const text = (await claudeText({
+        maxTokens: 4000,
+        system: `You extract durable household preferences and facts from conversations. Be concise. Only save truly useful personalisation facts (preferences, dislikes, goals, constraints). Do NOT save one-off questions or generic chat.`,
         messages: [
-          {
-            role: "system",
-            content: `You extract durable household preferences and facts from conversations. Be concise. Only save truly useful personalisation facts (preferences, dislikes, goals, constraints). Do NOT save one-off questions or generic chat.`,
-          },
           {
             role: "user",
             content: `User said: "${userMessage}"\nAssistant replied: "${assistantReply.slice(0, 400)}"\n\n${existingList}\n\nList 0–3 NEW facts worth remembering (not already in the list above). Each on its own line starting with "-". If nothing new, reply exactly: NONE`,
           },
         ],
-      });
-
-      const text = res.choices[0]?.message?.content ?? "NONE";
+      })) || "NONE";
       if (text.trim() === "NONE") return [];
 
       const newFacts = text
@@ -697,45 +699,34 @@ router.post("/ai/recommend-maintenance", async (req, res) => {
       ? existingTasks.map(task => `- ${task.title}${task.description ? `: ${task.description}` : ""}`).join("\n")
       : "None";
     const existingKeys = new Set(existingTasks.map(task => task.canonicalKey ?? inferMaintenanceCatalogKey(task.title)).filter(Boolean));
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "maintenance_recommendations",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            required: ["recommendations"],
-            properties: {
-              recommendations: {
-                type: "array",
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: ["canonicalKey", "description", "reason"],
-                  properties: {
-                    canonicalKey: { type: "string", enum: MAINTENANCE_CATALOG.map(item => item.key) },
-                    description: { type: ["string", "null"] },
-                    reason: { type: "string" },
-                  },
-                },
+    const aiRecommendations = await claudeJson<unknown>({
+      maxTokens: 8000,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["recommendations"],
+        properties: {
+          recommendations: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["canonicalKey", "description", "reason"],
+              properties: {
+                canonicalKey: { type: "string", enum: MAINTENANCE_CATALOG.map(item => item.key) },
+                description: { type: ["string", "null"] },
+                reason: { type: "string" },
               },
             },
           },
         },
       },
-      messages: [
-        {
-          role: "system",
-          content: `You are a practical property maintenance planner. Return 4–10 useful recurring maintenance ideas tailored to the property's type and details. Select only catalog keys not already covered. Avoid cosmetic projects and vague advice.
+      system: `You are a practical property maintenance planner. Return 4–10 useful recurring maintenance ideas tailored to the property's type and details. Select only catalog keys not already covered. Avoid cosmetic projects and vague advice.
 
 Available catalog: ${MAINTENANCE_CATALOG.map(item => `${item.key} (${item.title})`).join("; ")}.
 Respond ONLY as valid JSON:
 {"recommendations":[{"canonicalKey":"hvac-filter","description":"Optional actionable detail","reason":"Why this matters for this property"}]}`,
-        },
+      messages: [
         {
           role: "user",
           content: `Property name: ${property.name}
@@ -748,9 +739,7 @@ ${existing}`,
       ],
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("AI response was empty");
-    const recommendations = parseMaintenanceRecommendations(content).filter(
+    const recommendations = parseMaintenanceRecommendations(JSON.stringify(aiRecommendations)).filter(
       recommendation => !existingKeys.has(recommendation.canonicalKey),
     );
     res.json({ recommendations });
@@ -771,45 +760,35 @@ router.post("/ai/extract-recipe-image", async (req, res) => {
     return;
   }
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 2_500,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "extracted_recipe",
-          strict: true,
-          schema: {
-            type: "object", additionalProperties: false,
-            required: ["isRecipe", "name", "ingredients", "instructions", "servings", "prepMinutes", "cookMinutes", "confidence", "warnings"],
-            properties: {
-              isRecipe: { type: "boolean" },
-              name: { type: "string" },
-              ingredients: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "quantity", "category"], properties: { name: { type: "string" }, quantity: { type: ["string", "null"] }, category: { type: ["string", "null"] } } } },
-              instructions: { type: "array", items: { type: "string" } },
-              servings: { type: ["integer", "null"] },
-              prepMinutes: { type: ["integer", "null"] },
-              cookMinutes: { type: ["integer", "null"] },
-              confidence: { type: "number" },
-              warnings: { type: "array", items: { type: "string" } },
-            },
-          },
-        },
-      },
-      messages: [{
-        role: "system",
-        content: "Extract a recipe only if the image is a recipe card, cookbook/page, or clearly contains a recipe. Transcribe faithfully; do not invent missing text. Categorize groceries with ordinary categories such as Produce, Meat & Seafood, Dairy, Pantry, Bakery, Frozen, or Other. Return null for unavailable numbers, lower confidence for obscured text, and concise warnings for uncertainty.",
-      }, {
-        role: "user",
-        content: [{ type: "text", text: "Extract this recipe for a human to review. It is not being saved automatically." }, { type: "image_url", image_url: { url: parsedImage.dataUrl!, detail: "high" } }] as any,
-      }],
-    });
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("AI response was empty");
-    const extracted = JSON.parse(content) as {
+    const extracted = await claudeJson<{
       isRecipe: boolean; name: string; ingredients: Array<{ name: string; quantity: string | null; category: string | null }>;
       instructions: string[]; servings: number | null; prepMinutes: number | null; cookMinutes: number | null; confidence: number; warnings: string[];
-    };
+    }>({
+      maxTokens: 8000,
+      schema: {
+        type: "object", additionalProperties: false,
+        required: ["isRecipe", "name", "ingredients", "instructions", "servings", "prepMinutes", "cookMinutes", "confidence", "warnings"],
+        properties: {
+          isRecipe: { type: "boolean" },
+          name: { type: "string" },
+          ingredients: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "quantity", "category"], properties: { name: { type: "string" }, quantity: { type: ["string", "null"] }, category: { type: ["string", "null"] } } } },
+          instructions: { type: "array", items: { type: "string" } },
+          servings: { type: ["integer", "null"] },
+          prepMinutes: { type: ["integer", "null"] },
+          cookMinutes: { type: ["integer", "null"] },
+          confidence: { type: "number" },
+          warnings: { type: "array", items: { type: "string" } },
+        },
+      },
+      system: "Extract a recipe only if the image is a recipe card, cookbook/page, or clearly contains a recipe. Transcribe faithfully; do not invent missing text. Categorize groceries with ordinary categories such as Produce, Meat & Seafood, Dairy, Pantry, Bakery, Frozen, or Other. Return null for unavailable numbers, lower confidence for obscured text, and concise warnings for uncertainty.",
+      messages: [{
+        role: "user",
+        content: [
+          imageBlockFromDataUrl(parsedImage.dataUrl!),
+          { type: "text", text: "Extract this recipe for a human to review. It is not being saved automatically." },
+        ],
+      }],
+    });
     if (!extracted.isRecipe) {
       res.status(400).json({ error: "The image does not appear to contain a recipe" });
       return;
@@ -845,6 +824,10 @@ router.post("/ai/read-recipe-step", async (req, res) => {
     return;
   }
   try {
+    if (!isOpenAiConfigured()) {
+      res.status(503).json({ error: "Reading steps aloud requires the optional OpenAI voice integration, which isn't configured." });
+      return;
+    }
     const { recipeName, stepNumber, text } = validation.value!;
     const spokenText = `${recipeName ? `${recipeName}. ` : ""}${stepNumber ? `Step ${stepNumber}. ` : ""}${text}`;
     const audio = await textToSpeech(spokenText, "alloy", "mp3");
@@ -880,13 +863,9 @@ router.post("/ai/scan-pantry", async (req, res) => {
     const mealHistory = [...new Set(recentMeals.map((m) => m.meal))];
     const memoriesCtx = await getMemoriesContext(scope.householdId, scope.linkedFamilyMemberId);
 
-    const imageContent = imagesBase64.map((raw) => ({
-      type: "image_url" as const,
-      image_url: {
-        url: `data:${detectMimeType(raw)};base64,${stripPrefix(raw)}`,
-        detail: "low" as const,
-      },
-    }));
+    const imageContent = imagesBase64.map((raw) =>
+      imageBlockFromDataUrl(`data:${detectMimeType(raw)};base64,${stripPrefix(raw)}`),
+    );
 
     const photoWord = imagesBase64.length === 1 ? "photo" : `${imagesBase64.length} photos`;
 
@@ -902,22 +881,19 @@ Respond ONLY with valid JSON:
   ]
 }`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 1024,
+    const content = await claudeText({
+      maxTokens: 8000,
+      system: SYSTEM,
       messages: [
-        { role: "system", content: SYSTEM },
         {
           role: "user",
           content: [
-            { type: "text", text: `Please analyze ${photoWord} of my fridge/pantry and suggest meals.` },
             ...imageContent,
-          ] as any,
+            { type: "text", text: `Please analyze ${photoWord} of my fridge/pantry and suggest meals.` },
+          ],
         },
       ],
     });
-
-    const content = response.choices[0]?.message?.content ?? "";
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "Failed to parse AI response" });
@@ -947,28 +923,23 @@ router.post("/ai/meal-recipe", async (req, res) => {
 
     const memoriesCtx = await getMemoriesContext(scope.householdId, scope.linkedFamilyMemberId);
 
-    const recipeResp = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 2_500,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "meal_recipe",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            required: ["prepTime", "cookTime", "servings", "difficulty", "ingredients", "steps", "tips"],
-            properties: {
-              prepTime: { type: "string" },
-              cookTime: { type: "string" },
-              servings: { type: "integer" },
-              difficulty: { type: "string" },
-              ingredients: { type: "array", maxItems: 100, items: { type: "string" } },
-              steps: { type: "array", maxItems: 100, items: { type: "string" } },
-              tips: { type: "string" },
-            },
-          },
+    const recipe = await claudeJson<{
+      prepTime: string; cookTime: string; servings: number; difficulty: string;
+      ingredients: string[]; steps: string[]; tips: string;
+    }>({
+      maxTokens: 8000,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["prepTime", "cookTime", "servings", "difficulty", "ingredients", "steps", "tips"],
+        properties: {
+          prepTime: { type: "string" },
+          cookTime: { type: "string" },
+          servings: { type: "integer" },
+          difficulty: { type: "string" },
+          ingredients: { type: "array", maxItems: 100, items: { type: "string" } },
+          steps: { type: "array", maxItems: 100, items: { type: "string" } },
+          tips: { type: "string" },
         },
       },
       messages: [
@@ -999,12 +970,6 @@ Return a complete recipe in the required JSON format:
       ],
     });
 
-    const recipeContent = recipeResp.choices[0]?.message?.content;
-    if (!recipeContent) throw new Error("Meal-recipe AI response was empty");
-    const recipe = JSON.parse(recipeContent) as {
-      prepTime: string; cookTime: string; servings: number; difficulty: string;
-      ingredients: string[]; steps: string[]; tips: string;
-    };
     if (
       !Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0 ||
       !Array.isArray(recipe.steps) || recipe.steps.length === 0 ||
@@ -1064,25 +1029,19 @@ router.post("/ai/meal-plan-chat", async (req, res) => {
       meal => `- ${meal.dayName} ${meal.mealType}: ${meal.meal}`,
     );
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 300,
-      messages: [
-        {
-          role: "system",
-          content: `You are a concise meal-planning assistant for a busy family. Only discuss this week's meal plan.
+    const responseText = await claudeText({
+      maxTokens: 2000,
+      system: `You are a concise meal-planning assistant for a busy family. Only discuss this week's meal plan.
 Help the user express schedule constraints, meals out, leftovers, cravings, easy nights, and ingredients to use.
 Acknowledge concrete constraints clearly. Ask at most one useful follow-up question when clarification would materially improve the plan.
 Do not claim to save anything, do not call tools, and do not discuss unrelated household information.
 
 Meals already planned and protected:
 ${existingMealLines.join("\n") || "- None yet"}`,
-        },
-        ...messageValidation.messages,
-      ],
+      messages: messageValidation.messages,
     });
 
-    const message = response.choices[0]?.message?.content?.trim();
+    const message = responseText.trim();
     if (!message) {
       res.status(502).json({ error: "The meal-planning assistant did not return a response." });
       return;
@@ -1210,67 +1169,50 @@ router.post("/ai/suggest-week", async (req, res) => {
 
     let inventory: Array<{ name: string; quantity: string | null; category: string }> = [];
     if (images.length >= 2) {
-      const inventoryResponse = await openai.chat.completions.create({
-        model: "gpt-5.6-luna",
-        max_completion_tokens: 1_500,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "kitchen_photo_inventory",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              required: ["inventory"],
-              properties: {
-                inventory: {
-                  type: "array",
-                  maxItems: 200,
-                  items: {
-                    type: "object",
-                    additionalProperties: false,
-                    required: ["name", "quantity", "category"],
-                    properties: {
-                      name: { type: "string" },
-                      quantity: { type: ["string", "null"] },
-                      category: { type: "string", enum: VALID_CATEGORIES },
-                    },
-                  },
+      const parsedInventory = await claudeJson<{ inventory?: unknown }>({
+        maxTokens: 8000,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["inventory"],
+          properties: {
+            inventory: {
+              type: "array",
+              maxItems: 200,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["name", "quantity", "category"],
+                properties: {
+                  name: { type: "string" },
+                  quantity: { type: ["string", "null"] },
+                  category: { type: "string", enum: VALID_CATEGORIES },
                 },
               },
             },
           },
         },
-        messages: [
-          {
-            role: "system",
-            content: `You are a strict visual kitchen inventory transcriber.
+        system: `You are a strict visual kitchen inventory transcriber.
 Record only food, drinks, and pantry ingredients that are visibly present in the attached photos.
 Never infer an item from a possible recipe, meal idea, common household habit, or another item in the photo.
 Do not turn visible ingredients into recipes or list ingredients that would be needed to make a meal.
 Use short canonical grocery names. Include a quantity only when it can be reasonably observed; otherwise use null.
 Omit uncertain, obscured, or unidentifiable items. Deduplicate the same item across photos.
 Categorize every item using exactly one of: ${VALID_CATEGORIES.join(", ")}.`,
-          },
+        messages: [
           {
             role: "user",
             content: [
+              ...images.map(image => imageBlockFromDataUrl(image)),
               {
                 type: "text" as const,
                 text: "Transcribe the visible kitchen inventory from these photos. Return an empty inventory if no food or pantry item can be identified confidently.",
               },
-              ...images.map(image => ({
-                type: "image_url" as const,
-                image_url: { url: image, detail: "high" as const },
-              })),
-            ] as any,
+            ],
           },
         ],
       });
 
-      const inventoryContent = inventoryResponse.choices[0]?.message?.content;
-      if (!inventoryContent) throw new Error("Kitchen inventory AI response was empty");
-      const parsedInventory = JSON.parse(inventoryContent) as { inventory?: unknown };
       if (!Array.isArray(parsedInventory.inventory)) {
         throw new Error("Kitchen inventory AI response was incomplete");
       }
@@ -1326,48 +1268,36 @@ Respond ONLY with valid JSON:
   ]
 }`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 1800,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "weekly_meal_plan",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            required: ["days"],
-            properties: {
-              days: {
-                type: "array",
-                minItems: 7,
-                maxItems: 7,
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: ["dayName", "breakfast", "lunch", "dinner"],
-                  properties: {
-                    dayName: { type: "string", enum: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] },
-                    breakfast: { type: "string" },
-                    lunch: { type: "string" },
-                    dinner: { type: "string" },
-                  },
-                },
+    const parsed = await claudeJson<{ days: unknown[] }>({
+      maxTokens: 8000,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["days"],
+        properties: {
+          days: {
+            type: "array",
+            minItems: 7,
+            maxItems: 7,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["dayName", "breakfast", "lunch", "dinner"],
+              properties: {
+                dayName: { type: "string", enum: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] },
+                breakfast: { type: "string" },
+                lunch: { type: "string" },
+                dinner: { type: "string" },
               },
             },
           },
         },
       },
+      system: SYSTEM,
       messages: [
-        { role: "system", content: SYSTEM },
         { role: "user", content: "Fill the remaining meal slots for our week." },
       ],
     });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("Weekly meal-plan AI response was empty");
-    const parsed = JSON.parse(content) as { days: unknown[] };
     res.json({ days: parsed.days, inventory });
   } catch (err) {
     req.log.error({ err }, "Suggest week failed");
@@ -1396,58 +1326,7 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
       return;
     }
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 2_500,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "url_recipe",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            required: ["isRecipe", "name", "ingredients", "instructions", "servings", "prepMinutes", "cookMinutes"],
-            properties: {
-              isRecipe: { type: "boolean" },
-              name: { type: "string" },
-              ingredients: {
-                type: "array",
-                maxItems: 100,
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: ["name", "quantity", "category"],
-                  properties: {
-                    name: { type: "string" },
-                    quantity: { type: ["string", "null"] },
-                    category: { type: "string", enum: VALID_CATEGORIES },
-                  },
-                },
-              },
-              instructions: { type: "array", maxItems: 100, items: { type: "string" } },
-              servings: { type: ["integer", "null"] },
-              prepMinutes: { type: ["integer", "null"] },
-              cookMinutes: { type: ["integer", "null"] },
-            },
-          },
-        },
-      },
-      messages: [
-        {
-          role: "system",
-          content: "Extract a complete recipe faithfully from webpage text. Do not invent missing ingredients or instructions. Set isRecipe false when the page does not contain enough information to cook the dish. Use null for unavailable times or servings.",
-        },
-        {
-          role: "user",
-          content: `Extract this public recipe page into the required structured format.\n\nPage text:\n${pageText.slice(0, 12_000)}`,
-        },
-      ],
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("URL-recipe AI response was empty");
-    const parsed = JSON.parse(content) as {
+    const parsed = await claudeJson<{
       isRecipe: boolean;
       name: string;
       ingredients: Array<{ name: string; quantity: string | null; category: string }>;
@@ -1455,7 +1334,43 @@ router.post("/ai/extract-recipe-url", async (req, res) => {
       servings: number | null;
       prepMinutes: number | null;
       cookMinutes: number | null;
-    };
+    }>({
+      maxTokens: 8000,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["isRecipe", "name", "ingredients", "instructions", "servings", "prepMinutes", "cookMinutes"],
+        properties: {
+          isRecipe: { type: "boolean" },
+          name: { type: "string" },
+          ingredients: {
+            type: "array",
+            maxItems: 100,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["name", "quantity", "category"],
+              properties: {
+                name: { type: "string" },
+                quantity: { type: ["string", "null"] },
+                category: { type: "string", enum: VALID_CATEGORIES },
+              },
+            },
+          },
+          instructions: { type: "array", maxItems: 100, items: { type: "string" } },
+          servings: { type: ["integer", "null"] },
+          prepMinutes: { type: ["integer", "null"] },
+          cookMinutes: { type: ["integer", "null"] },
+        },
+      },
+      system: "Extract a complete recipe faithfully from webpage text. Do not invent missing ingredients or instructions. Set isRecipe false when the page does not contain enough information to cook the dish. Use null for unavailable times or servings.",
+      messages: [
+        {
+          role: "user",
+          content: `Extract this public recipe page into the required structured format.\n\nPage text:\n${pageText.slice(0, 12_000)}`,
+        },
+      ],
+    });
     if (!parsed.isRecipe || !parsed.name.trim() || parsed.ingredients.length === 0 || parsed.instructions.length === 0) {
       res.status(422).json({ error: "That page does not contain a complete recipe." });
       return;
@@ -1516,32 +1431,26 @@ router.post("/ai/shopping-list", async (req, res) => {
         })
       : [];
 
-    const shoppingResponse = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 2_500,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "weekly_shopping_list",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            required: ["items"],
-            properties: {
-              items: {
-                type: "array",
-                maxItems: 100,
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: ["name", "quantity", "category"],
-                  properties: {
-                    name: { type: "string" },
-                    quantity: { type: ["string", "null"] },
-                    category: { type: "string", enum: VALID_CATEGORIES },
-                  },
-                },
+    const parsed = await claudeJson<{
+      items?: Array<{ name?: unknown; quantity?: unknown; category?: unknown }>;
+    }>({
+      maxTokens: 8000,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["items"],
+        properties: {
+          items: {
+            type: "array",
+            maxItems: 100,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["name", "quantity", "category"],
+              properties: {
+                name: { type: "string" },
+                quantity: { type: ["string", "null"] },
+                category: { type: "string", enum: VALID_CATEGORIES },
               },
             },
           },
@@ -1576,12 +1485,6 @@ Respond ONLY with valid JSON — no markdown, no extra text:
         },
       ],
     });
-
-    const shoppingContent = shoppingResponse.choices[0]?.message?.content;
-    if (!shoppingContent) throw new Error("Shopping-list AI response was empty");
-    const parsed = JSON.parse(shoppingContent) as {
-      items?: Array<{ name?: unknown; quantity?: unknown; category?: unknown }>;
-    };
 
     const seen = new Set<string>();
     const items = (parsed.items ?? [])
@@ -1705,19 +1608,15 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
     }
 
     // Build messages with optional vision blocks on the last user message
-    const builtMessages: any[] = trimmedMessages.map((m, idx, arr) => {
+    const builtMessages: Anthropic.MessageParam[] = trimmedMessages.map((m, idx, arr) => {
       const isLast = idx === arr.length - 1;
       if (isLast && m.role === "user" && trimmedImages.length > 0) {
-        const imgBlocks = trimmedImages.map(raw => ({
-          type: "image_url" as const,
-          image_url: {
-            url: raw.startsWith("data:") ? raw : `data:${detectMimeType(raw)};base64,${raw}`,
-            detail: "low" as const,
-          },
-        }));
+        const imgBlocks = trimmedImages.map(raw =>
+          imageBlockFromDataUrl(raw.startsWith("data:") ? raw : `data:${detectMimeType(raw)};base64,${raw}`),
+        );
         return { role: "user", content: [...imgBlocks, { type: "text", text: m.content }] };
       }
-      return { role: m.role, content: m.content };
+      return { role: m.role as "user" | "assistant", content: m.content };
     });
 
     const toolContext: AiActionContext = {
@@ -1727,42 +1626,40 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
       groceryLists,
       now: snapshotNow,
     };
-    const conversation: any[] = [{ role: "system", content: SYSTEM }, ...builtMessages];
+    const conversation: Anthropic.MessageParam[] = [...builtMessages];
     const completedActions = new Set<string>();
     const changedDomains = new Set<"meals" | "groceries" | "maintenance" | "chores">();
     const confirmations: string[] = [];
     const failures: string[] = [];
-    let assistantMessage: any;
+    let lastAssistantText = "";
     let reply = "";
 
     for (let round = 0; round < 4; round += 1) {
-      const chatResponse = await openai.chat.completions.create({
-        model: "gpt-5.6-luna",
-        reasoning_effort: "none",
-        max_completion_tokens: 1024,
+      const chatResponse = await claude().messages.create({
+        model: CLAUDE_MAIN_MODEL,
+        max_tokens: 4000,
+        system: SYSTEM,
         messages: conversation,
-        tools: AI_ACTION_TOOLS as any,
-        tool_choice: "auto",
+        tools: CLAUDE_ACTION_TOOLS,
       });
 
-      assistantMessage = chatResponse.choices[0]?.message;
-      if (!assistantMessage) break;
-
-      const toolCalls = (assistantMessage.tool_calls ?? []) as any[];
-      if (toolCalls.length === 0) {
-        reply = assistantMessage.content ?? "";
+      lastAssistantText = textFromResponse(chatResponse);
+      const toolUses = chatResponse.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+      );
+      if (toolUses.length === 0) {
+        reply = lastAssistantText;
         break;
       }
 
-      conversation.push(assistantMessage);
-      for (const toolCall of toolCalls) {
-        const toolName = toolCall.type === "function" ? toolCall.function.name : "";
+      conversation.push({ role: "assistant", content: chatResponse.content });
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const toolUse of toolUses) {
+        const toolName = toolUse.name;
         let result: AiActionResult;
         let completedNewAction = false;
         try {
-          const args = toolCall.type === "function"
-            ? JSON.parse(toolCall.function.arguments || "{}")
-            : {};
+          const args = (toolUse.input ?? {}) as Record<string, unknown>;
           const fingerprint = actionFingerprint(toolName, args);
           if (completedActions.has(fingerprint)) {
             result = { ok: true, confirmation: "That action was already completed." };
@@ -1788,17 +1685,19 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
           if (toolName === "create_maintenance_task") changedDomains.add("maintenance");
           if (toolName === "add_chore") changedDomains.add("chores");
         }
-        conversation.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolUse.id,
           content: JSON.stringify(result),
+          is_error: !result.ok,
         });
       }
+      conversation.push({ role: "user", content: toolResults });
     }
 
     if (!reply) {
       const outcomes = [...confirmations, ...failures].join("\n");
-      reply = outcomes || assistantMessage?.content || "Sorry, I couldn't generate a response.";
+      reply = outcomes || lastAssistantText || "Sorry, I couldn't generate a response.";
     }
 
     const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
@@ -2204,6 +2103,12 @@ const AI_ACTION_TOOLS = [
     },
   },
 ] as const;
+
+const CLAUDE_ACTION_TOOLS: Anthropic.Tool[] = AI_ACTION_TOOLS.map(tool => ({
+  name: tool.function.name,
+  description: tool.function.description,
+  input_schema: tool.function.parameters as unknown as Anthropic.Tool["input_schema"],
+}));
 
 function nextRecurringDueDate(startDate: string, frequencyDays: number, now: Date): string {
   const start = new Date(`${startDate}T00:00:00Z`);
