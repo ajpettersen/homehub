@@ -94,7 +94,7 @@ export default function Workouts() {
   useEffect(() => {
     if (!preferencesLoaded || !workoutPreferences) return;
     setSetupValues({ daysOfWeek: workoutPreferences.daysOfWeek, goals: workoutPreferences.goals, sessionDurationMinutes: workoutPreferences.sessionDurationMinutes, equipment: workoutPreferences.equipment, limitations: workoutPreferences.limitations, notes: workoutPreferences.notes, timezone: workoutPreferences.timezone });
-    if (!preferencesLoading && (!localStorage.getItem("homehub.workouts.experience.v1") || !workoutPreferences.updatedAt)) setSetupOpen(true);
+    if (!preferencesLoading && !localStorage.getItem("homehub.workouts.experience.v1") && !workoutPreferences.updatedAt) setSetupOpen(true);
   }, [workoutPreferences, preferencesLoading, preferencesLoaded]);
 
   const saveSetup = () => {
