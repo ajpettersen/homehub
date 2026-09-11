@@ -40,7 +40,30 @@ app.use(
 // Clerk proxy — mount before body parsers (streams raw bytes)
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
-app.use(cors({ credentials: true, origin: true }));
+// Same-origin browser requests (the normal case now that this server also
+// serves the built frontend) carry no Origin header at all and are never
+// subject to CORS regardless of this config. This allowlist only matters
+// for the handful of legitimate cross-origin cases: local dev (Vite on a
+// different port than the API), and any other real deployment of this app.
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://homehub-production-5db0.up.railway.app",
+  "https://home-life-manager.replit.app",
+];
+const EXTRA_ALLOWED_ORIGINS = (process.env.EXTRA_ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const ALLOWED_ORIGINS = new Set([...DEFAULT_ALLOWED_ORIGINS, ...EXTRA_ALLOWED_ORIGINS]);
+
+app.use(cors({
+  credentials: true,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (process.env.NODE_ENV !== "production") return callback(null, true);
+    if (ALLOWED_ORIGINS.has(origin)) return callback(null, true);
+    callback(new Error("Not allowed by CORS"));
+  },
+}));
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true }));
 
