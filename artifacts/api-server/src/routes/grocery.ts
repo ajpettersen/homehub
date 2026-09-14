@@ -30,6 +30,16 @@ export function canAssignStoreToList(
     && propertyHouseholdId === storeHouseholdId;
 }
 
+/** Whether `storeId` belongs to the same household as the property a grocery item's list lives under. */
+async function isStoreInPropertyHousehold(propertyId: number, storeId: number): Promise<boolean> {
+  const [property] = await db.select({ householdId: propertiesTable.householdId })
+    .from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
+  if (!property) return false;
+  const [store] = await db.select({ householdId: householdStoresTable.householdId })
+    .from(householdStoresTable).where(eq(householdStoresTable.id, storeId)).limit(1);
+  return !!store && store.householdId === property.householdId;
+}
+
 router.get("/grocery-catalog", async (req, res) => {
   try {
     getApprovedHouseholdScope(res);
@@ -285,6 +295,7 @@ router.get("/grocery-lists/:id/items", async (req, res) => {
         category: i.category ?? null,
         checked: i.checked,
         addedBy: i.addedBy ?? null,
+        storeId: i.storeId === null ? null : String(i.storeId),
         createdAt: i.createdAt.toISOString(),
       })),
     );
@@ -302,7 +313,7 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
       res.status(400).json({ error: "Invalid list id" });
       return;
     }
-    const { name, quantity, category, addedBy } = req.body;
+    const { name, quantity, category, addedBy, storeId } = req.body;
     if (typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name required" });
       return;
@@ -317,6 +328,19 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
     if (!list || !scope.propertyIds.includes(list.propertyId)) {
       res.status(404).json({ error: "Not found" });
       return;
+    }
+
+    let storeIdNum: number | null = null;
+    if (storeId !== undefined && storeId !== null) {
+      storeIdNum = Number(storeId);
+      if (!Number.isInteger(storeIdNum)) {
+        res.status(400).json({ error: "storeId must be a valid id" });
+        return;
+      }
+      if (!(await isStoreInPropertyHousehold(list.propertyId, storeIdNum))) {
+        res.status(404).json({ error: "Store not found in the grocery list household" });
+        return;
+      }
     }
 
     // A transaction-scoped PostgreSQL advisory lock serializes only additions
@@ -340,6 +364,7 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
             checked: false,
             quantity: quantity ?? existing.quantity,
             category: category ?? existing.category,
+            storeId: storeId !== undefined ? storeIdNum : existing.storeId,
           })
           .where(eq(groceryItemsTable.id, existing.id))
           .returning();
@@ -348,7 +373,7 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
 
       const [item] = await tx
         .insert(groceryItemsTable)
-        .values({ listId, name: trimmedName, quantity: quantity ?? null, category: category ?? null, addedBy: addedBy ?? null })
+        .values({ listId, name: trimmedName, quantity: quantity ?? null, category: category ?? null, addedBy: addedBy ?? null, storeId: storeIdNum })
         .returning();
       return { item, created: true };
     });
@@ -362,6 +387,7 @@ router.post("/grocery-lists/:id/items", async (req, res) => {
       category: item.category ?? null,
       checked: item.checked,
       addedBy: item.addedBy ?? null,
+      storeId: item.storeId === null ? null : String(item.storeId),
       createdAt: item.createdAt.toISOString(),
     });
   } catch (err) {
@@ -378,7 +404,7 @@ router.put("/grocery-items/:id", async (req, res) => {
       res.status(400).json({ error: "Invalid item id" });
       return;
     }
-    const { name, quantity, category, checked } = req.body;
+    const { name, quantity, category, checked, storeId } = req.body;
 
     const [existing] = await db
       .select({ item: groceryItemsTable, propertyId: groceryListsTable.propertyId })
@@ -391,6 +417,24 @@ router.put("/grocery-items/:id", async (req, res) => {
       return;
     }
 
+    let storeIdUpdate: number | null | undefined;
+    if (storeId !== undefined) {
+      if (storeId === null) {
+        storeIdUpdate = null;
+      } else {
+        const storeIdNum = Number(storeId);
+        if (!Number.isInteger(storeIdNum)) {
+          res.status(400).json({ error: "storeId must be a valid id" });
+          return;
+        }
+        if (!(await isStoreInPropertyHousehold(existing.propertyId, storeIdNum))) {
+          res.status(404).json({ error: "Store not found in the grocery list household" });
+          return;
+        }
+        storeIdUpdate = storeIdNum;
+      }
+    }
+
     await db
       .update(groceryItemsTable)
       .set({
@@ -398,6 +442,7 @@ router.put("/grocery-items/:id", async (req, res) => {
         ...(quantity !== undefined && { quantity: quantity ?? null }),
         ...(category !== undefined && { category: category ?? null }),
         ...(checked !== undefined && { checked }),
+        ...(storeIdUpdate !== undefined && { storeId: storeIdUpdate }),
       })
       .where(eq(groceryItemsTable.id, id));
 
@@ -415,6 +460,7 @@ router.put("/grocery-items/:id", async (req, res) => {
       category: item.category ?? null,
       checked: item.checked,
       addedBy: item.addedBy ?? null,
+      storeId: item.storeId === null ? null : String(item.storeId),
       createdAt: item.createdAt.toISOString(),
     });
   } catch (err) {

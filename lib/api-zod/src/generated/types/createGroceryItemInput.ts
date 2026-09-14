@@ -11,4 +11,5 @@ export interface CreateGroceryItemInput {
   quantity?: string | null;
   category?: string | null;
   addedBy?: string | null;
+  storeId?: string | null;
 }

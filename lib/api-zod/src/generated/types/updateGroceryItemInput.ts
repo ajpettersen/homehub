@@ -11,4 +11,5 @@ export interface UpdateGroceryItemInput {
   quantity?: string | null;
   category?: string | null;
   checked?: boolean;
+  storeId?: string | null;
 }

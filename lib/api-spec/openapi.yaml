@@ -3959,6 +3959,10 @@ components:
         addedBy:
           type: string
           nullable: true
+        storeId:
+          type: string
+          nullable: true
+          description: Which store to buy this item at. Null means "use the list's own store".
         createdAt:
           type: string
           format: date-time
@@ -3967,6 +3971,7 @@ components:
         - listId
         - name
         - checked
+        - storeId
         - createdAt
 
     GroceryCatalogItem:
@@ -3994,6 +3999,9 @@ components:
         addedBy:
           type: string
           nullable: true
+        storeId:
+          type: string
+          nullable: true
       required:
         - name
 
@@ -4010,6 +4018,9 @@ components:
           nullable: true
         checked:
           type: boolean
+        storeId:
+          type: string
+          nullable: true
 
     MealPlanEntry:
       type: object

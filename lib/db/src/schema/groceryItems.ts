@@ -2,6 +2,7 @@ import { pgTable, serial, text, integer, boolean, timestamp } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { groceryListsTable } from "./groceryLists";
+import { householdStoresTable } from "./householdStores";
 
 export const groceryItemsTable = pgTable("grocery_items", {
   id: serial("id").primaryKey(),
@@ -11,6 +12,8 @@ export const groceryItemsTable = pgTable("grocery_items", {
   category: text("category"),
   checked: boolean("checked").notNull().default(false),
   addedBy: text("added_by"),
+  /** Which store to buy this item at. Null means "use the list's own store". */
+  storeId: integer("store_id").references(() => householdStoresTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

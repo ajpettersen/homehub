@@ -1023,6 +1023,7 @@ export const GetGroceryItemsResponseItem = zod.object({
   "category": zod.string().nullish(),
   "checked": zod.boolean(),
   "addedBy": zod.string().nullish(),
+  "storeId": zod.string().nullable().describe('Which store to buy this item at. Null means \"use the list\'s own store\".'),
   "createdAt": zod.coerce.date()
 })
 export const GetGroceryItemsResponse = zod.array(GetGroceryItemsResponseItem)
@@ -1039,7 +1040,8 @@ export const AddGroceryItemBody = zod.object({
   "name": zod.string(),
   "quantity": zod.string().nullish(),
   "category": zod.string().nullish(),
-  "addedBy": zod.string().nullish()
+  "addedBy": zod.string().nullish(),
+  "storeId": zod.string().nullish()
 })
 
 export const AddGroceryItemResponse = zod.object({
@@ -1050,6 +1052,7 @@ export const AddGroceryItemResponse = zod.object({
   "category": zod.string().nullish(),
   "checked": zod.boolean(),
   "addedBy": zod.string().nullish(),
+  "storeId": zod.string().nullable().describe('Which store to buy this item at. Null means \"use the list\'s own store\".'),
   "createdAt": zod.coerce.date()
 })
 
@@ -1065,7 +1068,8 @@ export const UpdateGroceryItemBody = zod.object({
   "name": zod.string().optional(),
   "quantity": zod.string().nullish(),
   "category": zod.string().nullish(),
-  "checked": zod.boolean().optional()
+  "checked": zod.boolean().optional(),
+  "storeId": zod.string().nullish()
 })
 
 export const UpdateGroceryItemResponse = zod.object({
@@ -1076,6 +1080,7 @@ export const UpdateGroceryItemResponse = zod.object({
   "category": zod.string().nullish(),
   "checked": zod.boolean(),
   "addedBy": zod.string().nullish(),
+  "storeId": zod.string().nullable().describe('Which store to buy this item at. Null means \"use the list\'s own store\".'),
   "createdAt": zod.coerce.date()
 })
 

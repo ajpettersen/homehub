@@ -14,5 +14,7 @@ export interface GroceryItem {
   category?: string | null;
   checked: boolean;
   addedBy?: string | null;
+  /** Which store to buy this item at. Null means "use the list's own store". */
+  storeId: string | null;
   createdAt: Date;
 }

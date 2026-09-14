@@ -1359,6 +1359,8 @@ export interface GroceryItem {
   category?: string | null;
   checked: boolean;
   addedBy?: string | null;
+  /** Which store to buy this item at. Null means "use the list's own store". */
+  storeId: string | null;
   createdAt: string;
 }
 
@@ -1373,6 +1375,7 @@ export interface CreateGroceryItemInput {
   quantity?: string | null;
   category?: string | null;
   addedBy?: string | null;
+  storeId?: string | null;
 }
 
 export interface UpdateGroceryItemInput {
@@ -1380,6 +1383,7 @@ export interface UpdateGroceryItemInput {
   quantity?: string | null;
   category?: string | null;
   checked?: boolean;
+  storeId?: string | null;
 }
 
 export type MealRatingRating = typeof MealRatingRating[keyof typeof MealRatingRating];

@@ -806,6 +806,49 @@ function GrocerySection({ propertyId, meals, recipes, inventory }: { propertyId:
   return <GroceryListDetail list={mainList} meals={meals} recipes={recipes} inventory={inventory} />;
 }
 
+/** Small "which store" tag on a grocery item; tap to reassign it to a different store on the list. */
+function GroceryItemStoreButton({ item, stores, defaultStore, onChange }: { item: any; stores: HouseholdStore[]; defaultStore: HouseholdStore; onChange: (storeId: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const effectiveStore = stores.find(s => s.id === item.storeId) ?? defaultStore;
+
+  return (
+    <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex min-h-8 items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[10px] font-bold text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+      >
+        <Store className="w-3 h-3" />
+        {effectiveStore.name}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-40 bg-card border border-border rounded-2xl shadow-lg p-1.5 min-w-[180px]">
+            <button
+              onClick={() => { onChange(null); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors flex items-center gap-2 ${item.storeId === null ? "bg-primary/10 text-primary font-bold" : "hover:bg-muted font-medium"}`}
+            >
+              {item.storeId === null && <Check className="w-3 h-3 shrink-0" />}
+              <span className={item.storeId === null ? "" : "ml-5"}>{defaultStore.name} (list default)</span>
+            </button>
+            {stores.filter(s => s.id !== defaultStore.id).map(s => (
+              <button
+                key={s.id}
+                onClick={() => { onChange(s.id); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors flex items-center gap-2 ${item.storeId === s.id ? "bg-primary/10 text-primary font-bold" : "hover:bg-muted font-medium"}`}
+              >
+                {item.storeId === s.id && <Check className="w-3 h-3 shrink-0" />}
+                <span className={item.storeId === s.id ? "" : "ml-5"}>{s.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; meals: MealForShopping[]; recipes: RecipeForShopping[]; inventory: KitchenInventoryItem[] }) {
   const queryClient = useQueryClient();
   const { data: stores, isLoading: storesLoading } = useGetStores({ query: { queryKey: getGetStoresQueryKey() } });
@@ -829,6 +872,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
   const [addItemMessage, setAddItemMessage] = useState("");
   const [addItemError, setAddItemError] = useState("");
   const [storePicker, setStorePicker] = useState(false);
+  const [newStoreId, setNewStoreId] = useState<string | null>(null);
   const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
   const [aiShoppingError, setAiShoppingError] = useState<string | null>(null);
   const [generatedInventoryMatches, setGeneratedInventoryMatches] = useState<Array<{ name: string; quantity?: string | null }>>([]);
@@ -933,7 +977,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
     return apiError.data?.error || apiError.message || "That item could not be added. Please try again.";
   };
 
-  const addNamedItem = async (name: string, category: GroceryCategoryKey | string) => {
+  const addNamedItem = async (name: string, category: GroceryCategoryKey | string, storeId?: string | null) => {
     const normalized = name.trim().toLowerCase();
     if (!normalized) return;
     const existing = (items ?? []).find(item => item.name.trim().toLowerCase() === normalized);
@@ -942,10 +986,11 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
     try {
       await addItem.mutateAsync({
         id: list.id,
-        data: { name: name.trim(), quantity: newQty.trim() || null, category },
+        data: { name: name.trim(), quantity: newQty.trim() || null, category, ...(storeId ? { storeId } : {}) },
       });
       setNewItem("");
       setNewQty("");
+      setNewStoreId(null);
       setAddItemMessage(
         existing?.checked
           ? `${name.trim()} moved back to your active list.`
@@ -961,7 +1006,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    void addNamedItem(newItem, newCategory);
+    void addNamedItem(newItem, newCategory, newStoreId);
   };
 
   const handleCheck = (item: any) => {
@@ -978,6 +1023,14 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
     deleteItem.mutate(
       { id },
       { onSuccess: invalidate, onError: () => setItemActionError(`Couldn't remove ${item?.name ?? "that item"}. Please try again.`) },
+    );
+  };
+
+  const handleSetItemStore = (item: any, storeId: string | null) => {
+    setItemActionError("");
+    updateItem.mutate(
+      { id: item.id, data: { storeId } },
+      { onSuccess: invalidate, onError: () => setItemActionError(`Couldn't change the store for ${item.name}. Please try again.`) },
     );
   };
 
@@ -1032,28 +1085,45 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
   const checked   = items?.filter(i => i.checked)  ?? [];
 
   const storeDepartments = store.departments ?? [];
-  const orderedKeys = storeDepartments.map(d => d.categoryKey);
 
-  const bySection = storeDepartments
-    .map(dept => {
-      const key = dept.categoryKey;
-      return {
-        key,
-        label: dept.displayName,
-        items: unchecked.filter(i => resolveCategory(i.category) === key),
-      };
-    })
-    .filter(g => g.items.length > 0);
-
-  const mappedKeys = new Set<string>(orderedKeys);
-  const unmappedItems = unchecked.filter(i => !mappedKeys.has(resolveCategory(i.category)));
-  if (unmappedItems.length > 0) {
-    bySection.push({
-      key: "other",
-      label: "Other",
-      items: unmappedItems,
-    });
+  // Group unchecked items by the store they're assigned to (falling back to
+  // the list's own store), then by that store's departments/aisles within
+  // each group — this is what lets one list span multiple stores.
+  const itemsByStoreId = new Map<string, typeof unchecked>();
+  for (const item of unchecked) {
+    const effectiveStoreId = item.storeId ?? store.id;
+    if (!itemsByStoreId.has(effectiveStoreId)) itemsByStoreId.set(effectiveStoreId, []);
+    itemsByStoreId.get(effectiveStoreId)!.push(item);
   }
+  const orderedStoreIds = [...itemsByStoreId.keys()].sort((a, b) => {
+    if (a === store.id) return -1;
+    if (b === store.id) return 1;
+    return (stores.find(s => s.id === a)?.name ?? "").localeCompare(stores.find(s => s.id === b)?.name ?? "");
+  });
+  const multiStore = orderedStoreIds.length > 1;
+
+  const storeSections = orderedStoreIds.map(storeId => {
+    const groupStore = stores.find(s => s.id === storeId);
+    const groupItems = itemsByStoreId.get(storeId) ?? [];
+    const groupDepartments = groupStore?.departments ?? [];
+    const orderedKeys = groupDepartments.map(d => d.categoryKey);
+
+    const bySection = groupDepartments
+      .map(dept => ({
+        key: dept.categoryKey,
+        label: dept.displayName,
+        items: groupItems.filter(i => resolveCategory(i.category) === dept.categoryKey),
+      }))
+      .filter(g => g.items.length > 0);
+
+    const mappedKeys = new Set<string>(orderedKeys);
+    const unmappedItems = groupItems.filter(i => !mappedKeys.has(resolveCategory(i.category)));
+    if (unmappedItems.length > 0) {
+      bySection.push({ key: "other", label: "Other", items: unmappedItems });
+    }
+
+    return { storeId, storeName: groupStore?.name ?? "Other store", bySection };
+  });
 
   const categoryOptions = storeDepartments.map(dept => {
     return {
@@ -1229,7 +1299,7 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
                 key={item.id}
                 type="button"
                 disabled={addItem.isPending}
-                onClick={() => void addNamedItem(item.name, item.category)}
+                onClick={() => void addNamedItem(item.name, item.category, newStoreId)}
                 className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 text-left text-sm font-semibold hover:bg-primary/10 disabled:opacity-50"
               >
                 <span>{item.name}</span>
@@ -1250,6 +1320,30 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
             placeholder="Quantity or note (e.g. 3 lbs, optional)"
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary font-medium"
           />
+          {stores.length > 1 && (
+            <div>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Buy at</p>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => setNewStoreId(null)}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 min-h-9 text-xs font-bold ${newStoreId === null ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
+                >
+                  {store.name} (list default)
+                </button>
+                {stores.filter(s => s.id !== store.id).map(s => (
+                  <button
+                    key={`new-item-store-${s.id}`}
+                    type="button"
+                    onClick={() => setNewStoreId(s.id)}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 min-h-9 text-xs font-bold ${newStoreId === s.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <details>
             <summary className="min-h-9 cursor-pointer text-xs font-semibold text-muted-foreground">
               Custom item category: {ALL_CATEGORIES[newCategory]?.label ?? "Other"}
@@ -1291,32 +1385,45 @@ function GroceryListDetail({ list, meals, recipes, inventory }: { list: any; mea
         <p className="text-muted-foreground text-sm text-center py-8 italic">List is empty — add items above or plan your meals first.</p>
       )}
 
-      {/* Sections in store walk order */}
-      {bySection.map(group => (
-        <div key={group.key}>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-1">
-            {group.label}
-          </p>
-          <div className="space-y-1.5">
-            {group.items.map(item => (
-              <div
-                key={item.id}
-                role="checkbox"
-                aria-checked={false}
-                tabIndex={0}
-                onClick={() => handleCheck(item)}
-                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleCheck(item); } }}
-                className="flex items-center gap-3 px-3 py-3.5 min-h-14 bg-card rounded-xl border border-border/60 group hover:border-border active:bg-muted/50 transition-colors cursor-pointer select-none"
-              >
-                <span className="w-7 h-7 rounded-full border-2 border-border flex items-center justify-center shrink-0 group-hover:border-primary group-active:border-primary transition-colors" />
-                <span className="flex-1 text-sm font-medium">{item.name}</span>
-                {item.quantity && <span className="text-xs text-muted-foreground font-medium">{item.quantity}</span>}
-                <button onClick={e => { e.stopPropagation(); handleDelete(item.id); }} aria-label={`Delete ${item.name}`} className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-muted-foreground opacity-100 transition-all hover:text-destructive sm:h-7 sm:w-7 sm:opacity-0 sm:group-hover:opacity-100">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+      {/* Sections, grouped by store first (when items span more than one), then store walk order */}
+      {storeSections.map(section => (
+        <div key={section.storeId} className="space-y-3">
+          {multiStore && (
+            <div className="flex items-center gap-1.5 pt-1 px-1">
+              <Store className="w-3.5 h-3.5 text-primary" />
+              <h3 className="text-sm font-bold text-foreground">{section.storeName}</h3>
+            </div>
+          )}
+          {section.bySection.map(group => (
+            <div key={group.key}>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-1">
+                {group.label}
+              </p>
+              <div className="space-y-1.5">
+                {group.items.map(item => (
+                  <div
+                    key={item.id}
+                    role="checkbox"
+                    aria-checked={false}
+                    tabIndex={0}
+                    onClick={() => handleCheck(item)}
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleCheck(item); } }}
+                    className="flex items-center gap-3 px-3 py-3.5 min-h-14 bg-card rounded-xl border border-border/60 group hover:border-border active:bg-muted/50 transition-colors cursor-pointer select-none"
+                  >
+                    <span className="w-7 h-7 rounded-full border-2 border-border flex items-center justify-center shrink-0 group-hover:border-primary group-active:border-primary transition-colors" />
+                    <span className="flex-1 text-sm font-medium">{item.name}</span>
+                    {item.quantity && <span className="text-xs text-muted-foreground font-medium">{item.quantity}</span>}
+                    {stores.length > 1 && (
+                      <GroceryItemStoreButton item={item} stores={stores} defaultStore={store} onChange={storeId => handleSetItemStore(item, storeId)} />
+                    )}
+                    <button onClick={e => { e.stopPropagation(); handleDelete(item.id); }} aria-label={`Delete ${item.name}`} className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-muted-foreground opacity-100 transition-all hover:text-destructive sm:h-7 sm:w-7 sm:opacity-0 sm:group-hover:opacity-100">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       ))}
 
