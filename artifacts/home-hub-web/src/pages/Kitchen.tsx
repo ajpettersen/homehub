@@ -2166,7 +2166,7 @@ export default function Meals() {
               <p className="text-sm text-muted-foreground">Your saved family favorites</p>
             </div>
           </div>
-          <CookbookSection propertyId={propertyIdStr} onUseRecipe={handleUseRecipe} inventory={inventory ?? []} focusRecipeName={openRecipeName} onClearFocus={() => setOpenRecipeName(null)} />
+          <CookbookSection propertyId={propertyIdStr} onUseRecipe={handleUseRecipe} inventory={inventory ?? []} focusRecipeName={openRecipeName} onClearFocus={() => setOpenRecipeName(null)} thisWeeksMealNames={[...new Set((meals ?? []).map(m => m.meal))]} />
         </div>
       )}
 
@@ -2227,7 +2227,7 @@ async function fetchAndSaveAiRecipeDetails(
   });
 }
 
-function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, onClearFocus }: { propertyId: string; onUseRecipe?: (name: string) => void; inventory?: KitchenInventoryItem[]; focusRecipeName?: string | null; onClearFocus?: () => void }) {
+function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, onClearFocus, thisWeeksMealNames }: { propertyId: string; onUseRecipe?: (name: string) => void; inventory?: KitchenInventoryItem[]; focusRecipeName?: string | null; onClearFocus?: () => void; thisWeeksMealNames?: string[] }) {
   const queryClient = useQueryClient();
   const params = { propertyId };
   const { data: recipes, isLoading } = useGetRecipes(params, { query: { queryKey: getGetRecipesQueryKey(params) } });
@@ -2246,6 +2246,8 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<Record<string, string>>({});
   const [cookingRecipeId, setCookingRecipeId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [scrollToId, setScrollToId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [noteError, setNoteError] = useState("");
@@ -2255,7 +2257,9 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
     if (focusRecipeName && recipes) {
       const found = recipes.find(r => r.name.toLowerCase() === focusRecipeName.toLowerCase());
       if (found) {
+        setSearchQuery("");
         setExpandedId(found.id);
+        setScrollToId(found.id);
         if (found.sourceType === "ai" && found.instructions.length === 0) {
           void generateRecipeDetails(found);
         }
@@ -2263,6 +2267,13 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
       onClearFocus?.();
     }
   }, [focusRecipeName, recipes]); // onClearFocus omitted to prevent loops
+
+  React.useEffect(() => {
+    if (!scrollToId) return;
+    const el = document.getElementById(`recipe-${scrollToId}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setScrollToId(null);
+  }, [scrollToId]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetRecipesQueryKey(params) });
 
@@ -2349,6 +2360,12 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
     );
   }
 
+  const thisWeekSet = new Set((thisWeeksMealNames ?? []).map(n => n.toLowerCase().trim()));
+  const query = searchQuery.trim().toLowerCase();
+  const matchingRecipes = (recipes ?? []).filter(r => !query || r.name.toLowerCase().includes(query));
+  const thisWeekRecipes = matchingRecipes.filter(r => thisWeekSet.has(r.name.toLowerCase().trim()));
+  const otherRecipes = matchingRecipes.filter(r => !thisWeekSet.has(r.name.toLowerCase().trim()));
+
   return (
     <div className="space-y-4 max-w-2xl">
       {/* Header */}
@@ -2365,6 +2382,29 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
           <Plus className="w-3.5 h-3.5" /> Add Recipe
         </button>
       </div>
+
+      {/* Search */}
+      {(recipes?.length ?? 0) > 0 && (
+        <div className="relative">
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search your cookbook…"
+            className="w-full bg-background border border-border rounded-xl pl-9 pr-8 py-2.5 text-sm focus:outline-none focus:border-primary font-medium"
+          />
+          <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Add form */}
       {adding && (
@@ -2425,15 +2465,29 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
         </div>
       )}
 
+      {(recipes?.length ?? 0) > 0 && matchingRecipes.length === 0 && (
+        <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
+          <BookOpen className="w-8 h-8 opacity-20" />
+          <p className="text-sm font-medium">No recipes match "{searchQuery}"</p>
+        </div>
+      )}
+
       <div className="space-y-3">
-        {(recipes ?? []).map(recipe => {
+        {[...thisWeekRecipes, ...otherRecipes].map((recipe, index) => {
           const ratingBadge = recipe.aggregateRating ? RATING_BADGE[recipe.aggregateRating] : null;
           const isExpanded = expandedId === recipe.id;
           const isEditingNotes = editingId === recipe.id;
 
           return (
+            <React.Fragment key={recipe.id}>
+            {index === 0 && thisWeekRecipes.length > 0 && (
+              <p className="text-xs font-bold text-primary uppercase tracking-wider px-1">This Week</p>
+            )}
+            {index === thisWeekRecipes.length && thisWeekRecipes.length > 0 && otherRecipes.length > 0 && (
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1 pt-2">All Recipes</p>
+            )}
             <div
-              key={recipe.id}
+              id={`recipe-${recipe.id}`}
               className="bg-card border border-border/60 rounded-2xl overflow-hidden hover:border-border transition-colors"
             >
               {/* Top row */}
@@ -2637,6 +2691,7 @@ function CookbookSection({ propertyId, onUseRecipe, inventory, focusRecipeName, 
                 </div>
               )}
             </div>
+            </React.Fragment>
           );
         })}
       </div>
