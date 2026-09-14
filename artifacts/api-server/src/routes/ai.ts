@@ -19,7 +19,7 @@ import {
   chatMessageAttachmentsTable,
   chatAttachmentCleanupQueueTable,
 } from "@workspace/db/schema";
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   getPropertyAuthorizationScope,
   type PropertyAuthorizationScope,
@@ -1715,11 +1715,46 @@ Tone: Friendly, direct, practical. Use bullet points and short paragraphs. Be sp
       pendingObjectPaths.push(stored.objectPath);
     }
 
+    // A photo shared earlier in this conversation still visibly sits in the
+    // chat thread, so a follow-up like "plan meals with what's in that
+    // photo" reads as a reasonable ask — but without this, only the exact
+    // turn a photo was uploaded ever actually sent it to the model. When no
+    // new photo comes in this turn, carry forward the most recent photo(s)
+    // this household shared within the last 2 hours (long enough to cover a
+    // real back-and-forth, short enough not to resurface a stale pantry
+    // photo from weeks ago).
+    let carriedForwardImages: string[] = [];
+    if (trimmedImages.length === 0) {
+      const [recentAttachment] = await db
+        .select({ chatMessageId: chatMessageAttachmentsTable.chatMessageId })
+        .from(chatMessageAttachmentsTable)
+        .innerJoin(chatMessagesTable, eq(chatMessagesTable.id, chatMessageAttachmentsTable.chatMessageId))
+        .where(and(
+          eq(chatMessagesTable.householdId, scope.householdId),
+          eq(chatMessagesTable.role, "user"),
+          gte(chatMessagesTable.createdAt, new Date(Date.now() - 2 * 60 * 60 * 1000)),
+        ))
+        .orderBy(desc(chatMessageAttachmentsTable.id))
+        .limit(1);
+      if (recentAttachment) {
+        const attachmentRows = await db
+          .select({ objectPath: chatMessageAttachmentsTable.objectPath })
+          .from(chatMessageAttachmentsTable)
+          .where(eq(chatMessageAttachmentsTable.chatMessageId, recentAttachment.chatMessageId))
+          .limit(MAX_IMAGES);
+        for (const row of attachmentRows) {
+          const blob = await getChatAttachment(row.objectPath);
+          if (blob) carriedForwardImages.push(`data:${blob.mimeType};base64,${blob.bytes.toString("base64")}`);
+        }
+      }
+    }
+    const effectiveImages = trimmedImages.length > 0 ? trimmedImages : carriedForwardImages;
+
     // Build messages with optional vision blocks on the last user message
     const builtMessages: any[] = trimmedMessages.map((m, idx, arr) => {
       const isLast = idx === arr.length - 1;
-      if (isLast && m.role === "user" && trimmedImages.length > 0) {
-        const imgBlocks = trimmedImages.map(raw => ({
+      if (isLast && m.role === "user" && effectiveImages.length > 0) {
+        const imgBlocks = effectiveImages.map(raw => ({
           type: "image_url" as const,
           image_url: {
             url: raw.startsWith("data:") ? raw : `data:${detectMimeType(raw)};base64,${raw}`,
