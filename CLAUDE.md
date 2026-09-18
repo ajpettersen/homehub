@@ -64,12 +64,21 @@ keys), not a paid production tier, which is important:
 
 - **Meal plan weeks are Monday-based, everywhere, in UTC.** See
   `mondayForDate` (`routes/ai.ts`), `mondayOfWeek` (frontend, `Kitchen.tsx`),
-  and `weekStartString` (`lib/aiLiveContext.ts`). These must all agree, or
-  queries against `mealPlansTable.weekStart` silently return nothing for the
-  real current week. (This was actually broken — `aiLiveContext.ts` used a
-  Sunday-based, local-timezone calculation until it was fixed; if the AI
-  assistant's live snapshot of the week's meals ever looks empty again when
-  it shouldn't, check this first.)
+  `weekStartString` (`lib/aiLiveContext.ts`), `mondayOf`
+  (`routes/dashboard.ts`), and `startOfWeek(…, { weekStartsOn: 1 })` in the
+  mobile app's `kitchen.tsx`. These must all agree, or queries against
+  `mealPlansTable.weekStart` silently return nothing for the real current
+  week — the server doesn't reject a non-Monday `weekStart`. (This has broken
+  three times: `aiLiveContext.ts`, the dashboard route, and the mobile
+  planner each used Sunday weeks until fixed. If meals look empty somewhere
+  they shouldn't, check this first.)
+- **"Today" is the household's local day, not the server's.** The server
+  runs in UTC, which is already tomorrow during US evenings. Routes that
+  care take an optional IANA `timezone` (query param or body) and use
+  `dateInMaintenanceTimeZone` / `addMaintenanceDays` from
+  `lib/maintenanceDates.ts`; clients send `getResolvedTimeZone()` (web) or
+  `getDeviceTimeZone()` (mobile). Never use `new Date().toISOString()` for a
+  calendar date.
 - Recipes saved with `sourceType: "ai"` and empty `instructions` are expected
   to get their real ingredients/instructions filled in automatically (see
   `fetchAndSaveAiRecipeDetails` in `Kitchen.tsx`, and the same logic reused
