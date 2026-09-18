@@ -9,6 +9,7 @@ import {
   type Person, type Contractor
 } from "@workspace/api-client-react";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
+import { getLocalDateOnly } from "@/lib/dateOnly";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Check,
@@ -76,7 +77,7 @@ function initials(name: string) {
 
 function followUpLabel(date: string | null) {
   if (!date) return null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDateOnly();
   if (date < today) return "Follow-up overdue";
   if (date === today) return "Follow up today";
   return `Follow up ${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
@@ -310,7 +311,7 @@ function PersonCard({ person, onEdit, onDelete }: { person: Person; onEdit: () =
               <p className="mt-1 text-xs text-muted-foreground">No group added yet</p>
             )}
           </div>
-          <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <div className="flex shrink-0 gap-1 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100">
             <button onClick={onEdit} title={`Edit ${person.name}`} aria-label={`Edit ${person.name}`} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary">
               <Pencil className="w-3.5 h-3.5" />
             </button>
@@ -337,7 +338,7 @@ function PersonCard({ person, onEdit, onDelete }: { person: Person; onEdit: () =
           <p className="mt-3 border-t border-border/70 pt-3 text-sm leading-relaxed text-muted-foreground">{person.notes}</p>
         )}
         {followUp && (
-          <div className={`mt-3 flex items-center gap-1.5 text-xs font-bold ${person.nextFollowUpAt! < new Date().toISOString().slice(0, 10) ? "text-destructive" : "text-primary"}`}>
+          <div className={`mt-3 flex items-center gap-1.5 text-xs font-bold ${person.nextFollowUpAt! < getLocalDateOnly() ? "text-destructive" : "text-primary"}`}>
             <CalendarClock className="w-3.5 h-3.5" /> {followUp}
           </div>
         )}
@@ -448,7 +449,7 @@ function ContractorCard({ contractor, onEdit, onDelete }: { contractor: Contract
             </div>
             <p className="mt-0.5 text-sm font-semibold text-primary">{contractor.trade}</p>
           </div>
-          <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <div className="flex shrink-0 gap-1 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100">
             <button onClick={onEdit} title={`Edit ${contractor.name}`} aria-label={`Edit ${contractor.name}`} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button>
             <button onClick={onDelete} title={`Remove ${contractor.name}`} aria-label={`Remove ${contractor.name}`} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>
@@ -572,7 +573,7 @@ export default function People() {
   };
 
   const dueFollowUps = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateOnly();
     return people.filter(person => person.nextFollowUpAt && person.nextFollowUpAt <= today)
       .sort((a, b) => (a.nextFollowUpAt ?? "").localeCompare(b.nextFollowUpAt ?? ""));
   }, [people]);
@@ -785,8 +786,8 @@ export default function People() {
                       {person.phone && <a href={`tel:${person.phone}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"><Phone className="h-4 w-4" /></a>}
                       {person.email && <a href={`mailto:${person.email}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"><Mail className="h-4 w-4" /></a>}
                     </div>
-                    <button onClick={() => startEdit(person)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-primary/10 hover:text-primary group-hover:opacity-100 focus:opacity-100"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => deletePerson(person)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus:opacity-100"><Trash2 className="h-4 w-4" /></button>
+                    <button onClick={() => startEdit(person)} aria-label={`Edit ${person.name}`} title={`Edit ${person.name}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-100 transition-opacity hover:bg-primary/10 hover:text-primary lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100"><Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => deletePerson(person)} aria-label={`Remove ${person.name}`} title={`Remove ${person.name}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
               ))}
