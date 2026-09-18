@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle2, Clock, Utensils, AlertTriangle, CheckSquare,
-  Sparkles, Send, Paperclip, X, Loader2, Brain, ChevronDown, Bell, Check,
+  Sparkles, Send, Paperclip, X, Loader2, Brain, ChevronDown, ChevronUp, Bell, Check, MessageSquare,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateOnly } from "@/lib/dateOnly";
@@ -82,8 +82,11 @@ function ThinkingBubble() {
   );
 }
 
-function HouseholdChat() {
+// Collapsed, the assistant is a single ask bar so past conversations don't
+// crowd the overview; sending a message (or tapping "Continue") opens it.
+function HouseholdChat({ defaultExpanded }: { defaultExpanded: boolean }) {
   const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [images, setImages] = useState<string[]>([]);
@@ -119,7 +122,7 @@ function HouseholdChat() {
     const el = messagesScrollRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, expanded]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -202,6 +205,7 @@ function HouseholdChat() {
     const userMsg: Message = { role: "user", content: text.trim(), images: imagesToUse.length > 0 ? [...imagesToUse] : undefined };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
+    setExpanded(true);
     setInput("");
     if (textareaRef.current) {
       textareaRef.current.style.height = "44px";
@@ -283,55 +287,64 @@ function HouseholdChat() {
   };
 
   const isEmpty = !historyLoading && !historyError && messages.length === 0;
+  const showConversation = expanded || historyError;
 
   return (
     <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-gradient-to-r from-primary/5 to-transparent">
-        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-          <Sparkles className="w-4.5 h-4.5 text-primary" />
-        </div>
-        <div>
-          <h2 className="font-serif font-bold text-lg text-foreground leading-tight">HomeHub Assistant</h2>
-          <p className="text-xs text-muted-foreground">Ask anything — workouts, meals, maintenance, family life</p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {/* Memory toggle */}
-          <button
-            onClick={() => setMemoryOpen(v => !v)}
-            className={`flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl text-sm font-semibold transition-all border ${
-              memoryOpen
-                ? "bg-primary/10 text-primary border-primary/20"
-                : "text-muted-foreground border-border hover:text-primary hover:border-primary/30 hover:bg-primary/5"
-            }`}
-            title="View what the assistant remembers"
-          >
-            <Brain className="w-4 h-4" />
-            {memories.length > 0 ? `${memories.length} memories` : "No memories"}
-            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${memoryOpen ? "rotate-180" : ""}`} />
-          </button>
-          {messages.length > 0 && (
-            <div className="flex items-center">
-              {clearHistoryError && (
-                <div className="flex items-center gap-1.5 text-[11px] text-destructive font-medium mr-2" role="alert">
-                  <AlertTriangle className="w-3 h-3" /> Could not clear.
-                  <button onClick={clearHistory} disabled={clearingHistory} className="underline underline-offset-2 p-1">Retry</button>
-                </div>
-              )}
+      {expanded ? (
+        <div className="flex flex-wrap items-center gap-x-2 pl-5 pr-2 border-b border-border">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Sparkles className="w-4 h-4 text-primary" /> HomeHub Assistant
+          </h2>
+          <div className="ml-auto flex items-center">
+            {clearHistoryError && (
+              <div className="flex items-center gap-1.5 text-[11px] text-destructive font-medium mr-1" role="alert">
+                <AlertTriangle className="w-3 h-3" /> Could not clear.
+                <button onClick={clearHistory} disabled={clearingHistory} className="underline underline-offset-2 p-1">Retry</button>
+              </div>
+            )}
+            <button
+              onClick={() => setMemoryOpen(v => !v)}
+              aria-expanded={memoryOpen}
+              className={`flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl text-xs font-semibold transition-colors ${
+                memoryOpen ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary hover:bg-primary/5"
+              }`}
+              title="View what the assistant remembers"
+            >
+              <Brain className="w-4 h-4" />
+              {memories.length > 0 ? `${memories.length} memories` : "Memories"}
+            </button>
+            {messages.length > 0 && (
               <button
                 onClick={clearHistory}
                 disabled={clearingHistory || loading}
-                className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors px-3 min-h-[44px] rounded-xl hover:bg-muted disabled:opacity-40"
+                className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors px-3 min-h-[44px] rounded-xl hover:bg-muted disabled:opacity-40"
               >
                 {clearingHistory ? "Clearing…" : "Clear"}
               </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={() => { setExpanded(false); setMemoryOpen(false); }}
+              className="flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors px-3 min-h-[44px] rounded-xl hover:bg-muted"
+            >
+              <ChevronUp className="w-4 h-4" /> Hide
+            </button>
+          </div>
         </div>
-      </div>
+      ) : messages.length > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="flex w-full items-center gap-2 px-5 min-h-[44px] border-b border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        >
+          <MessageSquare className="w-4 h-4" />
+          Continue your conversation
+          <span className="font-normal">· {messages.length} message{messages.length === 1 ? "" : "s"}</span>
+          <ChevronDown className="w-4 h-4 ml-auto" />
+        </button>
+      )}
 
       {/* Memory panel */}
-      {memoryOpen && (
+      {expanded && memoryOpen && (
         <div className="border-b border-border bg-primary/3 px-5 py-3">
           <p className="text-[11px] font-semibold text-primary/70 uppercase tracking-wider mb-2">
             What I know about your family
@@ -396,7 +409,7 @@ function HouseholdChat() {
       )}
 
       {/* Messages */}
-      <div
+      {showConversation && <div
         ref={messagesScrollRef}
         className={`overflow-y-auto overscroll-contain px-5 transition-all ${isEmpty && !historyError ? "h-0" : "max-h-[480px] py-4"}`}
       >
@@ -439,10 +452,10 @@ function HouseholdChat() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* Empty state hint */}
-      {isEmpty && (
+      {expanded && isEmpty && (
         <div className="px-5 pb-3 pt-1">
           <p className="text-xs text-muted-foreground">
             Ask anything —{" "}
@@ -464,7 +477,8 @@ function HouseholdChat() {
               <img src={src} alt="preview" className="w-16 h-16 rounded-xl object-cover border border-border" />
               <button
                 onClick={() => setImages(imgs => imgs.filter((_, j) => j !== i))}
-                className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                aria-label="Remove photo"
+                className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                 <X className="w-3 h-3" />
               </button>
             </div>
@@ -473,7 +487,8 @@ function HouseholdChat() {
       )}
 
       {/* Input bar */}
-      <div className="px-4 py-3 border-t border-border flex items-end gap-2 bg-card">
+      <div className={`px-4 py-3 flex items-end gap-2 bg-card ${showConversation ? "border-t border-border" : ""}`}>
+        {!expanded && <Sparkles className="w-4 h-4 text-primary shrink-0 self-center" aria-hidden="true" />}
         <button
           onClick={() => fileRef.current?.click()}
           className="w-11 h-11 flex items-center justify-center rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
@@ -490,7 +505,8 @@ function HouseholdChat() {
           onChange={e => { setInput(e.target.value); autoResize(); }}
           onKeyDown={handleKeyDown}
           disabled={historyLoading || loading}
-          placeholder="Ask anything… or attach a photo"
+          placeholder={expanded ? "Ask anything… or attach a photo" : "Ask HomeHub anything…"}
+          aria-label="Ask the HomeHub Assistant"
           rows={1}
           className="flex-1 bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-base resize-none focus:outline-none focus:border-primary transition-colors min-h-[44px] max-h-[120px]"
           style={{ height: "44px" }}
@@ -697,7 +713,7 @@ export default function Dashboard() {
 
       {/* HomeHub Assistant */}
       <div className={preferences.tabs.home.focus === "assistant" ? "order-1" : "order-2"}>
-        <HouseholdChat />
+        <HouseholdChat defaultExpanded={preferences.tabs.home.focus === "assistant"} />
       </div>
 
       {/* Main content */}
