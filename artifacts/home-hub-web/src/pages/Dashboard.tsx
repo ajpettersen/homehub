@@ -5,7 +5,7 @@ import {
   getGetDashboardQueryKey, getGetOverdueWorkoutSessionsQueryKey, getGetWorkoutsQueryKey, getGetWorkoutSessionsQueryKey,
   useListAiMemories, getListAiMemoriesQueryKey, useDeleteAiMemory,
   getGetChoresQueryKey, getGetMealPlansQueryKey, getGetGroceryListsQueryKey,
-  getGetMaintenanceTasksQueryKey
+  getGetMaintenanceTasksQueryKey, useGetMe, getGetMeQueryKey
 } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,12 @@ import {
 import { format } from "date-fns";
 import { formatDateOnly } from "@/lib/dateOnly";
 import { usePreferences } from "@/context/PreferencesContext";
+
+function greeting(hour: number, name?: string | null): string {
+  const part = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+  const firstName = name?.trim().split(/\s+/)[0];
+  return firstName ? `Good ${part}, ${firstName}!` : `Good ${part}!`;
+}
 
 function memorySourceLabel(source?: string | null): string | null {
   if (source === "meals") return "from meal ratings";
@@ -542,6 +548,7 @@ function overdueWorkoutQuestion(scheduledDate: string | null, workoutDate: strin
 export default function Dashboard() {
   const { preferences } = usePreferences();
   const queryClient = useQueryClient();
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const {
     data: dashboard,
     isLoading,
@@ -601,7 +608,7 @@ export default function Dashboard() {
     <div className="flex flex-col space-y-8">
       <div>
         <h1 className="text-4xl font-serif font-bold text-foreground mb-2">
-          Good {new Date().getHours() < 12 ? "morning" : "afternoon"}, Family!
+          {greeting(new Date().getHours(), me?.linkedFamilyMemberName)}
         </h1>
         <p className="text-muted-foreground text-lg">Here's what's happening around the house today.</p>
       </div>
