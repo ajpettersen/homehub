@@ -321,7 +321,7 @@ function MealSlot({
   onEdit: (id: string, text: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onNote: (id: string, notes: string) => Promise<void>;
-  onSaveToCookbook: (name: string, sourceUrl?: string) => void;
+  onSaveToCookbook: (name: string, sourceUrl?: string) => Promise<void>;
   onImportUrl: (recipe: ImportedUrlRecipe, sourceUrl: string) => Promise<void>;
   propertyId: string;
   cookbookNames: Set<string>;
@@ -601,9 +601,14 @@ function MealSlot({
         {showSavePrompt && !inCookbook && (
           <SaveToCookbookPrompt
             mealName={meal.meal}
-            onSave={() => {
-              onSaveToCookbook(meal.meal, pendingUrl);
-              setShowSavePrompt(false);
+            onSave={async () => {
+              setMealError("");
+              try {
+                await onSaveToCookbook(meal.meal, pendingUrl);
+                setShowSavePrompt(false);
+              } catch (err: any) {
+                setMealError(err.message || "Couldn't save to the cookbook. Please try again.");
+              }
             }}
             onDismiss={() => setShowSavePrompt(false)}
           />
@@ -1665,11 +1670,12 @@ export default function Meals() {
     invalidateMeals();
   };
 
-  const handleSaveToCookbook = (name: string, sourceUrl?: string) => {
-    if (!houseProperty) return;
+  const handleSaveToCookbook = async (name: string, sourceUrl?: string) => {
+    if (!houseProperty) throw new Error("Add a home property in Settings to save recipes.");
     if (cookbookNames.has(name.toLowerCase().trim())) return;
-    createRecipe.mutate(
-      {
+    let saved;
+    try {
+      saved = await createRecipe.mutateAsync({
         data: {
           name,
           propertyId: String(houseProperty.id),
@@ -1680,20 +1686,18 @@ export default function Meals() {
           // later (if generation hasn't finished yet) retries automatically.
           sourceType: "ai",
         },
-      },
-      {
-        onSuccess: (saved) => {
-          invalidateRecipes();
-          // Fire-and-forget: fills in the recipe in the background. If it
-          // fails (or the tab closes mid-request), opening the entry later
-          // in the Cookbook retries automatically, since it's still marked
-          // AI-sourced with no instructions yet.
-          void fetchAndSaveAiRecipeDetails(saved, (args) => updateRecipe.mutateAsync(args))
-            .then(invalidateRecipes)
-            .catch(() => {});
-        },
-      }
-    );
+      });
+    } catch {
+      throw new Error("Couldn't save to the cookbook. Please try again.");
+    }
+    invalidateRecipes();
+    // Fire-and-forget: fills in the recipe in the background. If it
+    // fails (or the tab closes mid-request), opening the entry later
+    // in the Cookbook retries automatically, since it's still marked
+    // AI-sourced with no instructions yet.
+    void fetchAndSaveAiRecipeDetails(saved, (args) => updateRecipe.mutateAsync(args))
+      .then(invalidateRecipes)
+      .catch(() => {});
   };
 
   const handleImportUrlRecipe = async (
