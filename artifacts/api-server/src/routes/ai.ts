@@ -35,6 +35,7 @@ import {
   formatLiveSnapshot,
   getLiveHouseholdSnapshot,
 } from "../lib/aiLiveContext";
+import { dateInMaintenanceTimeZone, resolveMaintenanceTimeZone } from "../lib/maintenanceDates";
 import { isBlockedIPv4, isBlockedIPv6 } from "../lib/ipAddress";
 import {
   MAINTENANCE_CATALOG,
@@ -1617,10 +1618,16 @@ Respond ONLY with valid JSON — no markdown, no extra text:
 router.post("/ai/chat", async (req, res) => {
   const pendingObjectPaths: string[] = [];
   try {
-    const { messages, images } = req.body as {
+    const { messages, images, timezone } = req.body as {
       messages: { role: "user" | "assistant"; content: string }[];
       images?: string[];
+      timezone?: unknown;
     };
+    const timeZone = resolveMaintenanceTimeZone(timezone);
+    if (!timeZone) {
+      res.status(400).json({ error: "Invalid timezone" });
+      return;
+    }
 
     if (!Array.isArray(messages) || messages.length === 0) {
       res.status(400).json({ error: "messages required" });
@@ -1633,7 +1640,10 @@ router.post("/ai/chat", async (req, res) => {
     const MAX_MESSAGES = 12;
     const MAX_MSG_LEN = 2000;
     const MAX_IMAGES = 4;
-    const snapshotNow = new Date();
+    // Noon UTC on the household's local calendar day. Everything downstream
+    // (live snapshot, "today" in the prompt, action dates) only reads the
+    // UTC date from this, which otherwise rolls to tomorrow on US evenings.
+    const snapshotNow = new Date(`${dateInMaintenanceTimeZone(timeZone)}T12:00:00Z`);
 
     const [members, properties, memoriesCtx, peopleCtx, existingRows, liveSnapshot, groceryLists] = await Promise.all([
       db.select().from(familyMembersTable).where(eq(familyMembersTable.householdId, scope.householdId)),

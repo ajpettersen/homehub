@@ -233,6 +233,7 @@ function HouseholdChat({ defaultExpanded }: { defaultExpanded: boolean }) {
         body: JSON.stringify({
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
           images: userMsg.images,
+          timezone: getResolvedTimeZone(),
         }),
       });
       const data = await res.json();

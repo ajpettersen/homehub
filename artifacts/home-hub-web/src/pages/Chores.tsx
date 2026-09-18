@@ -35,6 +35,12 @@ const FREQUENCIES: { value: Frequency; label: string }[] = [
 
 // ── utility ───────────────────────────────────────────────────────────────────
 
+// The API's isOverdue compares against the server's UTC day, which is already
+// tomorrow during US evenings; compare against the viewer's local day instead.
+function isChoreOverdue(chore: { completedAt?: string | null; dueDate?: string | null }): boolean {
+  return !chore.completedAt && !!chore.dueDate && chore.dueDate < getLocalDateOnly();
+}
+
 function formatMoney(cents: number) {
   return `$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
@@ -67,7 +73,7 @@ function ChoreCard({
   const [pickedDate, setPickedDate] = useState(chore.dueDate ?? getLocalDateOnly());
   const isDone = chore.status === "approved";
   const isPending = chore.status === "pending";
-  const overdue = chore.status === "open" && chore.isOverdue;
+  const overdue = chore.status === "open" && isChoreOverdue(chore);
   const dueToday = chore.status === "open" && chore.dueDate && isToday(parseISO(chore.dueDate));
   const hasReward = chore.rewardCents > 0;
 
@@ -711,8 +717,10 @@ export default function Chores() {
       if (a.status === "pending" && b.status !== "pending") return -1;
       if (b.status === "pending" && a.status !== "pending") return 1;
 
-      if (a.isOverdue && !b.isOverdue) return -1;
-      if (b.isOverdue && !a.isOverdue) return 1;
+      const aOverdue = isChoreOverdue(a);
+      const bOverdue = isChoreOverdue(b);
+      if (aOverdue && !bOverdue) return -1;
+      if (bOverdue && !aOverdue) return 1;
 
       if (!a.dueDate && b.dueDate) return 1;
       if (a.dueDate && !b.dueDate) return -1;
