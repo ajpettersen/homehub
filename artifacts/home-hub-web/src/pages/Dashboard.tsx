@@ -5,7 +5,7 @@ import {
   getGetDashboardQueryKey, getGetOverdueWorkoutSessionsQueryKey, getGetWorkoutsQueryKey, getGetWorkoutSessionsQueryKey,
   useListAiMemories, getListAiMemoriesQueryKey, useDeleteAiMemory,
   getGetChoresQueryKey, getGetMealPlansQueryKey, getGetGroceryListsQueryKey,
-  getGetMaintenanceTasksQueryKey, useGetMe, getGetMeQueryKey
+  getGetMaintenanceTasksQueryKey, useGetMe, getGetMeQueryKey, type HomeHubWebTab
 } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -549,6 +549,15 @@ export default function Dashboard() {
   const { preferences } = usePreferences();
   const queryClient = useQueryClient();
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  // Match the nav: sections for tabs the household turned off stay hidden here too.
+  const tabOn = (tab: HomeHubWebTab) => !me?.visibleTabs || me.visibleTabs.includes(tab);
+  const showChores = tabOn("chores");
+  const showMeals = tabOn("meals");
+  const showTodos = tabOn("tasks");
+  const showMaintenance = tabOn("properties");
+  const showWorkouts = tabOn("workouts");
+  const showTasksArea = showTodos || showMaintenance;
+  const summaryCardCount = [showChores, showMeals, showTasksArea].filter(Boolean).length;
   const {
     data: dashboard,
     isLoading,
@@ -614,7 +623,7 @@ export default function Dashboard() {
       </div>
 
       {/* Workout follow-up */}
-      {overdueLoading ? (
+      {!showWorkouts ? null : overdueLoading ? (
         <div className="h-36 rounded-2xl bg-muted animate-pulse" data-testid="loading-overdue-workout" />
       ) : overdueWorkout ? (
         <aside className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 to-amber-100/50 p-5 shadow-sm" data-testid={`overdue-workout-${overdueWorkout.id}`}>
@@ -665,8 +674,8 @@ export default function Dashboard() {
       ) : null}
 
       {/* Summary cards */}
-      <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 ${preferences.tabs.home.focus === "assistant" ? "order-2" : "order-1"}`}>
-        <Link href="/chores" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+      {summaryCardCount > 0 && <div className={`grid grid-cols-1 ${summaryCardCount === 3 ? "md:grid-cols-3" : summaryCardCount === 2 ? "md:grid-cols-2" : ""} gap-6 ${preferences.tabs.home.focus === "assistant" ? "order-2" : "order-1"}`}>
+        {showChores && <Link href="/chores" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
           <Card className="bg-primary/10 border-primary/20 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
             <div className="absolute -right-4 -top-4 opacity-10"><CheckCircle2 className="w-32 h-32" /></div>
             <CardHeader className="pb-2">
@@ -682,9 +691,9 @@ export default function Dashboard() {
               <p className="text-xs font-semibold text-primary/70 mt-3">View chores →</p>
             </CardContent>
           </Card>
-        </Link>
+        </Link>}
 
-        <Link href="/meals" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+        {showMeals && <Link href="/meals" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
           <Card className="bg-secondary/10 border-secondary/20 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
             <div className="absolute -right-4 -top-4 opacity-10"><Utensils className="w-32 h-32" /></div>
             <CardHeader className="pb-2">
@@ -695,28 +704,30 @@ export default function Dashboard() {
               <p className="text-xs font-semibold text-secondary/70 mt-3">Open meal plan →</p>
             </CardContent>
           </Card>
-        </Link>
+        </Link>}
 
-        <Link href="/tasks" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+        {showTasksArea && <Link href={showTodos ? "/tasks" : "/tasks?view=maintenance"} className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
           <Card className="bg-accent/20 border-accent/30 shadow-sm relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer">
             <div className="absolute -right-4 -top-4 opacity-10 text-accent-foreground"><CheckSquare className="w-32 h-32" /></div>
             <CardHeader className="pb-2">
-              <CardTitle className="text-accent-foreground text-sm uppercase tracking-wider font-sans">Tasks</CardTitle>
+              <CardTitle className="text-accent-foreground text-sm uppercase tracking-wider font-sans">{showTodos ? "Tasks" : "Maintenance"}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-baseline gap-2">
-                <div className="text-5xl font-serif font-bold text-accent-foreground">{dashboard.activeTodoItems + dashboard.maintenanceDueSoon}</div>
+                <div className="text-5xl font-serif font-bold text-accent-foreground">{(showTodos ? dashboard.activeTodoItems : 0) + (showMaintenance ? dashboard.maintenanceDueSoon : 0)}</div>
               </div>
-              {dashboard.maintenanceOverdue > 0 && (
+              {showMaintenance && dashboard.maintenanceOverdue > 0 && (
                 <p className="text-sm font-medium text-destructive mt-2 flex items-center gap-1">
                   <AlertTriangle className="w-4 h-4" /> {dashboard.maintenanceOverdue} maintenance overdue
                 </p>
               )}
-              <p className="text-xs font-semibold text-accent-foreground/70 mt-3">View to-dos and maintenance →</p>
+              <p className="text-xs font-semibold text-accent-foreground/70 mt-3">
+                {showTodos && showMaintenance ? "View to-dos and maintenance →" : showTodos ? "View to-dos →" : "View maintenance →"}
+              </p>
             </CardContent>
           </Card>
-        </Link>
-      </div>
+        </Link>}
+      </div>}
 
       {/* HomeHub Assistant */}
       <div className={preferences.tabs.home.focus === "assistant" ? "order-1" : "order-2"}>
@@ -724,8 +735,8 @@ export default function Dashboard() {
       </div>
 
       {/* Main content */}
-      <div className="order-3 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="space-y-6">
+      {(showMeals || showTasksArea) && <div className={`order-3 grid grid-cols-1 ${showMeals && showTasksArea ? "lg:grid-cols-2" : ""} gap-8`}>
+        {showMeals && <div className="space-y-6">
           <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2 inline-block">On the Menu</h2>
           {dashboard.todaysMeals.length === 0 ? (
             <Link href="/meals" className="block p-6 border-2 border-dashed border-border rounded-2xl text-center hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -749,12 +760,14 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </div>}
 
-        <div className="space-y-6">
-          <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2 inline-block">Tasks & Maintenance</h2>
+        {showTasksArea && <div className="space-y-6">
+          <h2 className="text-2xl font-serif font-semibold border-b-2 border-border pb-2 inline-block">
+            {showTodos && showMaintenance ? "Tasks & Maintenance" : showTodos ? "Tasks" : "Maintenance"}
+          </h2>
 
-          <Link href="/tasks?view=todos" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 mb-6">
+          {showTodos && <Link href="/tasks?view=todos" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 mb-6">
             <Card className="border-l-4 border-l-accent transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer bg-accent/5 border-border">
               <CardContent className="p-4 flex items-center gap-4">
                 <div className="flex-1">
@@ -770,9 +783,9 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
-          </Link>
+          </Link>}
 
-          {dashboard.upcomingMaintenance.length === 0 ? (
+          {!showMaintenance ? null : dashboard.upcomingMaintenance.length === 0 ? (
             <Link href="/tasks?view=maintenance" className="block p-6 border-2 border-dashed border-border rounded-2xl text-center hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               <p className="text-muted-foreground">House is in top shape!</p>
               <p className="text-xs font-semibold text-primary mt-2">View property maintenance →</p>
@@ -799,8 +812,8 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
-      </div>
+        </div>}
+      </div>}
     </div>
   );
 }
