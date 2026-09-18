@@ -9,4 +9,8 @@
 export type GetChoresParams = {
 assigneeId?: string;
 propertyId?: string;
+/**
+ * IANA timezone used to decide which chores are overdue; defaults to UTC for legacy clients.
+ */
+timezone?: string;
 };

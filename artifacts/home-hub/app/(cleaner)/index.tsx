@@ -22,6 +22,7 @@ import {
   type Chore,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
+import { getDeviceTimeZone } from '@/utils/timeZone';
 
 const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size: number; color: string }) =>
   Platform.OS === 'ios'
@@ -161,7 +162,7 @@ export default function CleanerTaskList() {
   const hasProfile = !!me?.linkedFamilyMemberId && !!me?.allowedPropertyId;
   const { data: chores, isLoading } = useGetChores(
     hasProfile
-      ? { assigneeId: me!.linkedFamilyMemberId!, propertyId: me!.allowedPropertyId! }
+      ? { assigneeId: me!.linkedFamilyMemberId!, propertyId: me!.allowedPropertyId!, timezone: getDeviceTimeZone() }
       : undefined,
     { query: { enabled: hasProfile } as any },
   );

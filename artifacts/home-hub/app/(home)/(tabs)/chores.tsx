@@ -22,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { addDays, format, parseISO } from 'date-fns';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
+import { getDeviceTimeZone } from '@/utils/timeZone';
 
 const IconComponent = ({ name, iosName, size, color }: { name: any, iosName: any, size: number, color: string }) => {
   if (Platform.OS === 'ios') {
@@ -54,11 +55,11 @@ export default function ChoresScreen() {
   const [snoozingChoreId, setSnoozingChoreId] = useState<string | null>(null);
   const [snoozeDate, setSnoozeDate] = useState('');
   
-  const choreParams: any = {};
+  const choreParams: any = { timezone: getDeviceTimeZone() };
   if (selectedMemberId) choreParams.assigneeId = selectedMemberId;
   if (selectedProperty) choreParams.propertyId = selectedProperty.id;
   
-  const { data: chores, isLoading: isLoadingChores } = useGetChores(Object.keys(choreParams).length ? choreParams : undefined);
+  const { data: chores, isLoading: isLoadingChores } = useGetChores(choreParams);
   const { data: members } = useGetFamilyMembers();
   const { data: properties } = useGetProperties();
   

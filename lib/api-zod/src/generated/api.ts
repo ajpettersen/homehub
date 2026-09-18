@@ -539,7 +539,8 @@ export const GetPropertyStreetviewResponse = zod.unknown()
  */
 export const GetChoresQueryParams = zod.object({
   "assigneeId": zod.coerce.string().optional(),
-  "propertyId": zod.coerce.string().optional()
+  "propertyId": zod.coerce.string().optional(),
+  "timezone": zod.coerce.string().optional().describe('IANA timezone used to decide which chores are overdue; defaults to UTC for legacy clients.')
 })
 
 export const getChoresResponseRewardCentsMin = 0;

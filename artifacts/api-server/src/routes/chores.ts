@@ -11,16 +11,27 @@ import {
   getApprovedHouseholdScope,
   requireApprovedLinkedAdult,
 } from "../middlewares/requireApprovedHousehold";
+import { addMaintenanceDays, dateInMaintenanceTimeZone, resolveMaintenanceTimeZone } from "../lib/maintenanceDates";
 
 const router = Router();
+
+/**
+ * The caller's local calendar day from an optional `?timezone=` (UTC when
+ * absent, for older clients), or null when the timezone is invalid. The
+ * server's own UTC day is already tomorrow during US evenings.
+ */
+function requestToday(timezone: unknown): string | null {
+  const timeZone = resolveMaintenanceTimeZone(timezone);
+  return timeZone ? dateInMaintenanceTimeZone(timeZone) : null;
+}
 
 function formatChore(
   chore: typeof choresTable.$inferSelect,
   assigneeName: string | null,
   assigneeColor: string | null,
   propertyName: string,
+  today: string,
 ) {
-  const today = new Date().toISOString().split("T")[0];
   const isOverdue =
     !chore.completedAt &&
     chore.dueDate != null &&
@@ -128,6 +139,11 @@ async function resolveAssigneeId(
 
 router.get("/chores", async (req, res) => {
   try {
+    const choreToday = requestToday(req.query.timezone);
+    if (!choreToday) {
+      res.status(400).json({ error: "Invalid timezone" });
+      return;
+    }
     const scope = getApprovedHouseholdScope(res);
     if (scope.propertyIds.length === 0) {
       res.json([]);
@@ -211,7 +227,7 @@ router.get("/chores", async (req, res) => {
 
     res.json(
       filtered.map((r) =>
-        formatChore(r.chore, r.assigneeName ?? null, r.assigneeColor ?? null, r.propertyName ?? ""),
+        formatChore(r.chore, r.assigneeName ?? null, r.assigneeColor ?? null, r.propertyName ?? "", choreToday),
       ),
     );
   } catch (err) {
@@ -222,6 +238,7 @@ router.get("/chores", async (req, res) => {
 
 router.post("/chores", async (req, res) => {
   try {
+    const choreToday = requestToday(req.query.timezone) ?? dateInMaintenanceTimeZone("UTC");
     const scope = getApprovedHouseholdScope(res);
     const { title, assigneeId, propertyId, frequency, dueDate, points, rewardCents, bundleItems } = req.body;
 
@@ -298,7 +315,7 @@ router.post("/chores", async (req, res) => {
 
     const row = rows[0];
     res.status(201).json(
-      formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? ""),
+      formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? "", choreToday),
     );
   } catch (err) {
     req.log.error({ err }, "Failed to create chore");
@@ -308,6 +325,7 @@ router.post("/chores", async (req, res) => {
 
 router.put("/chores/:id", async (req, res) => {
   try {
+    const choreToday = requestToday(req.query.timezone) ?? dateInMaintenanceTimeZone("UTC");
     const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -422,7 +440,7 @@ router.put("/chores/:id", async (req, res) => {
       return;
     }
     const row = rows[0];
-    res.json(formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? ""));
+    res.json(formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? "", choreToday));
   } catch (err) {
     req.log.error({ err }, "Failed to update chore");
     res.status(500).json({ error: "Internal server error" });
@@ -438,7 +456,11 @@ router.post("/chores/snooze-overdue", async (req, res) => {
       return;
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = requestToday(req.query.timezone);
+    if (!today) {
+      res.status(400).json({ error: "Invalid timezone" });
+      return;
+    }
     const stale = await db
       .select()
       .from(choresTable)
@@ -462,12 +484,8 @@ router.post("/chores/snooze-overdue", async (req, res) => {
 
     for (const chore of overdue) {
       const days = freqDays[chore.frequency] ?? 7;
-      let d = new Date(chore.dueDate!);
-      const todayDate = new Date(today);
-      while (d < todayDate) {
-        d.setDate(d.getDate() + days);
-      }
-      const fixed = d.toISOString().split("T")[0];
+      let fixed = chore.dueDate!;
+      while (fixed < today) fixed = addMaintenanceDays(fixed, days);
       await db
         .update(choresTable)
         .set({ dueDate: fixed })
@@ -533,6 +551,7 @@ router.delete("/chores/:id", async (req, res) => {
 
 router.post("/chores/:id/complete", async (req, res) => {
   try {
+    const choreToday = requestToday(req.query.timezone) ?? dateInMaintenanceTimeZone("UTC");
     const scope = getApprovedHouseholdScope(res);
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -598,7 +617,7 @@ router.post("/chores/:id/complete", async (req, res) => {
       return;
     }
     const row = rows[0];
-    res.json(formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? ""));
+    res.json(formatChore(row.chore, row.assigneeName ?? null, row.assigneeColor ?? null, row.propertyName ?? "", choreToday));
   } catch (err) {
     req.log.error({ err }, "Failed to complete chore");
     res.status(500).json({ error: "Internal server error" });

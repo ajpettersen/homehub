@@ -580,6 +580,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: timezone
+          in: query
+          description: IANA timezone used to decide which chores are overdue; defaults to UTC for legacy clients.
+          schema:
+            type: string
       responses:
         "200":
           description: List of chores

@@ -10,6 +10,7 @@ import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
 import { PropertySwitcher } from '@/components/PropertySwitcher';
 import { useProperty } from '@/context/PropertyContext';
+import { getDeviceTimeZone } from '@/utils/timeZone';
 
 const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size: number; color: string }) => {
   if (Platform.OS === 'ios') return <SymbolView name={iosName} tintColor={color} size={size} />;
@@ -23,7 +24,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { selectedProperty } = useProperty();
 
-  const { data: dashboard } = useGetDashboard();
+  const { data: dashboard } = useGetDashboard({ timezone: getDeviceTimeZone() });
   const [refreshing, setRefreshing] = React.useState(false);
 
   const onRefresh = async () => {

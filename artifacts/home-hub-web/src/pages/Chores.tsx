@@ -21,7 +21,7 @@ import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Plus, Trash2, X, Check, Home, CalendarClock, CreditCard, ChevronRight, AlertCircle, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 import { addDays, isToday, parseISO } from "date-fns";
-import { formatDateOnly, getLocalDateOnly } from "@/lib/dateOnly";
+import { formatDateOnly, getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -611,7 +611,8 @@ export default function Chores() {
 
   const isParent = activeMember?.role === "parent";
 
-  const { data: chores, isLoading, isError: isChoresError, refetch: refetchChores } = useGetChores({}, { query: { queryKey: getGetChoresQueryKey(), retry: false } });
+  const choresParams = { timezone: getResolvedTimeZone() };
+  const { data: chores, isLoading, isError: isChoresError, refetch: refetchChores } = useGetChores(choresParams, { query: { queryKey: getGetChoresQueryKey(choresParams), retry: false } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
   const { data: members } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
   const { data: wallets, isLoading: walletsLoading, isError: walletsError, refetch: refetchWallets } = useGetWallets({ query: { queryKey: getGetWalletsQueryKey() } });

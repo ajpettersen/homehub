@@ -45,6 +45,7 @@ import {
 import { useClerk } from '@clerk/expo';
 import { useProperty } from '@/context/PropertyContext';
 import { PropertySwitcher } from '@/components/PropertySwitcher';
+import { getDeviceTimeZone } from '@/utils/timeZone';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -92,14 +93,6 @@ const REMINDER_TIME_PRESETS = [
   '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '12:00',
   '14:00', '16:00', '18:00', '20:00', '20:55',
 ];
-
-function getDeviceTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
 
 function getFriendlyTime(time: string): string {
   const [hours, minutes] = time.split(':').map(Number);
