@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { 
   useGetTodoLists, getGetTodoListsQueryKey, 
   useGetTodoItems, getGetTodoItemsQueryKey, 
   useUpdateTodoItem, useAddTodoItem, useBulkAddTodoItems,
   useCreateTodoList, useDeleteTodoList,
-  useDeleteTodoItem, useMoveTodoListToTop, getGetDashboardQueryKey
+  useDeleteTodoItem, useMoveTodoListToTop, getGetDashboardQueryKey,
+  useGetMe, getGetMeQueryKey
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,10 +15,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, Plus, Check, Trash2, ArrowUp, CalendarClock, X, Clock } from "lucide-react";
+import { CheckSquare, Plus, Check, Trash2, ArrowUp, CalendarClock, X, Wrench } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import { formatDateOnly, getLocalDateOnly } from "@/lib/dateOnly";
 import Maintenance from "./Maintenance";
+import { MAX_BULK_TODO_ITEMS, parseBulkTodos } from "@/lib/todoBulkParse";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 export default function Tasks() {
@@ -26,7 +28,13 @@ export default function Tasks() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
-  const activeTab = searchParams.get("view") === "maintenance" ? "maintenance" : "todos";
+  const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
+  const showTodos = !me?.visibleTabs || me.visibleTabs.includes("tasks");
+  const showMaintenance = !me?.visibleTabs || me.visibleTabs.includes("properties");
+  const requestedTab = searchParams.get("view") === "maintenance" ? "maintenance" : "todos";
+  const activeTab = requestedTab === "maintenance"
+    ? (showMaintenance || !showTodos ? "maintenance" : "todos")
+    : (showTodos || !showMaintenance ? "todos" : "maintenance");
 
   const handleTabChange = (tab: "todos" | "maintenance") => {
     setLocation(`/tasks?view=${tab}`, { replace: true });
@@ -65,13 +73,17 @@ export default function Tasks() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 font-serif text-3xl font-bold sm:gap-3 sm:text-4xl">
-            <CheckSquare className="h-7 w-7 text-accent-foreground sm:h-8 sm:w-8" /> Tasks
+            {activeTab === "maintenance"
+              ? <><Wrench className="h-7 w-7 text-accent-foreground sm:h-8 sm:w-8" /> Maintenance</>
+              : <><CheckSquare className="h-7 w-7 text-accent-foreground sm:h-8 sm:w-8" /> Tasks</>}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">To-dos, packing lists, and property maintenance.</p>
+          <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">
+            {activeTab === "maintenance" ? "Recurring upkeep for each of your properties." : "To-dos, packing lists, and projects."}
+          </p>
         </div>
 
         {/* Tab switcher */}
-        <div className="flex bg-muted/30 p-1 rounded-xl border border-border/50 shadow-sm shrink-0 self-start sm:self-auto min-h-11">
+        {showTodos && showMaintenance && <div className="flex bg-muted/30 p-1 rounded-xl border border-border/50 shadow-sm shrink-0 self-start sm:self-auto min-h-11">
           <button
             data-testid="tab-todos"
             onClick={() => handleTabChange("todos")}
@@ -88,9 +100,9 @@ export default function Tasks() {
               activeTab === "maintenance" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
-            <Clock className="w-4 h-4" /> Property Maintenance
+            <Wrench className="w-4 h-4" /> Maintenance
           </button>
-        </div>
+        </div>}
       </div>
 
       {activeTab === "maintenance" ? (
@@ -269,32 +281,39 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
     );
   };
 
+  const bulkParsed = useMemo(() => parseBulkTodos(bulkText), [bulkText]);
+  const bulkValid = bulkParsed.filter(item => !item.error);
+  const bulkTooMany = bulkParsed.length > MAX_BULK_TODO_ITEMS;
+
   const handleBulkAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = parseBulkTasks(bulkText, bulkDefaultDueDate);
-    if ("error" in parsed) {
-      setBulkError(parsed.error);
-      setBulkResult("");
+    if (!isValidDate(bulkDefaultDueDate)) {
+      setBulkError("Choose a valid default due date.");
       return;
     }
+    if (bulkValid.length === 0 || bulkTooMany) return;
 
     setBulkError("");
     setBulkResult("");
+    const addedLines = new Set(bulkValid.map(item => item.line));
+    const needsFixing = bulkParsed.length - bulkValid.length;
     bulkAddItems.mutate(
       {
         id: list.id,
         data: {
           defaultDueDate: bulkDefaultDueDate,
-          items: parsed.items.map((item) => ({
-            ...item,
+          items: bulkValid.map((item) => ({
+            content: item.content,
+            ...(item.dueDate && { dueDate: item.dueDate }),
             ...(list.assigneeId && { assigneeId: list.assigneeId }),
           })),
         },
       },
       {
         onSuccess: (result) => {
-          setBulkText("");
-          setBulkResult(`${result.items.length} tasks added successfully.`);
+          // Leave only the lines that still need fixing so a retry can't double-add.
+          setBulkText(current => current.split(/\r?\n/).filter((_, i) => !addedLines.has(i + 1)).join("\n"));
+          setBulkResult(`${result.items.length} task${result.items.length === 1 ? "" : "s"} added.${needsFixing > 0 ? ` ${needsFixing} line${needsFixing === 1 ? " still needs" : "s still need"} fixing.` : ""}`);
           invalidateTasks();
         },
         onError: () => setBulkError("Could not add tasks. No tasks were added."),
@@ -542,11 +561,11 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
           }
         }}>
           <DialogTrigger asChild>
-            <Button type="button" variant="outline" className="mt-3 min-h-11 w-full">Add multiple tasks</Button>
+            <Button type="button" variant="outline" className="mt-3 min-h-11 w-full">Add many</Button>
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add multiple tasks to {list.name}</DialogTitle>
+              <DialogTitle>Add many tasks to {list.name}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleBulkAdd} className="space-y-4 pt-2">
               <div>
@@ -566,21 +585,38 @@ function TodoListCard({ list, isFirst }: { list: any; isFirst: boolean }) {
                   id={`bulk-tasks-${list.id}`}
                   value={bulkText}
                   onChange={(e) => { setBulkText(e.target.value); setBulkError(""); setBulkResult(""); }}
+                  disabled={bulkAddItems.isPending}
                   placeholder={"Book plumber\nPack bags | 2026-07-15"}
                   className="min-h-[160px] text-base"
                   aria-describedby={`bulk-help-${list.id}`}
-                  required
+                  spellCheck={false}
                 />
                 <p id={`bulk-help-${list.id}`} className="mt-1.5 text-sm text-muted-foreground">
-                  Use “Task name | YYYY-MM-DD” to override the default date. Up to 50 tasks.
+                  Add “| date” after a task to give it its own due date (2026-07-15 or 7/15/2026). Up to {MAX_BULK_TODO_ITEMS} at a time.
                 </p>
               </div>
+              {bulkTooMany && <p role="alert" className="text-sm font-medium text-destructive">That’s {bulkParsed.length} lines. Add up to {MAX_BULK_TODO_ITEMS} at a time.</p>}
+              {bulkParsed.length > 0 && (
+                <ul className="space-y-1.5" aria-label="Preview">
+                  {bulkParsed.map(item => (
+                    <li key={`${item.line}-${item.content}`} className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-2 text-sm ${item.error ? "border-destructive/40 bg-destructive/5" : "border-border bg-background"}`}>
+                      <span className="min-w-0 flex-1 truncate font-bold">{item.content || "(no name)"}</span>
+                      {item.error
+                        ? <span className="text-xs font-medium text-destructive">Line {item.line}: {item.error}</span>
+                        : <span className="text-xs text-muted-foreground">due {item.dueDate ?? bulkDefaultDueDate}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {bulkError && <p className="text-sm text-destructive font-medium" role="alert">{bulkError}</p>}
               {bulkResult && <p className="text-sm text-primary font-bold bg-primary/10 px-3 py-2 rounded-lg" role="status">{bulkResult}</p>}
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end mt-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end mt-2">
+                {bulkParsed.length > bulkValid.length && !bulkAddItems.isPending && (
+                  <span className="text-sm text-muted-foreground sm:mr-auto">{bulkValid.length} ready, {bulkParsed.length - bulkValid.length} need fixing</span>
+                )}
                 <DialogClose asChild><Button type="button" variant="outline" className="min-h-11">Close</Button></DialogClose>
-                <Button type="submit" className="min-h-11" disabled={bulkAddItems.isPending}>
-                  {bulkAddItems.isPending ? "Adding tasks..." : "Add tasks"}
+                <Button type="submit" className="min-h-11" disabled={bulkAddItems.isPending || bulkValid.length === 0 || bulkTooMany}>
+                  {bulkAddItems.isPending ? "Adding tasks..." : `Add ${bulkValid.length || ""} task${bulkValid.length === 1 ? "" : "s"}`.replace("Add  ", "Add ")}
                 </Button>
               </div>
             </form>
@@ -624,25 +660,4 @@ function relativeDateOnly(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return getLocalDateOnly(date);
-}
-
-function parseBulkTasks(text: string, defaultDueDate: string):
-  | { items: Array<{ content: string; dueDate?: string }> }
-  | { error: string } {
-  if (!isValidDate(defaultDueDate)) return { error: "Choose a valid default due date." };
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (!lines.length) return { error: "Enter at least one task." };
-  if (lines.length > 50) return { error: "Add no more than 50 tasks at once." };
-
-  const items: Array<{ content: string; dueDate?: string }> = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const parts = lines[index].split("|");
-    if (parts.length > 2) return { error: `Line ${index + 1} has more than one date separator.` };
-    const content = parts[0].trim();
-    const dueDate = parts.length === 2 ? parts[1].trim() : undefined;
-    if (!content || content.length > 500) return { error: `Line ${index + 1} needs a task name up to 500 characters.` };
-    if (dueDate !== undefined && !isValidDate(dueDate)) return { error: `Line ${index + 1} needs a date in YYYY-MM-DD format.` };
-    items.push({ content, ...(dueDate && { dueDate }) });
-  }
-  return { items };
 }

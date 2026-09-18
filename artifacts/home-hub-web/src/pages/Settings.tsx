@@ -214,7 +214,8 @@ function AppearanceAndTabsSection() {
   const optionalTabs: Array<{ key: HomeHubWebTab; label: string; description: string }> = [
     { key: "chores", label: "Chores", description: "Recurring household responsibilities." },
     { key: "meals", label: "Meals", description: "Meal plans, groceries, and recipes." },
-    { key: "tasks", label: "Tasks", description: "Shared household lists, projects, and maintenance." },
+    { key: "tasks", label: "Tasks", description: "Shared household lists and projects." },
+    { key: "properties", label: "Maintenance", description: "Recurring upkeep for each of your properties." },
     { key: "workouts", label: "Workouts", description: "Family exercise plans and progress." },
     { key: "people", label: "People", description: "Family and trusted service contacts." },
   ];

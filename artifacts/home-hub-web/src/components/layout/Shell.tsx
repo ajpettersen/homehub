@@ -1,5 +1,5 @@
-import { Link, useLocation } from "wouter";
-import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, ArrowLeft, LogOut, BadgeDollarSign } from "lucide-react";
+import { Link, useLocation, useSearch } from "wouter";
+import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, ArrowLeft, LogOut, BadgeDollarSign, Wrench, type LucideIcon } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useHomeHubSignOut } from "@/hooks/useHomeHubSignOut";
 import {
@@ -12,17 +12,32 @@ import {
 import { useEffect, useState } from "react";
 import { usePreferences } from "@/context/PreferencesContext";
 
-const navItems = [
-  { tab: "home" as const, href: "/",           label: "Home",       icon: Home },
-  { tab: "tasks" as const, href: "/tasks",      label: "Tasks",      icon: CheckSquare },
-  { tab: "tasks" as const, href: "/chores",     label: "Chores",     icon: BadgeDollarSign },
-  { tab: "meals" as const, href: "/meals",      label: "Meals",      icon: Utensils },
-  { tab: "workouts" as const, href: "/workouts",   label: "Workouts",   icon: Dumbbell },
-  { tab: "settings" as const, href: "/settings",   label: "Settings",   icon: Settings },
+interface NavItem {
+  /** Shown when the household has any of these tabs turned on. */
+  tabs: HomeHubWebTab[];
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  isActive: (path: string, view: string | null) => boolean;
+}
+
+const HOME: NavItem = { tabs: ["home"], href: "/", label: "Home", icon: Home, isActive: path => path === "/" };
+const TODOS: NavItem = { tabs: ["tasks"], href: "/tasks?view=todos", label: "Tasks", icon: CheckSquare, isActive: (path, view) => path === "/tasks" && view !== "maintenance" };
+const MAINTENANCE: NavItem = { tabs: ["properties"], href: "/tasks?view=maintenance", label: "Maintenance", icon: Wrench, isActive: (path, view) => path === "/tasks" && view === "maintenance" };
+// The phone tab bar has no room for both, so one entry opens whichever Tasks views are turned on.
+const TASKS_COMBINED: NavItem = { tabs: ["tasks", "properties"], href: "/tasks", label: "Tasks", icon: CheckSquare, isActive: path => path === "/tasks" };
+const REST: NavItem[] = [
+  { tabs: ["chores"], href: "/chores", label: "Chores", icon: BadgeDollarSign, isActive: path => path === "/chores" },
+  { tabs: ["meals"], href: "/meals", label: "Meals", icon: Utensils, isActive: path => path === "/meals" },
+  { tabs: ["workouts"], href: "/workouts", label: "Workouts", icon: Dumbbell, isActive: path => path === "/workouts" },
+  { tabs: ["settings"], href: "/settings", label: "Settings", icon: Settings, isActive: path => path === "/settings" },
 ];
+const desktopNavItems = [HOME, TODOS, MAINTENANCE, ...REST];
+const mobileNavItems = [HOME, TASKS_COMBINED, ...REST];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const view = new URLSearchParams(useSearch()).get("view");
   const { activeMember, setActiveMember } = useActiveMember();
   const { preferences } = usePreferences();
   const { data: familyMembers } = useGetFamilyMembers({ query: { queryKey: getGetFamilyMembersQueryKey() } });
@@ -42,12 +57,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   };
 
   const selectableMembers = familyMembers ?? [];
-  const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? navItems.map(item => item.tab));
-  const visibleNavItems = navItems.filter(item =>
-    item.tab === "tasks"
-      ? visibleTabs.has("tasks") || visibleTabs.has("properties")
-      : visibleTabs.has(item.tab),
-  );
+  const visibleTabs = me?.visibleTabs ? new Set<HomeHubWebTab>(me.visibleTabs) : null;
+  const isVisible = (item: NavItem) => !visibleTabs || item.tabs.some(tab => visibleTabs.has(tab));
+  const visibleDesktopNavItems = desktopNavItems.filter(isVisible);
+  const visibleMobileNavItems = mobileNavItems.filter(isVisible);
 
   return (
     <div className={`h-[100dvh] min-h-0 flex flex-col md:flex-row bg-background overflow-hidden ${preferences.appearance.density === "compact" ? "density-compact" : ""}`}>
@@ -62,8 +75,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-1">
-          {visibleNavItems.map((item) => {
-            const isActive = location === item.href;
+          {visibleDesktopNavItems.map((item) => {
+            const isActive = item.isActive(location, view);
             return (
               <Link
                 key={item.href}
@@ -199,8 +212,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
         style={{ bottom: "max(env(safe-area-inset-bottom), 0.75rem)" }}
         aria-label="Primary navigation"
       >
-        {visibleNavItems.map((item) => {
-          const isActive = location === item.href;
+        {visibleMobileNavItems.map((item) => {
+          const isActive = item.isActive(location, view);
           return (
             <Link
               key={item.href}

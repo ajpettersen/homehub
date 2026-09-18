@@ -61,7 +61,8 @@ export function parseFrequencyDays(raw: string): number | null {
   return Number.isInteger(days) && days >= 1 && days <= 3650 ? days : null;
 }
 
-function parseDate(raw: string): string | null {
+/** A YYYY-MM-DD or M/D/YYYY date, as YYYY-MM-DD. */
+export function parseBulkDate(raw: string): string | null {
   const text = raw.trim();
   if (isValidDateOnly(text)) return text;
   const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
@@ -72,7 +73,22 @@ function parseDate(raw: string): string | null {
   return null;
 }
 
-const ONE_TIME = /^(once|one-time|one time|onetime)$/i;
+export const ONE_TIME = /^(once|one-time|one time|onetime)$/i;
+
+/**
+ * Splits pasted text into non-blank lines of `title | part | part`, dropping
+ * list bullets and numbering. `line` is 1-based in the original text.
+ */
+export function splitBulkLines(input: string): Array<{ line: number; title: string; parts: string[] }> {
+  const lines: Array<{ line: number; title: string; parts: string[] }> = [];
+  input.split(/\r?\n/).forEach((rawLine, index) => {
+    const text = rawLine.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim();
+    if (!text) return;
+    const [title, ...parts] = text.split("|").map(part => part.trim());
+    lines.push({ line: index + 1, title, parts: parts.filter(Boolean) });
+  });
+  return lines;
+}
 
 /**
  * One task per line: `Title | how often | first due date`. Everything after the
@@ -80,13 +96,9 @@ const ONE_TIME = /^(once|one-time|one time|onetime)$/i;
  * task, which needs a date. A missing repeat defaults to yearly.
  */
 export function parseBulkMaintenance(input: string): ParsedBulkTask[] {
-  const tasks: ParsedBulkTask[] = [];
-  input.split(/\r?\n/).forEach((rawLine, index) => {
-    const line = rawLine.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim();
-    if (!line) return;
-    const [rawTitle, ...rest] = line.split("|").map(part => part.trim());
+  return splitBulkLines(input).map(({ line, title: rawTitle, parts: rest }) => {
     const task: ParsedBulkTask = {
-      line: index + 1,
+      line,
       title: rawTitle,
       scheduleType: "recurring",
       frequencyDays: null,
@@ -98,8 +110,8 @@ export function parseBulkMaintenance(input: string): ParsedBulkTask[] {
 
     let oneTime = false;
     const unrecognized: string[] = [];
-    for (const part of rest.filter(Boolean)) {
-      const date = parseDate(part);
+    for (const part of rest) {
+      const date = parseBulkDate(part);
       if (date) { task.dueDate = date; continue; }
       if (ONE_TIME.test(part)) { oneTime = true; continue; }
       const days = parseFrequencyDays(part);
@@ -119,9 +131,8 @@ export function parseBulkMaintenance(input: string): ParsedBulkTask[] {
       task.frequencyDays = 365;
       task.frequencyAssumed = true;
     }
-    tasks.push(task);
+    return task;
   });
-  return tasks;
 }
 
 export function describeFrequency(days: number): string {
