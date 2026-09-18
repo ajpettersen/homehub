@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { addDays, format, parseISO, differenceInDays } from "date-fns";
 import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
+import { BulkAddMaintenance } from "@/components/maintenance/BulkAddMaintenance";
 
 // ── category config ────────────────────────────────────────────────────────────
 
@@ -643,6 +644,7 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
   const [adding, setAdding] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
+  const [bulkAdding, setBulkAdding] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [updatingDueDateId, setUpdatingDueDateId] = useState<string | null>(null);
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
@@ -886,10 +888,12 @@ export default function Properties({ isEmbedded }: { isEmbedded?: boolean }) {
         </div>
         <div className="flex flex-wrap gap-2">
           {currentProperty && <button onClick={() => setSuggesting(true)} className="flex items-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-5 py-2.5 font-bold text-primary hover:bg-primary/10"><Sparkles className="h-5 w-5" /> Suggest maintenance</button>}
+          {currentProperty && <button onClick={() => setBulkAdding(true)} className="flex items-center gap-2 rounded-xl border-2 border-border px-5 py-2.5 font-bold hover:bg-muted"><Plus className="h-5 w-5" /> Add many</button>}
           {!adding && <button onClick={() => setAdding(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background font-bold hover:bg-foreground/90 transition-colors shadow-md"><Plus className="w-5 h-5" /> Add Task</button>}
         </div>
       </div>
 
+      {bulkAdding && currentProperty && <BulkAddMaintenance property={currentProperty} timezone={timezone} onClose={() => setBulkAdding(false)} onCreated={invalidate} />}
       {suggesting && currentProperty && <MaintenanceSuggestions property={currentProperty} timezone={timezone} onClose={() => setSuggesting(false)} onCreated={invalidate} />}
 
       {/* Add form */}
