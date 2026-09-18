@@ -2066,6 +2066,13 @@ export type GetMealRecipeBody = {
   generateImage?: boolean;
 };
 
+export type GetDashboardParams = {
+/**
+ * IANA timezone used to calculate "today" and the current Monday-based week; defaults to UTC for legacy clients.
+ */
+timezone?: string;
+};
+
 export type GetChoresParams = {
 assigneeId?: string;
 propertyId?: string;

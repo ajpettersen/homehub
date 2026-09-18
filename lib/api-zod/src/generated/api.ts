@@ -216,6 +216,10 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary Get dashboard summary for today
  */
+export const GetDashboardQueryParams = zod.object({
+  "timezone": zod.coerce.string().optional().describe('IANA timezone used to calculate \"today\" and the current Monday-based week; defaults to UTC for legacy clients.')
+})
+
 export const getDashboardResponseTodaysMealsItemDayOfWeekMin = 0;
 export const getDashboardResponseTodaysMealsItemDayOfWeekMax = 6;
 

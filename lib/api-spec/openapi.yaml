@@ -262,6 +262,12 @@ paths:
       operationId: getDashboard
       tags: [dashboard]
       summary: Get dashboard summary for today
+      parameters:
+        - name: timezone
+          in: query
+          description: IANA timezone used to calculate "today" and the current Monday-based week; defaults to UTC for legacy clients.
+          schema:
+            type: string
       responses:
         "200":
           description: Dashboard summary

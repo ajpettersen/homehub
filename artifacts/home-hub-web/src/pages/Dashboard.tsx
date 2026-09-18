@@ -15,7 +15,7 @@ import {
   Sparkles, Send, Paperclip, X, Loader2, Brain, ChevronDown, ChevronUp, Bell, Check, MessageSquare,
 } from "lucide-react";
 import { format } from "date-fns";
-import { formatDateOnly } from "@/lib/dateOnly";
+import { formatDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
 import { usePreferences } from "@/context/PreferencesContext";
 
 function greeting(hour: number, name?: string | null): string {
@@ -558,13 +558,14 @@ export default function Dashboard() {
   const showWorkouts = tabOn("workouts");
   const showTasksArea = showTodos || showMaintenance;
   const summaryCardCount = [showChores, showMeals, showTasksArea].filter(Boolean).length;
+  const dashboardParams = { timezone: getResolvedTimeZone() };
   const {
     data: dashboard,
     isLoading,
     isFetching,
     isError,
     refetch: retryDashboard,
-  } = useGetDashboard({ query: { queryKey: getGetDashboardQueryKey(), retry: false } });
+  } = useGetDashboard(dashboardParams, { query: { queryKey: getGetDashboardQueryKey(dashboardParams), retry: false } });
   const { data: overdueSessions, isLoading: overdueLoading } = useGetOverdueWorkoutSessions({
     query: { queryKey: getGetOverdueWorkoutSessionsQueryKey() },
   });

@@ -56,6 +56,7 @@ export * from './familyMember';
 export * from './familyMemberRole';
 export * from './getChoresParams';
 export * from './getContractorsParams';
+export * from './getDashboardParams';
 export * from './getExerciseHistory200';
 export * from './getMaintenanceTasksParams';
 export * from './getMealPlansParams';

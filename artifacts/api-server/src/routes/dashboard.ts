@@ -10,14 +10,16 @@ import {
 } from "@workspace/db";
 import { eq, and, lt, lte, isNull, ne, or, sql, inArray } from "drizzle-orm";
 import { getApprovedHouseholdScope } from "../middlewares/requireApprovedHousehold";
+import { addMaintenanceDays, dateInMaintenanceTimeZone, resolveMaintenanceTimeZone } from "../lib/maintenanceDates";
 
 const router = Router();
 
-function getWeekStart(date: Date): string {
-  const d = new Date(date);
-  const day = d.getDay(); // 0=Sun
-  d.setDate(d.getDate() - day);
-  return d.toISOString().split("T")[0];
+// Meal plan weeks start Monday everywhere (mondayForDate in routes/ai.ts,
+// weekStartString in lib/aiLiveContext.ts, mondayOfWeek in Kitchen.tsx).
+// This used a Sunday start, so today's meals never matched a stored week.
+function mondayOf(dateOnly: string): string {
+  const day = new Date(`${dateOnly}T00:00:00Z`).getUTCDay(); // 0=Sun
+  return addMaintenanceDays(dateOnly, day === 0 ? -6 : 1 - day);
 }
 
 router.get("/dashboard", async (req, res) => {
@@ -25,13 +27,17 @@ router.get("/dashboard", async (req, res) => {
     const scope = getApprovedHouseholdScope(res);
     const propertyIds = scope.propertyIds;
 
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-    const sevenDays = new Date(today);
-    sevenDays.setDate(sevenDays.getDate() + 7);
-    const sevenDaysStr = sevenDays.toISOString().split("T")[0];
-    const weekStart = getWeekStart(today);
-    const todayDow = today.getDay();
+    // "Today" is the household's local calendar day, not the server's UTC
+    // day, which in US time zones rolls over during the evening.
+    const timeZone = resolveMaintenanceTimeZone(req.query.timezone);
+    if (!timeZone) {
+      res.status(400).json({ error: "Invalid timezone" });
+      return;
+    }
+    const todayStr = dateInMaintenanceTimeZone(timeZone);
+    const sevenDaysStr = addMaintenanceDays(todayStr, 7);
+    const weekStart = mondayOf(todayStr);
+    const todayDow = new Date(`${todayStr}T00:00:00Z`).getUTCDay(); // meal plans store 0=Sun
 
     // If the authorized scope has no properties, return empty/zero aggregates
     // without generating an invalid `IN ()` SQL clause.
@@ -126,9 +132,7 @@ router.get("/dashboard", async (req, res) => {
       .orderBy(mealPlansTable.mealType);
 
     // Upcoming maintenance (next 30 days, sorted by date)
-    const thirtyDays = new Date(today);
-    thirtyDays.setDate(thirtyDays.getDate() + 30);
-    const thirtyDaysStr = thirtyDays.toISOString().split("T")[0];
+    const thirtyDaysStr = addMaintenanceDays(todayStr, 30);
 
     const upcomingRows = await db
       .select({ task: maintenanceTasksTable, propertyName: propertiesTable.name })
