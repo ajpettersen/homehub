@@ -463,6 +463,10 @@ function ScanSheet({
 
 // ─── Meal plan print HTML ─────────────────────────────────────────────────────
 
+// Meal plan weeks start Monday everywhere else (web planner, dashboard, AI),
+// so the list runs Mon–Sun; the API's dayOfWeek stays 0=Sun … 6=Sat.
+const dayOfWeekAt = (idx: number) => (idx === 6 ? 0 : idx + 1);
+
 function generateMealPlanHTML(
   meals: any[],
   fullDays: string[],
@@ -478,8 +482,8 @@ function generateMealPlanHTML(
   meals?.forEach((m) => { if (m.mealType === 'dinner') byDay[m.dayOfWeek] = m.meal; });
 
   const rows = fullDays.map((day, idx) => {
-    const meal = byDay[idx];
-    const isToday = idx === todayIdx;
+    const meal = byDay[dayOfWeekAt(idx)];
+    const isToday = dayOfWeekAt(idx) === todayIdx;
     return `
       <div class="day-card${isToday ? ' today' : ''}">
         <div class="day-name">${day}</div>
@@ -737,7 +741,7 @@ export default function KitchenScreen() {
   const createList = useCreateGroceryList();
 
   const weekStart = useMemo(() => {
-    const base = startOfWeek(new Date(), { weekStartsOn: 0 });
+    const base = startOfWeek(new Date(), { weekStartsOn: 1 });
     return format(addWeeks(base, weekOffset), 'yyyy-MM-dd');
   }, [weekOffset]);
 
@@ -808,7 +812,7 @@ export default function KitchenScreen() {
     if (!properties?.length) return;
     // Find first empty dinner slot this week
     const filledDays = new Set(meals?.filter((m) => m.mealType === 'dinner').map((m) => m.dayOfWeek) ?? []);
-    const emptyDay = [0, 1, 2, 3, 4, 5, 6].find((d) => !filledDays.has(d)) ?? new Date().getDay();
+    const emptyDay = [1, 2, 3, 4, 5, 6, 0].find((d) => !filledDays.has(d)) ?? new Date().getDay();
     createMeal.mutate({ data: { weekStart, dayOfWeek: emptyDay, mealType: 'dinner', meal: suggestion.name, propertyId: selectedProperty?.id ?? properties[0].id } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetMealPlansQueryKey({ weekStart }) });
@@ -860,8 +864,8 @@ export default function KitchenScreen() {
     return <GroceryListDetail listId={selectedList.id} listName={selectedList.name} onBack={() => setSelectedList(null)} />;
   }
 
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const fullDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const fullDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const today = new Date().getDay();
 
   return (
@@ -962,12 +966,12 @@ export default function KitchenScreen() {
         ) : (
           <>
             {fullDays.map((dayName, idx) => {
-              const dayMeals = (meals ?? []).filter((m) => m.dayOfWeek === idx)
+              const dayMeals = (meals ?? []).filter((m) => m.dayOfWeek === dayOfWeekAt(idx))
                 .sort((a, b) => {
                   const order: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
                   return (order[a.mealType] ?? 9) - (order[b.mealType] ?? 9);
                 });
-              const isToday = idx === today;
+              const isToday = dayOfWeekAt(idx) === today;
               const MEAL_EMOJI: Record<string, string> = { breakfast: '🍳', lunch: '🥗', dinner: '🍽️', snack: '🍎' };
 
               return (
@@ -1010,7 +1014,7 @@ export default function KitchenScreen() {
                     <Pressable
                       style={styles.dayCardAddRow}
                       onPress={() => {
-                        setNewMeal({ dayOfWeek: idx, mealType: 'dinner', meal: '' });
+                        setNewMeal({ dayOfWeek: dayOfWeekAt(idx), mealType: 'dinner', meal: '' });
                         setEditingMealId(null);
                         setAddMealVisible(true);
                       }}
@@ -1092,7 +1096,7 @@ export default function KitchenScreen() {
                   <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>Day</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
                     {fullDays.map((day, idx) => {
-                      const active = newMeal.dayOfWeek === idx;
+                      const active = newMeal.dayOfWeek === dayOfWeekAt(idx);
                       return (
                         <Pressable
                           key={day}
@@ -1100,12 +1104,12 @@ export default function KitchenScreen() {
                             styles.dayPill,
                             { backgroundColor: active ? colors.primary : colors.secondary, borderColor: active ? colors.primary : colors.border },
                           ]}
-                          onPress={() => setNewMeal((p) => ({ ...p, dayOfWeek: idx }))}
+                          onPress={() => setNewMeal((p) => ({ ...p, dayOfWeek: dayOfWeekAt(idx) }))}
                         >
                           <Text style={[styles.dayPillText, { color: active ? colors.primaryForeground : colors.mutedForeground }]}>
                             {days[idx]}
                           </Text>
-                          {idx === today && (
+                          {dayOfWeekAt(idx) === today && (
                             <Text style={[styles.dayPillSub, { color: active ? `${colors.primaryForeground}99` : colors.mutedForeground }]}>Today</Text>
                           )}
                         </Pressable>

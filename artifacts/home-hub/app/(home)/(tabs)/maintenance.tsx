@@ -8,6 +8,7 @@ import { useColors } from '@/hooks/useColors';
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
 import { format, addDays, parseISO } from 'date-fns';
+import { getDeviceTimeZone } from '@/utils/timeZone';
 import {
   useGetMaintenanceTasks,
   useCreateMaintenanceTask,
@@ -30,14 +31,6 @@ const Icon = ({ name, iosName, size, color }: { name: any; iosName: string; size
   if (Platform.OS === 'ios') return <SymbolView name={iosName as any} tintColor={color} size={size} />;
   return <FeatherIcon name={name} size={size} color={color} />;
 };
-
-function getResolvedTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
 
 function isValidDateOnly(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -320,7 +313,7 @@ export default function MaintenanceScreen() {
   const { selectedProperty } = useProperty();
   const { data: members } = useGetFamilyMembers();
   const { activeMember } = useActiveMember();
-  const timezone = getResolvedTimeZone();
+  const timezone = getDeviceTimeZone();
   const maintenanceQuery = {
     ...(selectedProperty && { propertyId: selectedProperty.id }),
     timezone,
@@ -432,7 +425,7 @@ export default function MaintenanceScreen() {
     if (!newTask.title || !selectedProperty || (isOneTime && !/^\d{4}-\d{2}-\d{2}$/.test(newTask.dueDate))) return;
     const nextDate = isOneTime
       ? newTask.dueDate
-      : addDays(new Date(), parseInt(newTask.frequencyDays, 10) || 30).toISOString().split('T')[0];
+      : format(addDays(new Date(), parseInt(newTask.frequencyDays, 10) || 30), 'yyyy-MM-dd');
     createTask.mutate(
       {
         data: {
@@ -443,6 +436,7 @@ export default function MaintenanceScreen() {
           frequencyDays: isOneTime ? undefined : parseInt(newTask.frequencyDays, 10) || 30,
           isCleanerTask: newTask.isCleanerTask,
           nextDueDate: nextDate,
+          timezone,
         },
       },
       {
