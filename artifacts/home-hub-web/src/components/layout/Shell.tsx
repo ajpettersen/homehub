@@ -30,7 +30,8 @@ const REST: NavItem[] = [
   { tabs: ["chores"], href: "/chores", label: "Chores", icon: BadgeDollarSign, isActive: path => path === "/chores" },
   { tabs: ["meals"], href: "/meals", label: "Meals", icon: Utensils, isActive: path => path === "/meals" },
   { tabs: ["workouts"], href: "/workouts", label: "Workouts", icon: Dumbbell, isActive: path => path === "/workouts" },
-  { tabs: ["settings"], href: "/settings", label: "Settings", icon: Settings, isActive: path => path === "/settings" },
+  // People is opened from Settings, so it keeps Settings highlighted.
+  { tabs: ["settings"], href: "/settings", label: "Settings", icon: Settings, isActive: path => path === "/settings" || path === "/people" },
 ];
 const desktopNavItems = [HOME, TODOS, MAINTENANCE, ...REST];
 const mobileNavItems = [HOME, TASKS_COMBINED, ...REST];
@@ -189,12 +190,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="max-w-6xl mx-auto">
             {location !== "/" && (
               <Link
-                href="/"
-                aria-label="Back to Home"
+                href={location === "/people" ? "/settings" : "/"}
+                aria-label={location === "/people" ? "Back to Settings" : "Back to Home"}
                 className="mb-5 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back to Home
+                {location === "/people" ? "Back to Settings" : "Back to Home"}
               </Link>
             )}
             {children}

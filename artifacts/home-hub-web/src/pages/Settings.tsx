@@ -41,7 +41,7 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
   ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
-  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2, Store, ChevronUp
+  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2, Store, ChevronUp, ChevronRight, Contact
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import {
@@ -217,7 +217,7 @@ function AppearanceAndTabsSection() {
     { key: "tasks", label: "Tasks", description: "Shared household lists and projects." },
     { key: "properties", label: "Maintenance", description: "Recurring upkeep for each of your properties." },
     { key: "workouts", label: "Workouts", description: "Family exercise plans and progress." },
-    { key: "people", label: "People", description: "Family and trusted service contacts." },
+    { key: "people", label: "People", description: "Friends, neighbors, and contractors, opened from Settings." },
   ];
 
   const toggleTab = async (tabKey: HomeHubWebTab) => {
@@ -2588,6 +2588,24 @@ export default function Settings() {
           }}
         />
       </AccordionSection>
+
+      {/* ── People (its own page, reached from here rather than the nav) ─────── */}
+      {(!me?.visibleTabs || me.visibleTabs.includes("people")) && (
+        <button
+          type="button"
+          onClick={() => navigate("/people")}
+          className="flex w-full items-center gap-3.5 rounded-2xl border border-border bg-card px-5 py-4 text-left shadow-sm transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Contact className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="font-bold text-base text-foreground">People</span>
+            <p className="mt-0.5 text-xs text-muted-foreground">Friends, neighbors, trusted contractors, and follow-ups</p>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      )}
 
       {/* ── Properties ──────────────────────────────────────────────────────── */}
       <AccordionSection
