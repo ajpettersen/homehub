@@ -69,9 +69,9 @@ catalog:
 autoInstallPeers: false
 
 overrides:
-  # replit uses linux-x64 only, we can exclude all other platforms
-  "esbuild>@esbuild/darwin-arm64": "-"
-  "esbuild>@esbuild/darwin-x64": "-"
+  # Deployments run on linux-x64, so other platforms' native binaries are
+  # excluded. macOS binaries are kept for local development on Macs: excluding
+  # them breaks installs there without any error pointing at the cause.
   "esbuild>@esbuild/freebsd-arm64": "-"
   "esbuild>@esbuild/freebsd-x64": "-"
   "esbuild>@esbuild/linux-arm": "-"
@@ -133,8 +133,6 @@ overrides:
   "rollup>@rollup/rollup-win32-ia32-msvc": "-"
   "rollup>@rollup/rollup-win32-x64-gnu": "-"
   "rollup>@rollup/rollup-win32-x64-msvc": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-freebsd-ia32": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-freebsd-x64": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-linux-arm64": "-"
@@ -146,6 +144,10 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
+  # Security patches for API-server runtime deps: qs (via express/body-parser,
+  # GHSA request-parsing DoS) and undici (via expo-server-sdk, 7.x < 7.29.0).
+  "qs@<6.16.0": "^6.16.0"
+  "undici@>=7.0.0 <7.29.0": "^7.29.0"
 
 allowBuilds:
   '@clerk/shared': true
