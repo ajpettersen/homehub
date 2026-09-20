@@ -16,6 +16,12 @@ if (startupUrl.searchParams.has(CACHE_BUSTER_PARAM)) {
 
 createRoot(document.getElementById('root')!).render(<App />);
 
+// Ask the browser not to clear this app's saved data (including the saved
+// sign-in) when the phone is low on space or the app has been idle.
+if (navigator.storage?.persist) {
+  void navigator.storage.persist().catch(() => undefined);
+}
+
 if ("serviceWorker" in navigator) {
   const updateServiceWorker = async () => {
     try {
