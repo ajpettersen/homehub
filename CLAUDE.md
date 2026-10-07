@@ -64,23 +64,28 @@ keys), not a paid production tier, which is important:
 
 A read-only, portrait, touch-first display for a screen mounted in the house
 (`pages/Kiosk.tsx`, `routes/kiosk.ts`, `lib/kioskAccess.ts`, `lib/kioskFeeds.ts`).
-It has no sign-in: the server allows it by the public internet address of the
-home network, so `/api/kiosk/*` is mounted *before* `requireApprovedHousehold`
-and must stay read-only. Railway env vars:
+It has no sign-in. It is "paired" once with a secret key, which hands the
+browser a signed, HttpOnly cookie that lasts a year. `/api/kiosk/*` is mounted
+*before* `requireApprovedHousehold` and must stay read-only. Railway env vars:
 
-- `KIOSK_ALLOWED_IPS` (required) — comma-separated home addresses. Opening
-  `/kiosk` from an unapproved network shows the address to paste in here.
-  IPv6 entries match on their first 64 bits, since devices on one network
-  rotate the rest. The address comes from the **last** `X-Forwarded-For`
-  entry (the one Railway's proxy appended); earlier entries are
-  client-controlled. A home address that changes means the screen shows the
-  setup page again until the variable is updated.
+- `KIOSK_PAIRING_KEY` (required, 16+ characters) — until it is set, nothing is
+  shown to anyone. Pair a screen by typing it once, or by opening
+  `/kiosk#key=<the key>` (text after `#` is never sent to the server or logged,
+  and the page removes it from the address bar). Changing the key un-pairs
+  every screen. Wrong keys are limited globally (10 misses locks pairing for
+  10 minutes).
 - `KIOSK_HOUSEHOLD_ID` (optional) — only needed if there is more than one household.
 - `KIOSK_CALENDAR_ICS_URLS` (optional) — Google Calendar "secret address in
   iCal format" links, comma-separated, each `https://…` or `Label|https://…`.
   Read-only and cached 10 minutes; no OAuth involved.
 - `KIOSK_LATITUDE` / `KIOSK_LONGITUDE` (optional) — turns on the weather
   (Open-Meteo, no key).
+
+**Don't gate it by visitor IP address.** That was tried and abandoned: behind
+Railway's edge the address the server sees is not reliably the visitor's (the
+last `X-Forwarded-For` entry was a CDN address that is the same for many
+visitors, and the number of hops varies), so an IP allow-list could let
+strangers in.
 
 ## Data model gotchas
 

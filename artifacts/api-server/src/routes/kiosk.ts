@@ -8,7 +8,17 @@ import {
   propertiesTable,
 } from "@workspace/db";
 import { and, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
-import { getKioskScope, requireKioskNetwork } from "../lib/kioskAccess";
+import {
+  KIOSK_COOKIE_MAX_AGE_MS,
+  KIOSK_COOKIE_NAME,
+  createKioskCookieValue,
+  getKioskScope,
+  getPairingKey,
+  keyMatches,
+  pairingLocked,
+  recordPairingFailure,
+  requireKioskPairing,
+} from "../lib/kioskAccess";
 import { getKioskCalendar, getKioskWeather, parseCalendarSources } from "../lib/kioskFeeds";
 import { addMaintenanceDays, dateInMaintenanceTimeZone, resolveMaintenanceTimeZone } from "../lib/maintenanceDates";
 
@@ -20,9 +30,34 @@ function mondayOf(dateOnly: string): string {
   return addMaintenanceDays(dateOnly, day === 0 ? -6 : 1 - day);
 }
 
-// Read-only on purpose: the screen can be opened by anyone on the home
-// network, so it can show household info but not change anything.
-router.get("/kiosk/summary", requireKioskNetwork, async (req, res) => {
+router.post("/kiosk/pair", (req, res) => {
+  const key = getPairingKey();
+  if (!key) {
+    res.status(503).json({ code: "not_configured", error: "The wall screen isn't set up yet. Add KIOSK_PAIRING_KEY (16+ characters) in Railway." });
+    return;
+  }
+  if (pairingLocked()) {
+    res.status(429).json({ error: "Too many wrong keys. Wait ten minutes and try again." });
+    return;
+  }
+  if (!keyMatches(req.body?.key, key)) {
+    recordPairingFailure();
+    res.status(401).json({ error: "That key isn't right." });
+    return;
+  }
+  res.cookie(KIOSK_COOKIE_NAME, createKioskCookieValue(key), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/api/kiosk",
+    maxAge: KIOSK_COOKIE_MAX_AGE_MS,
+  });
+  res.json({ ok: true });
+});
+
+// Read-only on purpose: a paired screen can show household info but not change
+// anything, so a stolen or shared screen can't do damage.
+router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
   try {
     const scope = getKioskScope(res);
     const timeZone = resolveMaintenanceTimeZone(req.query.timezone);

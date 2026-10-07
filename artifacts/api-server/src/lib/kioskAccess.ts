@@ -1,11 +1,14 @@
-import net from "node:net";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { db, householdsTable, propertiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-// The wall screen has no keyboard, so it can't sign in. Instead the server
-// recognises it by the public internet address of the home network it sits on
-// (KIOSK_ALLOWED_IPS, comma-separated). Anyone on that network can open /kiosk.
+// The wall screen has no keyboard to sign in with, so it is "paired" once with
+// a secret key (KIOSK_PAIRING_KEY, set in Railway). Pairing hands the browser a
+// signed cookie that lasts a year. Changing the key un-pairs every screen.
+//
+// This deliberately does not use the visitor's IP address: behind Railway's
+// edge the address the server sees is not reliably the visitor's.
 
 export interface KioskScope {
   householdId: number;
@@ -13,42 +16,66 @@ export interface KioskScope {
   propertyIds: number[];
 }
 
+export const KIOSK_COOKIE_NAME = "homehub_kiosk";
+export const KIOSK_COOKIE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+const MIN_KEY_LENGTH = 16;
 const KIOSK_SCOPE_KEY = "homeHubKioskScope";
 
-/** IPv6 devices on one home network share their first 64 bits, so compare just those. */
-export function normalizeAddress(raw: string): string | null {
-  let address = raw.trim().toLowerCase();
-  if (address.startsWith("::ffff:") && net.isIPv4(address.slice(7))) address = address.slice(7);
-  if (net.isIPv4(address)) return address;
-  if (!net.isIPv6(address)) return null;
-  const [head, tail = ""] = address.split("::");
-  const headParts = head ? head.split(":") : [];
-  const tailParts = tail ? tail.split(":") : [];
-  const missing = address.includes("::") ? 8 - headParts.length - tailParts.length : 0;
-  const full = [...headParts, ...Array(Math.max(missing, 0)).fill("0"), ...tailParts];
-  if (full.length !== 8) return null;
-  return `${full.slice(0, 4).map(part => part.padStart(4, "0")).join(":")}::/64`;
+export function getPairingKey(): string | null {
+  const key = process.env.KIOSK_PAIRING_KEY?.trim();
+  return key && key.length >= MIN_KEY_LENGTH ? key : null;
 }
 
-export function parseAllowedAddresses(value: string | undefined): Set<string> {
-  const allowed = new Set<string>();
-  for (const entry of (value ?? "").split(",")) {
-    const normalized = normalizeAddress(entry.replace(/\/\d+$/, ""));
-    if (normalized) allowed.add(normalized);
+function sign(key: string, expiresAt: number): string {
+  return createHmac("sha256", key).update(`kiosk:${expiresAt}`).digest("base64url");
+}
+
+export function createKioskCookieValue(key: string, now = Date.now()): string {
+  const expiresAt = now + KIOSK_COOKIE_MAX_AGE_MS;
+  return `${expiresAt}.${sign(key, expiresAt)}`;
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const left = createHash("sha256").update(a).digest();
+  const right = createHash("sha256").update(b).digest();
+  return timingSafeEqual(left, right);
+}
+
+export function isValidKioskCookie(key: string, value: string | undefined, now = Date.now()): boolean {
+  if (!value) return false;
+  const [expiry, signature, ...extra] = value.split(".");
+  if (!expiry || !signature || extra.length > 0 || !/^\d{1,16}$/.test(expiry)) return false;
+  const expiresAt = Number(expiry);
+  if (expiresAt <= now) return false;
+  return safeEqual(signature, sign(key, expiresAt));
+}
+
+export function keyMatches(provided: unknown, key: string): boolean {
+  return typeof provided === "string" && provided.length <= 200 && safeEqual(provided.trim(), key);
+}
+
+export function readCookie(header: string | undefined, name: string): string | undefined {
+  for (const part of (header ?? "").split(";")) {
+    const separator = part.indexOf("=");
+    if (separator > 0 && part.slice(0, separator).trim() === name) return part.slice(separator + 1).trim();
   }
-  return allowed;
+  return undefined;
 }
 
-/**
- * The address Railway's proxy saw. Only the last X-Forwarded-For entry is
- * trusted: the proxy appends it, while anything earlier could be written by
- * the client.
- */
-export function getRequestAddress(req: Request): string | null {
-  const forwarded = req.headers["x-forwarded-for"];
-  const header = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
-  const last = header?.split(",").map(part => part.trim()).filter(Boolean).pop();
-  return normalizeAddress(last ?? req.socket.remoteAddress ?? "");
+// Wrong-key attempts are limited across all visitors rather than per address
+// (addresses aren't reliable here). Ten misses locks pairing for ten minutes,
+// which makes guessing a 16+ character key hopeless.
+const FAILURE_WINDOW_MS = 10 * 60_000;
+const MAX_FAILURES = 10;
+let failures: number[] = [];
+
+export function pairingLocked(now = Date.now()): boolean {
+  failures = failures.filter(at => now - at < FAILURE_WINDOW_MS);
+  return failures.length >= MAX_FAILURES;
+}
+
+export function recordPairingFailure(now = Date.now()): void {
+  failures.push(now);
 }
 
 async function resolveHousehold(): Promise<{ id: number; name: string } | null> {
@@ -61,20 +88,23 @@ async function resolveHousehold(): Promise<{ id: number; name: string } | null> 
   return households.length === 1 ? { id: households[0].id, name: households[0].name } : null;
 }
 
-export async function requireKioskNetwork(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function requireKioskPairing(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const address = getRequestAddress(req);
-    const allowed = parseAllowedAddresses(process.env.KIOSK_ALLOWED_IPS);
-    if (!address || !allowed.has(address)) {
-      res.status(403).json({
-        error: "This screen isn't on an approved home network yet.",
-        yourAddress: address ? address.replace(/\/64$/, "") : null,
+    const key = getPairingKey();
+    if (!key) {
+      res.status(503).json({
+        code: "not_configured",
+        error: "The wall screen isn't set up yet. Add KIOSK_PAIRING_KEY (16+ characters) in Railway.",
       });
+      return;
+    }
+    if (!isValidKioskCookie(key, readCookie(req.headers.cookie, KIOSK_COOKIE_NAME))) {
+      res.status(401).json({ code: "needs_pairing", error: "This screen isn't paired yet." });
       return;
     }
     const household = await resolveHousehold();
     if (!household) {
-      res.status(503).json({ error: "Couldn't tell which household this screen belongs to. Set KIOSK_HOUSEHOLD_ID." });
+      res.status(503).json({ code: "no_household", error: "Couldn't tell which household this screen belongs to. Set KIOSK_HOUSEHOLD_ID." });
       return;
     }
     const properties = await db.select({ id: propertiesTable.id }).from(propertiesTable)
@@ -94,6 +124,6 @@ export async function requireKioskNetwork(req: Request, res: Response, next: Nex
 
 export function getKioskScope(res: Response): KioskScope {
   const scope = res.locals[KIOSK_SCOPE_KEY] as KioskScope | undefined;
-  if (!scope) throw new Error("Kiosk network middleware was not applied");
+  if (!scope) throw new Error("Kiosk pairing middleware was not applied");
   return scope;
 }

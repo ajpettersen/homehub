@@ -28,7 +28,7 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(meRouter);
-// Mounted before requireApprovedHousehold: the wall screen is allowed by network, not by sign-in.
+// Mounted before requireApprovedHousehold: the wall screen is paired with a key, not signed in.
 router.use(kioskRouter);
 router.use(requireApprovedHousehold);
 router.use(householdRouter);

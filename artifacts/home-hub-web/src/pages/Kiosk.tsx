@@ -34,7 +34,8 @@ interface KioskSummary {
 type Tab = "home" | "calendar" | "chores" | "meals";
 type LoadState =
   | { kind: "loading" }
-  | { kind: "blocked"; address: string | null }
+  | { kind: "needsPairing"; message?: string }
+  | { kind: "notConfigured" }
   | { kind: "error"; message: string }
   | { kind: "ready"; summary: KioskSummary };
 
@@ -344,6 +345,65 @@ function Notice({ title, children }: { title: string; children: React.ReactNode 
   );
 }
 
+function PairingScreen({ initialMessage, onPaired }: { initialMessage?: string; onPaired: () => void }) {
+  const [key, setKey] = useState("");
+  const [message, setMessage] = useState(initialMessage ?? "");
+  const [busy, setBusy] = useState(false);
+
+  const pair = useCallback(async (candidate: string) => {
+    if (!candidate.trim()) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/kiosk/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: candidate.trim() }),
+      });
+      if (response.ok) { onPaired(); return; }
+      const body = await response.json().catch(() => null) as { error?: string } | null;
+      setMessage(body?.error ?? "Couldn't pair this screen. Try again.");
+    } catch {
+      setMessage("Couldn't reach HomeHub. Check the internet connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }, [onPaired]);
+
+  // A link ending in #key=… pairs without typing. The part after # is never
+  // sent to the server or logged, and is removed from the address bar here.
+  useEffect(() => {
+    const fromLink = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("key");
+    if (!fromLink) return;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    void pair(fromLink);
+  }, [pair]);
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-10 text-center">
+      <h1 className="font-serif text-4xl font-bold">Pair this screen</h1>
+      <p className="max-w-xl text-xl text-muted-foreground">Enter the HomeHub screen key once. This screen will remember it.</p>
+      <form className="flex w-full max-w-xl flex-col gap-4" onSubmit={event => { event.preventDefault(); void pair(key); }}>
+        <input
+          type="password"
+          value={key}
+          onChange={event => setKey(event.target.value)}
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          aria-label="Screen key"
+          placeholder="Screen key"
+          className="rounded-2xl border-2 border-border bg-card px-6 py-5 text-center text-2xl focus:border-primary focus:outline-none"
+        />
+        <button type="submit" disabled={busy || !key.trim()} className="min-h-20 rounded-2xl bg-primary text-2xl font-bold text-primary-foreground disabled:opacity-50">
+          {busy ? "Pairing…" : "Pair this screen"}
+        </button>
+      </form>
+      {message && <p role="alert" className="text-xl font-semibold text-destructive">{message}</p>}
+    </div>
+  );
+}
+
 export default function Kiosk() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [tab, setTab] = useState<Tab>("home");
@@ -357,10 +417,14 @@ export default function Kiosk() {
   const load = useCallback(async () => {
     try {
       const response = await fetch(`/api/kiosk/summary?timezone=${encodeURIComponent(timeZone)}`, { cache: "no-store" });
-      if (response.status === 403) {
-        const body = await response.json().catch(() => null) as { yourAddress?: string | null } | null;
-        setState({ kind: "blocked", address: body?.yourAddress ?? null });
+      if (response.status === 401) {
+        setState({ kind: "needsPairing" });
         return;
+      }
+      if (response.status === 503) {
+        const body = await response.json().catch(() => null) as { code?: string; error?: string } | null;
+        if (body?.code === "not_configured") { setState({ kind: "notConfigured" }); return; }
+        throw new Error(body?.error ?? "Server said 503");
       }
       if (!response.ok) throw new Error(`Server said ${response.status}`);
       const summary = await response.json() as KioskSummary;
@@ -412,17 +476,12 @@ export default function Kiosk() {
   const touch = () => { lastTouch.current = Date.now(); };
 
   if (state.kind === "loading") return <Notice title="Loading…"><p>Getting the house ready.</p></Notice>;
-  if (state.kind === "blocked") {
+  if (state.kind === "needsPairing") return <PairingScreen initialMessage={state.message} onPaired={() => void load()} />;
+  if (state.kind === "notConfigured") {
     return (
       <Notice title="This screen isn't set up yet">
-        <p>HomeHub only shows this screen on your home network.</p>
-        {state.address ? (
-          <>
-            <p>This network's address is:</p>
-            <p className="select-text rounded-2xl bg-muted px-6 py-4 font-mono text-3xl font-bold text-foreground">{state.address}</p>
-            <p>Add it to <strong>KIOSK_ALLOWED_IPS</strong> in Railway, then reload this page.</p>
-          </>
-        ) : <p>We couldn't work out this network's address.</p>}
+        <p>Add a screen key to HomeHub, then reload this page.</p>
+        <p>In Railway, add a variable named <strong>KIOSK_PAIRING_KEY</strong> with a long secret (16 or more characters).</p>
       </Notice>
     );
   }
