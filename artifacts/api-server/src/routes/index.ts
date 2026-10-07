@@ -21,12 +21,15 @@ import notificationPreferencesRouter from "./notificationPreferences";
 import storesRouter from "./stores";
 import inventoryRouter from "./inventory";
 import walletsRouter from "./wallets";
+import kioskRouter from "./kiosk";
 import { requireApprovedHousehold } from "../middlewares/requireApprovedHousehold";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(meRouter);
+// Mounted before requireApprovedHousehold: the wall screen is allowed by network, not by sign-in.
+router.use(kioskRouter);
 router.use(requireApprovedHousehold);
 router.use(householdRouter);
 router.use(onboardingRouter);

@@ -60,6 +60,28 @@ keys), not a paid production tier, which is important:
   colliding with another linked adult — see `lib/bootstrapIdentity.ts` and
   `routes/me.ts` if this needs to change.
 
+## Wall screen (`/kiosk`)
+
+A read-only, portrait, touch-first display for a screen mounted in the house
+(`pages/Kiosk.tsx`, `routes/kiosk.ts`, `lib/kioskAccess.ts`, `lib/kioskFeeds.ts`).
+It has no sign-in: the server allows it by the public internet address of the
+home network, so `/api/kiosk/*` is mounted *before* `requireApprovedHousehold`
+and must stay read-only. Railway env vars:
+
+- `KIOSK_ALLOWED_IPS` (required) — comma-separated home addresses. Opening
+  `/kiosk` from an unapproved network shows the address to paste in here.
+  IPv6 entries match on their first 64 bits, since devices on one network
+  rotate the rest. The address comes from the **last** `X-Forwarded-For`
+  entry (the one Railway's proxy appended); earlier entries are
+  client-controlled. A home address that changes means the screen shows the
+  setup page again until the variable is updated.
+- `KIOSK_HOUSEHOLD_ID` (optional) — only needed if there is more than one household.
+- `KIOSK_CALENDAR_ICS_URLS` (optional) — Google Calendar "secret address in
+  iCal format" links, comma-separated, each `https://…` or `Label|https://…`.
+  Read-only and cached 10 minutes; no OAuth involved.
+- `KIOSK_LATITUDE` / `KIOSK_LONGITUDE` (optional) — turns on the weather
+  (Open-Meteo, no key).
+
 ## Data model gotchas
 
 - **Meal plan weeks are Monday-based, everywhere, in UTC.** See

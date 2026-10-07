@@ -21,6 +21,7 @@ import NotFound from '@/pages/not-found';
 import Landing from '@/pages/Landing';
 import AccountSetup from '@/pages/AccountSetup';
 import Invite from '@/pages/Invite';
+import Kiosk from '@/pages/Kiosk';
 import PersonalSetup from '@/pages/PersonalSetup';
 import { Redirect, Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
@@ -284,6 +285,7 @@ function Router() {
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
       <Route path="/invite" component={Invite} />
+      <Route path="/kiosk" component={Kiosk} />
       <Route path="/" component={RootPage} />
       <Route component={AuthenticatedApp} />
     </Switch>
