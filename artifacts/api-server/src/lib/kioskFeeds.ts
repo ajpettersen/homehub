@@ -12,10 +12,18 @@ export interface KioskCalendarEvent {
 
 export interface KioskWeather {
   temperatureF: number;
+  feelsLikeF: number;
+  windMph: number;
+  humidityPct: number;
+  code: number;
+  isDay: boolean;
   highF: number;
   lowF: number;
-  code: number;
-  forecast: Array<{ date: string; highF: number; lowF: number; code: number }>;
+  rainChancePct: number;
+  /** Local wall-clock times such as "2026-10-07T07:21", in the forecast location's time zone. */
+  sunrise: string | null;
+  sunset: string | null;
+  forecast: Array<{ date: string; highF: number; lowF: number; code: number; rainChancePct: number }>;
 }
 
 const CACHE_MS = 10 * 60_000;
@@ -94,6 +102,19 @@ export async function getKioskCalendar(
   return { events, errors };
 }
 
+/**
+ * Open-Meteo's daily code reports "cloudy" (3) if any single hour was, so a
+ * mostly sunny day gets a cloud icon. For dry days, pick the icon from the
+ * day's average cloud cover instead; keep rain, snow, fog and storm codes.
+ */
+export function dayIconCode(dailyCode: number, cloudMeanPct: number | null | undefined): number {
+  if (dailyCode >= 45 || cloudMeanPct === null || cloudMeanPct === undefined) return dailyCode;
+  if (cloudMeanPct < 25) return 0;
+  if (cloudMeanPct < 50) return 1;
+  if (cloudMeanPct < 75) return 2;
+  return 3;
+}
+
 export async function getKioskWeather(latitude: number, longitude: number): Promise<KioskWeather | null> {
   const key = `${latitude},${longitude}`;
   if (weatherCache && weatherCache.key === key && Date.now() - weatherCache.at < 15 * 60_000) return weatherCache.value;
@@ -101,28 +122,44 @@ export async function getKioskWeather(latitude: number, longitude: number): Prom
     const url = new URL("https://api.open-meteo.com/v1/forecast");
     url.searchParams.set("latitude", String(latitude));
     url.searchParams.set("longitude", String(longitude));
-    url.searchParams.set("current", "temperature_2m,weather_code");
-    url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min,weather_code");
+    url.searchParams.set("current", "temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day");
+    url.searchParams.set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,cloud_cover_mean,sunrise,sunset");
     url.searchParams.set("temperature_unit", "fahrenheit");
+    url.searchParams.set("wind_speed_unit", "mph");
     url.searchParams.set("timezone", "auto");
-    url.searchParams.set("forecast_days", "4");
+    url.searchParams.set("forecast_days", "5");
     const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!response.ok) return weatherCache?.key === key ? weatherCache.value : null;
     const data = await response.json() as {
-      current: { temperature_2m: number; weather_code: number };
-      daily: { time: string[]; temperature_2m_max: number[]; temperature_2m_min: number[]; weather_code: number[] };
+      current: {
+        temperature_2m: number; apparent_temperature: number; relative_humidity_2m: number;
+        wind_speed_10m: number; weather_code: number; is_day: number;
+      };
+      daily: {
+        time: string[]; weather_code: number[]; temperature_2m_max: number[]; temperature_2m_min: number[];
+        precipitation_probability_max: Array<number | null>; cloud_cover_mean: Array<number | null>;
+        sunrise: string[]; sunset: string[];
+      };
     };
     const forecast = data.daily.time.map((date, index) => ({
       date,
       highF: Math.round(data.daily.temperature_2m_max[index]),
       lowF: Math.round(data.daily.temperature_2m_min[index]),
-      code: data.daily.weather_code[index],
+      code: dayIconCode(data.daily.weather_code[index], data.daily.cloud_cover_mean[index]),
+      rainChancePct: Math.round(data.daily.precipitation_probability_max[index] ?? 0),
     }));
     const value: KioskWeather = {
       temperatureF: Math.round(data.current.temperature_2m),
+      feelsLikeF: Math.round(data.current.apparent_temperature),
+      windMph: Math.round(data.current.wind_speed_10m),
+      humidityPct: Math.round(data.current.relative_humidity_2m),
+      code: data.current.weather_code,
+      isDay: data.current.is_day === 1,
       highF: forecast[0]?.highF ?? Math.round(data.current.temperature_2m),
       lowF: forecast[0]?.lowF ?? Math.round(data.current.temperature_2m),
-      code: data.current.weather_code,
+      rainChancePct: forecast[0]?.rainChancePct ?? 0,
+      sunrise: data.daily.sunrise[0] ?? null,
+      sunset: data.daily.sunset[0] ?? null,
       forecast,
     };
     weatherCache = { at: Date.now(), key, value };

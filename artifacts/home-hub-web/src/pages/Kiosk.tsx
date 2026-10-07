@@ -8,10 +8,17 @@ import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
 
 interface KioskWeather {
   temperatureF: number;
+  feelsLikeF: number;
+  windMph: number;
+  humidityPct: number;
+  code: number;
+  isDay: boolean;
   highF: number;
   lowF: number;
-  code: number;
-  forecast: Array<{ date: string; highF: number; lowF: number; code: number }>;
+  rainChancePct: number;
+  sunrise: string | null;
+  sunset: string | null;
+  forecast: Array<{ date: string; highF: number; lowF: number; code: number; rainChancePct: number }>;
 }
 interface KioskEvent { id: string; title: string; start: string; end: string | null; allDay: boolean; calendar: string }
 interface KioskChore {
@@ -53,14 +60,37 @@ const TABS: Array<{ id: Tab; label: string; Icon: LucideIcon }> = [
   { id: "meals", label: "Meals", Icon: UtensilsCrossed },
 ];
 
-function weatherIcon(code: number): LucideIcon {
-  if (code === 0) return Sun;
+function weatherIcon(code: number, isDay = true): LucideIcon {
+  if (code === 0) return isDay ? Sun : Moon;
   if (code <= 2) return CloudSun;
   if (code === 3) return Cloud;
   if (code === 45 || code === 48) return CloudFog;
   if (code >= 95) return CloudLightning;
   if ((code >= 71 && code <= 77) || code === 85 || code === 86) return CloudSnow;
   return CloudRain;
+}
+
+function weatherLabel(code: number): string {
+  if (code === 0) return "Clear";
+  if (code === 1) return "Mostly clear";
+  if (code === 2) return "Partly cloudy";
+  if (code === 3) return "Cloudy";
+  if (code === 45 || code === 48) return "Fog";
+  if (code >= 51 && code <= 57) return "Drizzle";
+  if (code === 61 || code === 63 || code === 65 || code === 66 || code === 67) return "Rain";
+  if (code >= 71 && code <= 77) return "Snow";
+  if (code >= 80 && code <= 82) return "Rain showers";
+  if (code === 85 || code === 86) return "Snow showers";
+  if (code >= 95) return "Thunderstorms";
+  return "Mixed";
+}
+
+/** Open-Meteo gives sunrise/sunset as local wall-clock text like "2026-10-07T18:24". */
+function clockTime(localIso: string | null): string | null {
+  const match = localIso ? /T(\d{2}):(\d{2})/.exec(localIso) : null;
+  if (!match) return null;
+  const hour = Number(match[1]);
+  return `${hour % 12 || 12}:${match[2]} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 function addDays(dateOnly: string, days: number): string {
@@ -136,6 +166,44 @@ function ChoreRow({ chore }: { chore: KioskChore }) {
   );
 }
 
+function WeatherCard({ weather, today }: { weather: KioskWeather; today: string }) {
+  const sunrise = clockTime(weather.sunrise);
+  const sunset = clockTime(weather.sunset);
+  const NowIcon = weatherIcon(weather.code, weather.isDay);
+  return (
+    <Card title="Weather" Icon={Cloud}>
+      <div className="mb-5 flex items-center gap-4">
+        <NowIcon className="h-12 w-12 shrink-0 text-primary" />
+        <div>
+          <p className="text-3xl font-bold">{weatherLabel(weather.code)}</p>
+          <p className="text-xl text-muted-foreground">
+            Feels like {weather.feelsLikeF}° · Wind {weather.windMph} mph · {weather.rainChancePct}% rain today
+          </p>
+        </div>
+      </div>
+      <ul className="grid grid-cols-5 gap-2 text-center">
+        {weather.forecast.map(day => {
+          const DayIcon = weatherIcon(day.code);
+          return (
+            <li key={day.date} className="rounded-2xl bg-muted/60 px-1 py-3">
+              <p className="text-lg font-bold">{day.date === today ? "Today" : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</p>
+              <DayIcon className="mx-auto my-2 h-9 w-9 text-primary" />
+              <p className="text-xl font-bold tabular-nums">{day.highF}°</p>
+              <p className="text-lg tabular-nums text-muted-foreground">{day.lowF}°</p>
+              <p className={`mt-1 text-base font-semibold tabular-nums ${day.rainChancePct >= 40 ? "text-primary" : "text-muted-foreground"}`}>{day.rainChancePct}%</p>
+            </li>
+          );
+        })}
+      </ul>
+      {(sunrise || sunset) && (
+        <p className="mt-4 text-center text-lg text-muted-foreground">
+          {sunrise && <>Sunrise {sunrise}</>}{sunrise && sunset && " · "}{sunset && <>Sunset {sunset}</>}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function HomeTab({ summary, now }: { summary: KioskSummary; now: Date }) {
   const today = summary.today;
   const todayEvents = eventsOnDay(summary.calendar.events, today);
@@ -148,6 +216,7 @@ function HomeTab({ summary, now }: { summary: KioskSummary; now: Date }) {
 
   return (
     <div className="space-y-5">
+      {summary.weather && <WeatherCard weather={summary.weather} today={today} />}
       <Card title="Today on the calendar" Icon={CalendarDays}>
         {!summary.calendar.configured ? (
           <Empty>No calendar connected yet.</Empty>
@@ -295,7 +364,7 @@ function MealsTab({ summary }: { summary: KioskSummary }) {
 }
 
 function Header({ summary, now }: { summary: KioskSummary | null; now: Date }) {
-  const WeatherIcon = summary?.weather ? weatherIcon(summary.weather.code) : null;
+  const WeatherIcon = summary?.weather ? weatherIcon(summary.weather.code, summary.weather.isDay) : null;
   return (
     <header className="flex items-end justify-between gap-6 px-8 pb-4 pt-8">
       <div>
@@ -312,7 +381,7 @@ function Header({ summary, now }: { summary: KioskSummary | null; now: Date }) {
             <WeatherIcon className="h-14 w-14 text-primary" />
             <span className="font-serif text-6xl font-bold tabular-nums">{summary.weather.temperatureF}°</span>
           </div>
-          <p className="mt-1 text-xl font-semibold text-muted-foreground">H {summary.weather.highF}° · L {summary.weather.lowF}°</p>
+          <p className="mt-1 text-xl font-semibold text-muted-foreground">{weatherLabel(summary.weather.code)} · H {summary.weather.highF}° · L {summary.weather.lowF}°</p>
         </div>
       )}
     </header>
