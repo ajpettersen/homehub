@@ -41,7 +41,7 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
   ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
-  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2, Store, ChevronUp, ChevronRight, Contact
+  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2, Store, ChevronUp, ChevronRight, Contact, Monitor
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import {
@@ -53,6 +53,7 @@ import {
 } from "@/lib/webPush";
 
 import { YourProfile } from "@/components/settings/YourProfile";
+import { WallScreenPhotoSection } from "@/components/settings/WallScreenPhotoSection";
 import { MaintenanceSuggestions } from "@/pages/Maintenance";
 import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
 
@@ -2463,6 +2464,17 @@ export default function Settings() {
       <YourProfile />
 
       <AppearanceAndTabsSection />
+
+      {me?.role === "family" && me.isAdmin && (
+        <AccordionSection
+          icon={<Monitor className="w-4 h-4" />}
+          title="Wall Screen"
+          summary={<span className="text-xs text-muted-foreground">Background photo for the screen on the wall</span>}
+          defaultOpen={false}
+        >
+          <WallScreenPhotoSection />
+        </AccordionSection>
+      )}
 
       {me?.role === "family" && me.isAdmin && (
         <Card>

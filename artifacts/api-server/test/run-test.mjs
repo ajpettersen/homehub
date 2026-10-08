@@ -19,6 +19,7 @@ const allowedTests = new Set([
    "maintenance-dates-catalog.test.ts",
     "todo-bulk-validation.test.ts",
     "store-management.test.ts",
+    "kiosk-photo.test.ts",
 ]);
 if (!allowedTests.has(testFile)) {
   throw new Error(`Unknown test file: ${testFile}`);

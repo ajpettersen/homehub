@@ -19,7 +19,8 @@
     "test:property-management": "node ./test/run-test.mjs property-management.test.ts",
     "test:maintenance-canonicalization": "node ./test/run-test.mjs maintenance-canonicalization.test.ts",
     "test:todo-bulk-validation": "node ./test/run-test.mjs todo-bulk-validation.test.ts",
-    "test:store-management": "node ./test/run-test.mjs store-management.test.ts"
+    "test:store-management": "node ./test/run-test.mjs store-management.test.ts",
+    "test:kiosk-photo": "node ./test/run-test.mjs kiosk-photo.test.ts"
   },
   "dependencies": {
     "@clerk/express": "^2.1.40",

@@ -3,6 +3,7 @@ import {
   db,
   HOMEHUB_WEB_TABS,
   householdsTable,
+  kioskPhotosTable,
   userProfilesTable,
   type HomeHubWebTab,
 } from "@workspace/db";
@@ -115,6 +116,88 @@ router.put("/household/tab-visibility", async (req, res) => {
     res.json({ visibleTabs: updated.visibleTabs });
   } catch (err) {
     req.log.error({ err }, "Failed to update household tab visibility");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+const KIOSK_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+const KIOSK_PHOTO_TYPES: Record<string, (bytes: Buffer) => boolean> = {
+  "image/jpeg": bytes => bytes[0] === 0xff && bytes[1] === 0xd8,
+  "image/png": bytes => bytes.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])),
+  "image/webp": bytes => bytes.subarray(0, 4).toString() === "RIFF" && bytes.subarray(8, 12).toString() === "WEBP",
+};
+
+/** Checks an uploaded wall screen photo (a base64 data URL) is a real, reasonably sized image. */
+export function parseKioskPhoto(image: unknown):
+  | { ok: true; mimeType: string; bytes: Buffer }
+  | { ok: false; status: 400 | 413; error: string } {
+  const match = typeof image === "string" ? /^data:(image\/[a-z]+);base64,(.+)$/.exec(image) : null;
+  const looksRight = match ? KIOSK_PHOTO_TYPES[match[1]] : undefined;
+  const bytes = match ? Buffer.from(match[2], "base64") : null;
+  if (!match || !looksRight || !bytes || !looksRight(bytes)) {
+    return { ok: false, status: 400, error: "Send a JPEG, PNG or WebP photo." };
+  }
+  if (bytes.length > KIOSK_PHOTO_MAX_BYTES) {
+    return { ok: false, status: 413, error: "That photo is too large. Keep it under 5 MB." };
+  }
+  return { ok: true, mimeType: match[1], bytes };
+}
+
+/** GET /api/household/kiosk-photo — the wall screen's background photo, for the Settings preview */
+router.get("/household/kiosk-photo", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    const [photo] = await db.select({ mimeType: kioskPhotosTable.mimeType, bytes: kioskPhotosTable.bytes })
+      .from(kioskPhotosTable).where(eq(kioskPhotosTable.householdId, scope.householdId));
+    if (!photo) {
+      res.status(404).json({ error: "No wall screen photo yet" });
+      return;
+    }
+    res.set("Cache-Control", "private, no-cache");
+    res.type(photo.mimeType).send(photo.bytes);
+  } catch (err) {
+    req.log.error({ err }, "Failed to load wall screen photo");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** PUT /api/household/kiosk-photo — set the wall screen's background photo (admin only). Body: { image: data URL } */
+router.put("/household/kiosk-photo", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    if (scope.role !== "family" || !scope.isAdmin) {
+      res.status(403).json({ error: "Household administrator access required" });
+      return;
+    }
+    const photo = parseKioskPhoto(req.body?.image);
+    if (!photo.ok) {
+      res.status(photo.status).json({ error: photo.error });
+      return;
+    }
+    const { mimeType, bytes } = photo;
+    const updatedAt = new Date();
+    await db.insert(kioskPhotosTable)
+      .values({ householdId: scope.householdId, mimeType, bytes, updatedAt })
+      .onConflictDoUpdate({ target: kioskPhotosTable.householdId, set: { mimeType, bytes, updatedAt } });
+    res.json({ ok: true, updatedAt: updatedAt.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Failed to save wall screen photo");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** DELETE /api/household/kiosk-photo — go back to the plain sky background (admin only) */
+router.delete("/household/kiosk-photo", async (req, res) => {
+  try {
+    const scope = getApprovedHouseholdScope(res);
+    if (scope.role !== "family" || !scope.isAdmin) {
+      res.status(403).json({ error: "Household administrator access required" });
+      return;
+    }
+    await db.delete(kioskPhotosTable).where(eq(kioskPhotosTable.householdId, scope.householdId));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to remove wall screen photo");
     res.status(500).json({ error: "Internal server error" });
   }
 });
