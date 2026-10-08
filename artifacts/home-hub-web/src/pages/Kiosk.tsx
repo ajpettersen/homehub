@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays, Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun,
-  Home, ListChecks, Moon, Sun, UtensilsCrossed, Wrench, WifiOff,
+  Droplets, Home, ListChecks, Moon, Sun, Sunrise, Sunset, UtensilsCrossed, Wind, Wrench, WifiOff,
   type LucideIcon,
 } from "lucide-react";
 import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
@@ -32,6 +32,7 @@ interface KioskSummary {
   today: string;
   weekStart: string;
   weather: KioskWeather | null;
+  photoVersion: string | null;
   meals: KioskMeal[];
   chores: KioskChore[];
   maintenance: KioskMaintenance[];
@@ -134,11 +135,24 @@ function useNow(intervalMs: number): Date {
   return now;
 }
 
-function Card({ title, Icon, children, className = "" }: { title: string; Icon: LucideIcon; children: React.ReactNode; className?: string }) {
+const TONES = {
+  primary: "bg-primary/12 text-primary",
+  sky: "bg-sky-500/12 text-sky-600 dark:text-sky-400",
+  green: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
+  amber: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  violet: "bg-violet-500/12 text-violet-600 dark:text-violet-400",
+};
+type Tone = keyof typeof TONES;
+
+function Card({ title, Icon, children, className = "", tone = "primary", aside }: {
+  title: string; Icon: LucideIcon; children: React.ReactNode; className?: string; tone?: Tone; aside?: React.ReactNode;
+}) {
   return (
-    <section className={`rounded-3xl border border-border bg-card p-6 ${className}`}>
-      <h2 className="mb-4 flex items-center gap-3 text-sm font-bold uppercase tracking-[0.14em] text-muted-foreground">
-        <Icon className="h-5 w-5" /> {title}
+    <section className={`rounded-[1.75rem] border border-border/70 bg-card p-6 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-12px_rgb(0_0_0/0.12)] ${className}`}>
+      <h2 className="mb-4 flex items-center gap-3 text-base font-bold text-muted-foreground">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${TONES[tone]}`}><Icon className="h-5 w-5" /></span>
+        <span className="flex-1 uppercase tracking-[0.12em]">{title}</span>
+        {aside}
       </h2>
       {children}
     </section>
@@ -159,47 +173,123 @@ function ChoreRow({ chore }: { chore: KioskChore }) {
       >
         {chore.assigneeInitials ?? "·"}
       </span>
-      <span className="min-w-0 flex-1 text-2xl font-semibold leading-snug">{chore.title}</span>
+      <span className="min-w-0 flex-1 text-xl font-semibold leading-snug">{chore.title}</span>
       {chore.awaitingApproval && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-800">Check pending</span>}
       {chore.isOverdue && <span className="rounded-full bg-destructive/10 px-3 py-1 text-sm font-bold text-destructive">Overdue</span>}
     </li>
   );
 }
 
-function WeatherCard({ weather, today }: { weather: KioskWeather; today: string }) {
-  const sunrise = clockTime(weather.sunrise);
-  const sunset = clockTime(weather.sunset);
-  const NowIcon = weatherIcon(weather.code, weather.isDay);
+/** The first thing still to come today, or today's first all-day event. */
+function nextEvent(events: KioskEvent[], now: Date): KioskEvent | null {
+  return events.find(event => !event.allDay && new Date(event.end ?? event.start) > now)
+    ?? events.find(event => event.allDay)
+    ?? null;
+}
+
+function GlassChip({ Icon, label, children }: { Icon: LucideIcon; label: string; children: React.ReactNode }) {
   return (
-    <Card title="Weather" Icon={Cloud}>
-      <div className="mb-5 flex items-center gap-4">
-        <NowIcon className="h-12 w-12 shrink-0 text-primary" />
-        <div>
-          <p className="text-3xl font-bold">{weatherLabel(weather.code)}</p>
-          <p className="text-xl text-muted-foreground">
-            Feels like {weather.feelsLikeF}° · Wind {weather.windMph} mph · {weather.rainChancePct}% rain today
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/20 bg-white/15 px-4 py-3 text-white shadow-lg shadow-black/10 backdrop-blur-xl">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20"><Icon className="h-5 w-5" /></span>
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/70">{label}</p>
+        <p className="truncate text-xl font-semibold leading-tight">{children}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The top of the Home tab: the house photo with the clock, weather and what's
+ * next laid over it. With no photo yet, a sky that follows day and night.
+ */
+function Hero({ summary, now, todayEvents, dinner }: { summary: KioskSummary; now: Date; todayEvents: KioskEvent[]; dinner: KioskMeal | undefined }) {
+  const { weather } = summary;
+  const hour = now.getHours();
+  const isDay = weather?.isDay ?? (hour >= 7 && hour < 19);
+  const WeatherIcon = weather ? weatherIcon(weather.code, weather.isDay) : null;
+  const upNext = nextEvent(todayEvents, now);
+  const [time, meridiem] = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }).split(" ");
+
+  return (
+    <section className="relative isolate flex min-h-[46vh] flex-col overflow-hidden rounded-[2.25rem] text-white shadow-2xl shadow-black/20">
+      {summary.photoVersion ? (
+        <img
+          src={`/api/kiosk/photo?v=${encodeURIComponent(summary.photoVersion)}`}
+          alt=""
+          className="absolute inset-0 -z-20 h-full w-full object-cover motion-safe:animate-[kiosk-drift_60s_ease-in-out_infinite_alternate]"
+        />
+      ) : (
+        <div className={`absolute inset-0 -z-20 ${isDay
+          ? "bg-[radial-gradient(circle_at_80%_15%,#fff7d6_0,transparent_28%),linear-gradient(160deg,#6fb3e8_0%,#a9cfe9_45%,#f4c69a_100%)]"
+          : "bg-[radial-gradient(circle_at_78%_18%,#f5f3e7_0,#f5f3e7_3%,transparent_3.5%),radial-gradient(circle_at_30%_110%,#7a4a7e_0,transparent_55%),linear-gradient(170deg,#0d1b3a_0%,#1f2a5c_55%,#3d2f5e_100%)]"}`}
+        />
+      )}
+      {/* Shade the top and bottom so the text stays readable on any photo. */}
+      <div className={`absolute inset-0 -z-10 bg-gradient-to-b ${isDay ? "from-black/45 via-black/5 to-black/60" : "from-black/60 via-black/25 to-black/75"}`} />
+
+      <div className="flex items-start justify-between gap-6 p-8">
+        <div className="[text-shadow:0_2px_16px_rgb(0_0_0/0.35)]">
+          <p className="font-serif text-[7.5rem] font-semibold leading-[0.9] tracking-tight tabular-nums">
+            {time}<span className="ml-3 text-4xl font-medium tracking-normal text-white/80">{meridiem}</span>
+          </p>
+          <p className="mt-4 text-2xl font-semibold text-white/90">
+            {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
           </p>
         </div>
+        {weather && WeatherIcon && (
+          <div className="rounded-3xl border border-white/20 bg-white/15 px-5 py-4 text-right backdrop-blur-xl">
+            <div className="flex items-center justify-end gap-3">
+              <WeatherIcon className="h-12 w-12" />
+              <span className="font-serif text-6xl font-semibold tabular-nums">{weather.temperatureF}°</span>
+            </div>
+            <p className="mt-1 text-lg font-semibold">{weatherLabel(weather.code)}</p>
+            <p className="text-base text-white/80">H {weather.highF}° · L {weather.lowF}°</p>
+          </div>
+        )}
       </div>
-      <ul className="grid grid-cols-5 gap-2 text-center">
+
+      <div className="mt-auto grid grid-cols-2 gap-3 p-6 pt-0">
+        <GlassChip Icon={CalendarDays} label={upNext ? (upNext.allDay ? "Today" : `Next · ${eventTime(upNext)}`) : "Calendar"}>
+          {upNext ? upNext.title : summary.calendar.configured ? "Nothing else today" : "No calendar yet"}
+        </GlassChip>
+        <GlassChip Icon={UtensilsCrossed} label="Dinner">
+          {dinner ? dinner.meal : "Not planned yet"}
+        </GlassChip>
+      </div>
+    </section>
+  );
+}
+
+function WeatherStrip({ weather, today }: { weather: KioskWeather; today: string }) {
+  const sunrise = clockTime(weather.sunrise);
+  const sunset = clockTime(weather.sunset);
+  return (
+    <Card title="Forecast" Icon={CloudSun} tone="sky" className="col-span-2" aside={
+      <span className="flex items-center gap-5 text-base font-semibold normal-case tracking-normal">
+        <span className="flex items-center gap-1.5"><Wind className="h-4 w-4" />{weather.windMph} mph</span>
+        <span className="flex items-center gap-1.5"><Droplets className="h-4 w-4" />{weather.rainChancePct}%</span>
+        {sunrise && <span className="flex items-center gap-1.5"><Sunrise className="h-4 w-4" />{sunrise}</span>}
+        {sunset && <span className="flex items-center gap-1.5"><Sunset className="h-4 w-4" />{sunset}</span>}
+      </span>
+    }>
+      <ul className="grid grid-cols-5 gap-3 text-center">
         {weather.forecast.map(day => {
           const DayIcon = weatherIcon(day.code);
+          const isToday = day.date === today;
           return (
-            <li key={day.date} className="rounded-2xl bg-muted/60 px-1 py-3">
-              <p className="text-lg font-bold">{day.date === today ? "Today" : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</p>
-              <DayIcon className="mx-auto my-2 h-9 w-9 text-primary" />
-              <p className="text-xl font-bold tabular-nums">{day.highF}°</p>
-              <p className="text-lg tabular-nums text-muted-foreground">{day.lowF}°</p>
-              <p className={`mt-1 text-base font-semibold tabular-nums ${day.rainChancePct >= 40 ? "text-primary" : "text-muted-foreground"}`}>{day.rainChancePct}%</p>
+            <li key={day.date} className={`rounded-2xl px-1 py-3 ${isToday ? "bg-sky-500/12 ring-1 ring-sky-500/30" : "bg-muted/60"}`}>
+              <p className="text-lg font-bold">{isToday ? "Today" : new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</p>
+              <DayIcon className="mx-auto my-2 h-9 w-9 text-sky-600 dark:text-sky-400" />
+              <p className="text-xl font-bold tabular-nums">{day.highF}° <span className="font-medium text-muted-foreground">{day.lowF}°</span></p>
+              <p className={`mt-1 text-base font-semibold tabular-nums ${day.rainChancePct >= 40 ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground"}`}>
+                <Droplets className="mr-0.5 inline h-3.5 w-3.5" />{day.rainChancePct}%
+              </p>
             </li>
           );
         })}
       </ul>
-      {(sunrise || sunset) && (
-        <p className="mt-4 text-center text-lg text-muted-foreground">
-          {sunrise && <>Sunrise {sunrise}</>}{sunrise && sunset && " · "}{sunset && <>Sunset {sunset}</>}
-        </p>
-      )}
+      <p className="mt-3 text-center text-lg text-muted-foreground">Feels like {weather.feelsLikeF}° right now</p>
     </Card>
   );
 }
@@ -212,67 +302,76 @@ function HomeTab({ summary, now }: { summary: KioskSummary; now: Date }) {
     .filter(meal => meal.dayOfWeek === todayDow)
     .sort((a, b) => MEAL_ORDER.indexOf(a.mealType) - MEAL_ORDER.indexOf(b.mealType));
   const urgentMaintenance = summary.maintenance.filter(task => task.nextDueDate <= addDays(today, 7)).slice(0, 4);
-  void now;
+  const count = (n: number) => <span className="rounded-full bg-muted px-3 py-0.5 text-base font-bold tabular-nums normal-case tracking-normal text-foreground">{n}</span>;
 
   return (
     <div className="space-y-5">
-      {summary.weather && <WeatherCard weather={summary.weather} today={today} />}
-      <Card title="Today on the calendar" Icon={CalendarDays}>
-        {!summary.calendar.configured ? (
-          <Empty>No calendar connected yet.</Empty>
-        ) : todayEvents.length === 0 ? (
-          <Empty>Nothing scheduled today.</Empty>
-        ) : (
-          <ul className="space-y-3">
-            {todayEvents.slice(0, 6).map(event => (
-              <li key={event.id} className="flex items-baseline gap-4">
-                <span className="w-28 shrink-0 text-xl font-bold tabular-nums text-primary">{eventTime(event)}</span>
-                <span className="min-w-0 flex-1 text-2xl font-semibold leading-snug">{event.title}</span>
-              </li>
-            ))}
-            {todayEvents.length > 6 && <li className="text-lg text-muted-foreground">+ {todayEvents.length - 6} more</li>}
-          </ul>
-        )}
-      </Card>
+      <Hero summary={summary} now={now} todayEvents={todayEvents} dinner={todayMeals.find(meal => meal.mealType === "dinner")} />
 
-      <Card title="Today's meals" Icon={UtensilsCrossed}>
-        {todayMeals.length === 0 ? <Empty>No meals planned today.</Empty> : (
-          <ul className="space-y-3">
-            {todayMeals.map(meal => (
-              <li key={meal.id} className="flex items-baseline gap-4">
-                <span className="w-28 shrink-0 text-lg font-bold capitalize text-primary">{meal.mealType}</span>
-                <span className="min-w-0 flex-1 text-2xl font-semibold leading-snug">{meal.meal}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <Card title="Chores to do" Icon={ListChecks}>
-        {summary.chores.length === 0 ? <Empty>All caught up. 🎉</Empty> : (
-          <ul className="divide-y divide-border">
-            {summary.chores.slice(0, 6).map(chore => <ChoreRow key={chore.id} chore={chore} />)}
-            {summary.chores.length > 6 && <li className="pt-3 text-lg text-muted-foreground">+ {summary.chores.length - 6} more in Chores</li>}
-          </ul>
-        )}
-      </Card>
-
-      {urgentMaintenance.length > 0 && (
-        <Card title="Home maintenance due" Icon={Wrench}>
-          <ul className="space-y-3">
-            {urgentMaintenance.map(task => (
-              <li key={task.id} className="flex items-baseline gap-4">
-                <span className={`w-36 shrink-0 text-lg font-bold ${task.isOverdue ? "text-destructive" : "text-primary"}`}>
-                  {task.isOverdue ? "Overdue" : shortDay(task.nextDueDate, today)}
-                </span>
-                <span className="min-w-0 flex-1 text-2xl font-semibold leading-snug">
-                  {task.title}{task.propertyName && <span className="text-lg font-medium text-muted-foreground"> · {task.propertyName}</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
+      <div className="grid grid-cols-2 gap-5">
+        <Card title="Today" Icon={CalendarDays} className="col-span-2" aside={todayEvents.length > 0 ? count(todayEvents.length) : undefined}>
+          {!summary.calendar.configured ? (
+            <Empty>No calendar connected yet.</Empty>
+          ) : todayEvents.length === 0 ? (
+            <Empty>Nothing scheduled today.</Empty>
+          ) : (
+            <ul className="space-y-2">
+              {todayEvents.slice(0, 6).map(event => {
+                const isPast = !event.allDay && new Date(event.end ?? event.start) <= now;
+                return (
+                  <li key={event.id} className={`flex items-center gap-4 rounded-2xl bg-muted/50 px-4 py-3 ${isPast ? "opacity-45" : ""}`}>
+                    <span className="h-10 w-1.5 shrink-0 rounded-full bg-primary" />
+                    <span className="w-28 shrink-0 text-xl font-bold tabular-nums text-primary">{eventTime(event)}</span>
+                    <span className="min-w-0 flex-1 text-2xl font-semibold leading-snug">{event.title}</span>
+                  </li>
+                );
+              })}
+              {todayEvents.length > 6 && <li className="px-4 text-lg text-muted-foreground">+ {todayEvents.length - 6} more</li>}
+            </ul>
+          )}
         </Card>
-      )}
+
+        <Card title="Meals" Icon={UtensilsCrossed} tone="amber">
+          {todayMeals.length === 0 ? <Empty>No meals planned today.</Empty> : (
+            <ul className="space-y-4">
+              {todayMeals.map(meal => (
+                <li key={meal.id}>
+                  <p className="text-sm font-bold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400">{meal.mealType}</p>
+                  <p className="text-2xl font-semibold leading-snug">{meal.meal}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Chores" Icon={ListChecks} tone="green" aside={summary.chores.length > 0 ? count(summary.chores.length) : undefined}>
+          {summary.chores.length === 0 ? <Empty>All caught up. 🎉</Empty> : (
+            <ul className="divide-y divide-border">
+              {summary.chores.slice(0, 4).map(chore => <ChoreRow key={chore.id} chore={chore} />)}
+              {summary.chores.length > 4 && <li className="pt-3 text-lg text-muted-foreground">+ {summary.chores.length - 4} more in Chores</li>}
+            </ul>
+          )}
+        </Card>
+
+        {summary.weather && <WeatherStrip weather={summary.weather} today={today} />}
+
+        {urgentMaintenance.length > 0 && (
+          <Card title="Home maintenance" Icon={Wrench} tone="violet" className="col-span-2">
+            <ul className="space-y-3">
+              {urgentMaintenance.map(task => (
+                <li key={task.id} className="flex items-baseline gap-4">
+                  <span className={`w-36 shrink-0 text-lg font-bold ${task.isOverdue ? "text-destructive" : "text-violet-600 dark:text-violet-400"}`}>
+                    {task.isOverdue ? "Overdue" : shortDay(task.nextDueDate, today)}
+                  </span>
+                  <span className="min-w-0 flex-1 text-2xl font-semibold leading-snug">
+                    {task.title}{task.propertyName && <span className="text-lg font-medium text-muted-foreground"> · {task.propertyName}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
@@ -565,28 +664,28 @@ export default function Kiosk() {
   const { summary } = state;
   return (
     <div className="flex h-screen select-none flex-col bg-background text-foreground" onPointerDown={touch}>
-      <Header summary={summary} now={now} />
+      {tab !== "home" && <Header summary={summary} now={now} />}
       {offline && (
         <p className="mx-8 mb-2 flex items-center gap-2 rounded-2xl bg-amber-100 px-5 py-2 text-lg font-semibold text-amber-900">
           <WifiOff className="h-5 w-5" /> Offline. Showing the last update.
         </p>
       )}
-      <main className="flex-1 overflow-y-auto overscroll-contain px-8 pb-6 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <main className={`flex-1 overflow-y-auto overscroll-contain px-6 pb-6 ${tab === "home" ? "pt-6" : "pt-2"} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
         {tab === "home" && <HomeTab summary={summary} now={now} />}
         {tab === "calendar" && <CalendarTab summary={summary} />}
         {tab === "chores" && <ChoresTab summary={summary} />}
         {tab === "meals" && <MealsTab summary={summary} />}
       </main>
-      <nav className="grid grid-cols-4 border-t border-border bg-card pb-[env(safe-area-inset-bottom)]" aria-label="Screens">
+      <nav className="mx-6 mb-[max(1.25rem,env(safe-area-inset-bottom))] grid grid-cols-4 gap-2 rounded-[2rem] border border-border/70 bg-card p-2 shadow-xl shadow-black/10" aria-label="Screens">
         {TABS.map(({ id, label, Icon }) => (
           <button
             key={id}
             type="button"
             onClick={() => setTab(id)}
             aria-current={tab === id ? "page" : undefined}
-            className={`flex min-h-24 flex-col items-center justify-center gap-1.5 text-lg font-bold transition-colors active:bg-muted ${tab === id ? "text-primary" : "text-muted-foreground"}`}
+            className={`flex min-h-20 flex-col items-center justify-center gap-1 rounded-[1.5rem] text-lg font-bold transition-colors ${tab === id ? "bg-primary text-primary-foreground shadow-md shadow-primary/30" : "text-muted-foreground active:bg-muted"}`}
           >
-            <Icon className="h-8 w-8" />
+            <Icon className="h-7 w-7" />
             {label}
           </button>
         ))}

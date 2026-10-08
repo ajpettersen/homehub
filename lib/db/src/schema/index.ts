@@ -29,3 +29,4 @@ export * from "./chatAttachmentCleanupQueue";
 export * from "./notificationPreferences";
 export * from "./oneTimeCleanups";
 export * from "./chatAttachmentBlobs";
+export * from "./kioskPhotos";

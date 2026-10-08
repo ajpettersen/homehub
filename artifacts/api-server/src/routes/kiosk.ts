@@ -3,6 +3,7 @@ import {
   db,
   choresTable,
   familyMembersTable,
+  kioskPhotosTable,
   maintenanceTasksTable,
   mealPlansTable,
   propertiesTable,
@@ -77,7 +78,7 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
       && !!process.env.KIOSK_LATITUDE && !!process.env.KIOSK_LONGITUDE;
 
     const noProperties = scope.propertyIds.length === 0;
-    const [members, chores, maintenance, meals, calendar, weather] = await Promise.all([
+    const [members, chores, maintenance, meals, calendar, weather, photo] = await Promise.all([
       db.select({
         id: familyMembersTable.id,
         name: familyMembersTable.name,
@@ -122,6 +123,10 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
         ? getKioskCalendar(calendarSources).catch(() => ({ events: [], errors: calendarSources.map(source => source.label) }))
         : Promise.resolve(null),
       hasLocation ? getKioskWeather(latitude, longitude) : Promise.resolve(null),
+      db.select({ updatedAt: kioskPhotosTable.updatedAt }).from(kioskPhotosTable)
+        .where(eq(kioskPhotosTable.householdId, scope.householdId)).then(rows => rows[0] ?? null)
+        // A missing photo should never take the whole screen down.
+        .catch(() => null),
     ]);
 
     const memberById = new Map(members.map(member => [member.id, member]));
@@ -131,6 +136,8 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
       weekStart,
       weekEnd,
       weather,
+      // Changes whenever the photo does, so the screen can cache it by URL.
+      photoVersion: photo ? String(photo.updatedAt.getTime()) : null,
       meals: meals.map(meal => ({ ...meal, id: String(meal.id) })),
       chores: chores.map(chore => {
         const assignee = chore.assigneeId ? memberById.get(chore.assigneeId) : undefined;
@@ -160,6 +167,24 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to build kiosk summary");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/kiosk/photo", requireKioskPairing, async (req, res) => {
+  try {
+    const scope = getKioskScope(res);
+    const [photo] = await db.select({ mimeType: kioskPhotosTable.mimeType, bytes: kioskPhotosTable.bytes })
+      .from(kioskPhotosTable).where(eq(kioskPhotosTable.householdId, scope.householdId));
+    if (!photo) {
+      res.status(404).end();
+      return;
+    }
+    // The screen asks for ?v=<photoVersion>, so a new photo gets a new URL.
+    res.set("Cache-Control", "private, max-age=31536000, immutable");
+    res.type(photo.mimeType).send(photo.bytes);
+  } catch (err) {
+    req.log.error({ err }, "Failed to load kiosk photo");
+    res.status(500).end();
   }
 });
 
