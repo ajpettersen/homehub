@@ -22,6 +22,7 @@ import {
 } from "../lib/kioskAccess";
 import { getKioskCalendar, getKioskWeather, parseCalendarSources } from "../lib/kioskFeeds";
 import { addMaintenanceDays, dateInMaintenanceTimeZone, resolveMaintenanceTimeZone } from "../lib/maintenanceDates";
+import { markChoreComplete } from "./chores";
 
 const router = Router();
 
@@ -56,8 +57,9 @@ router.post("/kiosk/pair", (req, res) => {
   res.json({ ok: true });
 });
 
-// Read-only on purpose: a paired screen can show household info but not change
-// anything, so a stolen or shared screen can't do damage.
+// The wall screen can show household info and check off chores, nothing else.
+// Settings and every other change belong in the app, so a stolen or shared
+// screen can't do much damage.
 router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
   try {
     const scope = getKioskScope(res);
@@ -166,6 +168,41 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to build kiosk summary");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Checking off a chore from the wall. Paid chores still wait for a parent to
+// approve them in the app, so this never moves money by itself.
+router.post("/kiosk/chores/:id/complete", requireKioskPairing, async (req, res) => {
+  try {
+    const scope = getKioskScope(res);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const [chore] = scope.propertyIds.length === 0 ? [] : await db.select({
+      assigneeName: familyMembersTable.name,
+    }).from(choresTable)
+      .leftJoin(familyMembersTable, eq(choresTable.assigneeId, familyMembersTable.id))
+      .where(and(eq(choresTable.id, id), inArray(choresTable.propertyId, scope.propertyIds), isNull(choresTable.completedAt)));
+    if (!chore) {
+      res.status(404).json({ error: "That chore is already done or gone." });
+      return;
+    }
+    const result = await markChoreComplete(id, scope.propertyIds, chore.assigneeName ?? "Wall screen", null);
+    if (result.kind === "missing") {
+      res.status(404).json({ error: "That chore is already done or gone." });
+      return;
+    }
+    if (result.kind === "conflict") {
+      res.status(409).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, status: result.status });
+  } catch (err) {
+    req.log.error({ err }, "Failed to complete chore from the wall screen");
     res.status(500).json({ error: "Internal server error" });
   }
 });

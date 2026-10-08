@@ -66,7 +66,12 @@ A read-only, portrait, touch-first display for a screen mounted in the house
 (`pages/Kiosk.tsx`, `routes/kiosk.ts`, `lib/kioskAccess.ts`, `lib/kioskFeeds.ts`).
 It has no sign-in. It is "paired" once with a secret key, which hands the
 browser a signed, HttpOnly cookie that lasts a year. `/api/kiosk/*` is mounted
-*before* `requireApprovedHousehold` and must stay read-only. Railway env vars:
+*before* `requireApprovedHousehold`, so it must stay limited to showing things
+plus actions that genuinely happen at the screen: today that's only checking off
+a chore (paid chores still wait for a parent's approval in the app). Settings,
+including the wall screen's background photo (Settings → Wall Screen, stored in
+`kiosk_photos`), belong in the signed-in app. The screen is light by day and
+dark from sunset to sunrise. Railway env vars:
 
 - `KIOSK_PAIRING_KEY` (required, 16+ characters) — until it is set, nothing is
   shown to anyone. Pair a screen by typing it once, or by opening

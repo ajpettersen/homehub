@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CalendarDays, Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun,
-  Droplets, Home, ListChecks, Moon, Sun, Sunrise, Sunset, UtensilsCrossed, Wind, Wrench, WifiOff,
+  CalendarDays, Check, Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun,
+  Droplets, Home, ListChecks, Loader2, Moon, Sun, Sunrise, Sunset, UtensilsCrossed, Wind, Wrench, WifiOff,
   type LucideIcon,
 } from "lucide-react";
 import { getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
@@ -163,6 +163,48 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="py-3 text-xl text-muted-foreground">{children}</p>;
 }
 
+/** Lets a chore row check itself off; null where the screen can't (it never is today). */
+const CompleteChoreContext = createContext<((id: string) => Promise<string | null>) | null>(null);
+const CONFIRM_MS = 4_000;
+
+function DoneButton({ chore }: { chore: KioskChore }) {
+  const complete = useContext(CompleteChoreContext);
+  const [step, setStep] = useState<"idle" | "confirm" | "saving">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (step !== "confirm") return;
+    const timer = window.setTimeout(() => setStep("idle"), CONFIRM_MS);
+    return () => window.clearTimeout(timer);
+  }, [step]);
+
+  if (!complete || chore.awaitingApproval) return null;
+  const onTap = async () => {
+    if (step === "idle") { setError(null); setStep("confirm"); return; }
+    if (step !== "confirm") return;
+    setStep("saving");
+    const problem = await complete(chore.id);
+    if (problem) { setError(problem); setStep("idle"); }
+  };
+  return (
+    <div className="flex shrink-0 flex-col items-end">
+      <button
+        type="button"
+        onClick={() => void onTap()}
+        disabled={step === "saving"}
+        aria-label={step === "confirm" ? `Confirm ${chore.title} is done` : `Mark ${chore.title} done`}
+        className={`flex min-h-14 items-center gap-2 rounded-full px-4 text-lg font-bold transition-colors ${step === "idle"
+          ? "border-2 border-emerald-500/40 text-emerald-700 active:bg-emerald-500/10 dark:text-emerald-400"
+          : "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"}`}
+      >
+        {step === "saving" ? <Loader2 className="h-6 w-6 animate-spin" /> : <Check className="h-6 w-6" />}
+        {step === "idle" ? "Done" : step === "confirm" ? "Tap to confirm" : "Saving"}
+      </button>
+      {error && <p role="alert" className="mt-1 text-sm font-semibold text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 function ChoreRow({ chore }: { chore: KioskChore }) {
   return (
     <li className="flex items-center gap-4 py-2.5">
@@ -174,8 +216,9 @@ function ChoreRow({ chore }: { chore: KioskChore }) {
         {chore.assigneeInitials ?? "·"}
       </span>
       <span className="min-w-0 flex-1 text-xl font-semibold leading-snug">{chore.title}</span>
-      {chore.awaitingApproval && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-800">Check pending</span>}
+      {chore.awaitingApproval && <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">Check pending</span>}
       {chore.isOverdue && <span className="rounded-full bg-destructive/10 px-3 py-1 text-sm font-bold text-destructive">Overdue</span>}
+      <DoneButton chore={chore} />
     </li>
   );
 }
@@ -212,7 +255,7 @@ function Hero({ summary, now, todayEvents, dinner }: { summary: KioskSummary; no
   const [time, meridiem] = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }).split(" ");
 
   return (
-    <section className="relative isolate flex min-h-[46vh] flex-col overflow-hidden rounded-[2.25rem] text-white shadow-2xl shadow-black/20">
+    <section className="relative isolate flex min-h-[60vh] flex-col overflow-hidden rounded-[2.25rem] text-white shadow-2xl shadow-black/20">
       {summary.photoVersion ? (
         <img
           src={`/api/kiosk/photo?v=${encodeURIComponent(summary.photoVersion)}`}
@@ -331,24 +374,24 @@ function HomeTab({ summary, now }: { summary: KioskSummary; now: Date }) {
           )}
         </Card>
 
-        <Card title="Meals" Icon={UtensilsCrossed} tone="amber">
+        <Card title="Chores" Icon={ListChecks} tone="green" className="col-span-2" aside={summary.chores.length > 0 ? count(summary.chores.length) : undefined}>
+          {summary.chores.length === 0 ? <Empty>All caught up. 🎉</Empty> : (
+            <ul className="divide-y divide-border">
+              {summary.chores.slice(0, 5).map(chore => <ChoreRow key={chore.id} chore={chore} />)}
+              {summary.chores.length > 5 && <li className="pt-3 text-lg text-muted-foreground">+ {summary.chores.length - 5} more in Chores</li>}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Meals" Icon={UtensilsCrossed} tone="amber" className="col-span-2">
           {todayMeals.length === 0 ? <Empty>No meals planned today.</Empty> : (
-            <ul className="space-y-4">
+            <ul className="grid grid-cols-3 gap-4">
               {todayMeals.map(meal => (
                 <li key={meal.id}>
                   <p className="text-sm font-bold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400">{meal.mealType}</p>
                   <p className="text-2xl font-semibold leading-snug">{meal.meal}</p>
                 </li>
               ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="Chores" Icon={ListChecks} tone="green" aside={summary.chores.length > 0 ? count(summary.chores.length) : undefined}>
-          {summary.chores.length === 0 ? <Empty>All caught up. 🎉</Empty> : (
-            <ul className="divide-y divide-border">
-              {summary.chores.slice(0, 4).map(chore => <ChoreRow key={chore.id} chore={chore} />)}
-              {summary.chores.length > 4 && <li className="pt-3 text-lg text-muted-foreground">+ {summary.chores.length - 4} more in Chores</li>}
             </ul>
           )}
         </Card>
@@ -385,7 +428,7 @@ function CalendarTab({ summary }: { summary: KioskSummary }) {
   return (
     <div className="space-y-4">
       {summary.calendar.failedCalendars.length > 0 && (
-        <p className="rounded-2xl bg-amber-100 px-5 py-3 text-lg font-semibold text-amber-900">
+        <p className="rounded-2xl bg-amber-100 px-5 py-3 text-lg font-semibold text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
           Couldn't load: {summary.calendar.failedCalendars.join(", ")}
         </p>
       )}
@@ -643,6 +686,22 @@ export default function Kiosk() {
 
   const touch = () => { lastTouch.current = Date.now(); };
 
+  /** Checks a chore off, then refreshes. Returns a message if it didn't work. */
+  const completeChore = useCallback(async (id: string): Promise<string | null> => {
+    try {
+      const response = await fetch(`/api/kiosk/chores/${encodeURIComponent(id)}/complete`, { method: "POST" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        await load();
+        return body?.error ?? "Couldn't save that. Try again.";
+      }
+      await load();
+      return null;
+    } catch {
+      return "No connection. Try again in a moment.";
+    }
+  }, [load]);
+
   if (state.kind === "loading") return <Notice title="Loading…"><p>Getting the house ready.</p></Notice>;
   if (state.kind === "needsPairing") return <PairingScreen initialMessage={state.message} onPaired={() => void load()} />;
   if (state.kind === "notConfigured") {
@@ -662,11 +721,14 @@ export default function Kiosk() {
   }
 
   const { summary } = state;
+  // Light by day, dark from sunset to sunrise (by the clock if there's no weather).
+  const isDark = summary.weather ? !summary.weather.isDay : hour < 7 || hour >= 19;
   return (
-    <div className="flex h-screen select-none flex-col bg-background text-foreground" onPointerDown={touch}>
+    <CompleteChoreContext.Provider value={completeChore}>
+    <div className={`flex h-screen select-none flex-col bg-background text-foreground ${isDark ? "dark" : ""}`} onPointerDown={touch}>
       {tab !== "home" && <Header summary={summary} now={now} />}
       {offline && (
-        <p className="mx-8 mb-2 flex items-center gap-2 rounded-2xl bg-amber-100 px-5 py-2 text-lg font-semibold text-amber-900">
+        <p className="mx-8 mb-2 flex items-center gap-2 rounded-2xl bg-amber-100 px-5 py-2 text-lg font-semibold text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
           <WifiOff className="h-5 w-5" /> Offline. Showing the last update.
         </p>
       )}
@@ -691,5 +753,6 @@ export default function Kiosk() {
         ))}
       </nav>
     </div>
+    </CompleteChoreContext.Provider>
   );
 }

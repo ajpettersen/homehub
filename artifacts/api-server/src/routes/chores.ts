@@ -549,6 +549,40 @@ router.delete("/chores/:id", async (req, res) => {
   }
 });
 
+/**
+ * Marks a chore done. Paid chores go to "pending" for a parent to approve in
+ * the app; everything else is approved straight away. Shared by the app and
+ * the wall screen so the two can't drift apart.
+ */
+export async function markChoreComplete(id: number, propertyIds: number[], completedBy: string, note: string | null) {
+  const [existing] = await db.select().from(choresTable).where(and(
+    eq(choresTable.id, id),
+    inArray(choresTable.propertyId, propertyIds),
+  )).limit(1);
+  if (!existing) return { kind: "missing" } as const;
+  if (existing.rewardCents > 0 && existing.status === "approved") {
+    return { kind: "conflict", error: "Paid chore reward has already been approved" } as const;
+  }
+  if (existing.rewardCents > 0 && existing.status === "pending") {
+    return { kind: "conflict", error: "Paid chore is already submitted for approval" } as const;
+  }
+  const updated = await db
+    .update(choresTable)
+    .set({
+      completedAt: new Date(),
+      completedBy,
+      completionNote: note,
+      status: existing.rewardCents > 0 ? "pending" : "approved",
+    })
+    .where(and(
+      eq(choresTable.id, id),
+      inArray(choresTable.propertyId, propertyIds),
+    ))
+    .returning({ id: choresTable.id, status: choresTable.status });
+  if (updated.length === 0) return { kind: "missing" } as const;
+  return { kind: "ok", status: updated[0].status } as const;
+}
+
 router.post("/chores/:id/complete", async (req, res) => {
   try {
     const choreToday = requestToday(req.query.timezone) ?? dateInMaintenanceTimeZone("UTC");
@@ -564,39 +598,13 @@ router.post("/chores/:id/complete", async (req, res) => {
     }
     const { completedBy, note } = req.body;
 
-    const [existing] = await db.select().from(choresTable).where(and(
-      eq(choresTable.id, id),
-      inArray(choresTable.propertyId, scope.propertyIds),
-    )).limit(1);
-    if (!existing) {
+    const result = await markChoreComplete(id, scope.propertyIds, completedBy ?? "Family", note ?? null);
+    if (result.kind === "missing") {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    if (existing.rewardCents > 0 && existing.status === "approved") {
-      res.status(409).json({ error: "Paid chore reward has already been approved" });
-      return;
-    }
-    if (existing.rewardCents > 0 && existing.status === "pending") {
-      res.status(409).json({ error: "Paid chore is already submitted for approval" });
-      return;
-    }
-
-    const updated = await db
-      .update(choresTable)
-      .set({
-        completedAt: new Date(),
-        completedBy: completedBy ?? "Family",
-        completionNote: note ?? null,
-        status: existing.rewardCents > 0 ? "pending" : "approved",
-      })
-      .where(and(
-        eq(choresTable.id, id),
-        inArray(choresTable.propertyId, scope.propertyIds),
-      ))
-      .returning({ id: choresTable.id });
-
-    if (updated.length === 0) {
-      res.status(404).json({ error: "Not found" });
+    if (result.kind === "conflict") {
+      res.status(409).json({ error: result.error });
       return;
     }
 
