@@ -1,4 +1,3 @@
-import { getAuth } from "@clerk/express";
 import type { Request } from "express";
 
 export const DEV_PREVIEW_CLERK_ID = "homehub_dev_preview";
@@ -11,5 +10,5 @@ export function isDevelopmentPreviewEnabled(): boolean {
 }
 
 export function getEffectiveClerkId(req: Request): string | null {
-  return getAuth(req).userId ?? (isDevelopmentPreviewEnabled() ? DEV_PREVIEW_CLERK_ID : null);
+  return req.homeHubUserId ?? (isDevelopmentPreviewEnabled() ? DEV_PREVIEW_CLERK_ID : null);
 }

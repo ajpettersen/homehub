@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useAuth } from "@clerk/react";
+import { useAuth } from "@/auth/AuthContext";
 import { Link } from "wouter";
 import { usePreferences } from "@/context/PreferencesContext";
 import { useQueryClient } from "@tanstack/react-query";

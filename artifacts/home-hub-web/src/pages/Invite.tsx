@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@clerk/react";
+import { useAuth } from "@/auth/AuthContext";
 import {
   useValidateHouseholdInvite,
   useRedeemHouseholdInvite,

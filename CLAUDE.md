@@ -18,8 +18,7 @@ architecture context.
   `pnpm install` for whoever's on that platform, no error pointing at the
   actual cause.
 - The API server needs real env vars to even boot (`DATABASE_URL`,
-  `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `AI_INTEGRATIONS_OPENAI_*`,
-  `SESSION_SECRET`) — most of the app's lib modules throw at import time if
+  `AI_INTEGRATIONS_OPENAI_*`, `SESSION_SECRET`) — most of the app's lib modules throw at import time if
   these are missing, not lazily. A `.env` file at the repo root works for
   local dev; load it into the shell with `set -a && source .env && set +a`
   before running commands (values contain characters like `&` that break a
@@ -39,22 +38,28 @@ architecture context.
   SPA fallback) since Railway has no Replit-style automatic frontend/backend
   routing. This only activates when `NODE_ENV=production`.
 
-## Clerk auth in production
+## Sign-in (built in; Clerk was removed in Oct 2026)
 
-This app uses Clerk via Replit's managed "Users & Auth" integration (not a
-normal clerk.com account — there's no dashboard access to it outside Replit's
-own UI). It runs on Clerk's free/development tier (`sk_test_...`/`pk_test_...`
-keys), not a paid production tier, which is important:
+Clerk came from Replit's managed integration with no dashboard access, so
+after the Railway env-var leak its secret key couldn't be rotated. Sign-in now
+lives in this repo: `lib/auth.ts` (scrypt passwords, `homehub_session`
+HttpOnly cookie, only a SHA-256 of each session token stored),
+`routes/auth.ts`, and on the web `src/auth/AuthContext.tsx` +
+`src/pages/AuthPages.tsx`. `auth_users` / `auth_sessions` are created at
+startup by `ensureAuthSchema()`.
 
-- **In `NODE_ENV=production`, the app tries to proxy Clerk's Frontend API
-  through its own domain** (`CLERK_PROXY_PATH`, `VITE_CLERK_PROXY_URL`). That
-  proxy mechanism is really meant for Clerk's paid tier, which requires
-  registering the proxy domain in a Clerk dashboard we don't have access to —
-  using it here causes cryptic failures (`clerk.browser.js` 502s, "unable to
-  attribute this request to an instance"). **Leave `VITE_CLERK_PROXY_URL`
-  unset** so the frontend talks to Clerk's dev-tier domain directly, the same
-  way it already works in local dev. Only revisit this if the app is ever
-  moved to Clerk's actual paid production tier with real dashboard access.
+- **The `clerk_id` columns everywhere are just HomeHub user IDs now.** Old
+  accounts kept their Clerk IDs (claimed once via the setup code), new ones get
+  `user_<hex>`. Don't rename the columns casually — it touches ~20 tables.
+- **There is no open sign-up.** A login can be created only with
+  `HOMEHUB_SETUP_CODE` (Railway env var, 12+ chars; it also lets someone claim
+  an existing unclaimed account) or a valid household invite link. Leave the
+  setup code unset except while setting someone up.
+- `localUsers` in `lib/auth.ts` mimics the bit of `clerkClient.users` that
+  `routes/me.ts` used, so that file barely changed.
+- The old Expo app (`artifacts/home-hub`) still uses Clerk and can no longer
+  sign in. `@clerk/*` packages are still listed in package.json only because
+  removing them needs a lockfile regen (`pnpm install`) — safe to remove then.
 - The bootstrap identity (`HOMEHUB_BOOTSTRAP_EMAIL`) only gets promoted to
   household owner on a `pending` profile with no `linked_family_member_id`
   colliding with another linked adult — see `lib/bootstrapIdentity.ts` and
@@ -144,10 +149,8 @@ strangers in.
 
 ## Known trade-offs, not yet resolved
 
-- Both this deployment and the original Replit deployment currently point at
-  the same live production database — fine today, but a future schema change
-  could break whichever one isn't redeployed. No decision yet on when to
-  retire the Replit deployment.
+- The Replit deployment and its Neon database are being retired (Oct 2026);
+  production data lives in Railway Postgres.
 - The frontend ships as a single ~1MB JS bundle (no code-splitting) and two
   page files (`Settings.tsx`, `Kitchen.tsx`) are each 2,500+ lines. Nothing
   urgent, but worth splitting if either becomes a real pain point.

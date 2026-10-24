@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createHash, randomBytes } from "node:crypto";
-import { clerkClient } from "@clerk/express";
+import { localUsers } from "../lib/auth";
 import {
   choresTable,
   aiMemoriesTable,
@@ -124,7 +124,7 @@ async function ensureBootstrapHousehold(tx: any): Promise<number> {
   return createdHousehold.id;
 }
 
-function clerkIdentityDisplayName(user: Awaited<ReturnType<typeof clerkClient.users.getUser>>): string {
+function clerkIdentityDisplayName(user: Awaited<ReturnType<typeof localUsers.getUser>>): string {
   const verifiedEmail = user.emailAddresses.find(email => email.verification?.status === "verified")?.emailAddress;
   return [user.firstName, user.lastName].filter(Boolean).join(" ").trim()
     || user.username
@@ -248,7 +248,7 @@ router.get("/me", async (req, res): Promise<void> => {
           return;
         }
 
-        const bootstrapUser = await clerkClient.users.getUser(clerkId);
+        const bootstrapUser = await localUsers.getUser(clerkId);
         const [resolvedProfile] = await db.transaction(async (tx) => {
           await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('homehub-user-profile-bootstrap'))`);
           const [currentProfile] = await tx
@@ -283,7 +283,7 @@ router.get("/me", async (req, res): Promise<void> => {
       }
 
       if (await isConfiguredBootstrapIdentity(clerkId)) {
-        const bootstrapUser = await clerkClient.users.getUser(clerkId);
+        const bootstrapUser = await localUsers.getUser(clerkId);
         const resolvedProfile = await db.transaction(async (tx) => {
           const [locked] = await tx.select().from(userProfilesTable)
             .where(eq(userProfilesTable.clerkId, clerkId)).for("update").limit(1);
@@ -313,7 +313,7 @@ router.get("/me", async (req, res): Promise<void> => {
     // Bootstrap only the explicitly configured household owner. All other
     // accounts remain pending until a family administrator grants access.
     const isBootstrapOwner = await isConfiguredBootstrapIdentity(clerkId);
-    const bootstrapUser = isBootstrapOwner ? await clerkClient.users.getUser(clerkId) : null;
+    const bootstrapUser = isBootstrapOwner ? await localUsers.getUser(clerkId) : null;
     const [newProfile] = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('homehub-user-profile-bootstrap'))`);
       const [existingProfile] = await tx
@@ -677,8 +677,8 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
 
   try {
     const rateAllowed = await claimJoinAttempt(clerkId, req.ip || "unknown");
-    const requester = await clerkClient.users.getUser(clerkId).catch(() => null);
-    const users = await clerkClient.users.getUserList({
+    const requester = await localUsers.getUser(clerkId).catch(() => null);
+    const users = await localUsers.getUserList({
        emailAddress: [householdMemberEmail],
       limit: 2,
     }).catch(() => ({ data: [] }));
@@ -887,9 +887,9 @@ router.post("/me/household-invites/redeem", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const clerkUser = await clerkClient.users.getUser(clerkId);
+    const clerkUser = await localUsers.getUser(clerkId);
     if (!clerkUser.emailAddresses.some(email => email.verification?.status === "verified")) {
-      res.status(403).json({ error: "A verified Clerk email is required to redeem a household invite" });
+      res.status(403).json({ error: "A verified email is required to redeem a household invite" });
       return;
     }
     const displayName = clerkIdentityDisplayName(clerkUser);
