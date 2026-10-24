@@ -92,6 +92,27 @@ last `X-Forwarded-For` entry was a CDN address that is the same for many
 visitors, and the number of hops varies), so an IP allow-list could let
 strangers in.
 
+## Hatch alarms (Kids → Alarms)
+
+Read-only so far. Hatch has no public API; `lib/hatchClient.ts` is a port of the
+community library `dahlb/hatch_rest_api` (check it first if Hatch changes
+something). A parent signs in on the Kids → Alarms tab; the login is stored in
+`hatch_connections` with the password encrypted (AES-256-GCM, key derived from
+`SESSION_SECRET` in `lib/hatchCrypto.ts`; rotating that secret just means
+reconnecting). `HATCH_EMAIL` / `HATCH_PASSWORD` env vars still work as a
+fallback. Things that cost time to learn:
+
+- Hatch reports failures inside the JSON (`status` not `"success"`, and
+  `errorCode: "1001"` = expired session), not just with HTTP codes. At sign-in
+  any rejection means "wrong email or password"; a 429 or 5xx never does.
+- Only Restore, Restore 2 and Restore 3 (`restoreIot`/`restoreV4`/`restoreV5`)
+  keep alarms as scheduled routines; older Rest models are listed but have no alarms.
+- Sign-in is cached six hours, alarms five minutes, and a failed sign-in backs
+  off fifteen minutes, so a wrong stored password can't loop against Hatch.
+- `HATCH_API_URL` points the client at a fake server for local testing and is
+  ignored in production. (Port 5060 can't be used: `fetch` blocks it.)
+- Tests: `test:hatch-client`, `test:hatch-crypto` (api-server).
+
 ## Data model gotchas
 
 - **Meal plan weeks are Monday-based, everywhere, in UTC.** See

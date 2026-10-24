@@ -21,6 +21,7 @@ const allowedTests = new Set([
     "store-management.test.ts",
     "kiosk-photo.test.ts",
     "hatch-client.test.ts",
+    "hatch-crypto.test.ts",
 ]);
 if (!allowedTests.has(testFile)) {
   throw new Error(`Unknown test file: ${testFile}`);

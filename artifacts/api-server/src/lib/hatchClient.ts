@@ -4,9 +4,12 @@
 // public API, so this can break without notice; every failure is contained so
 // it never takes the rest of HomeHub with it.
 //
-// Credentials come from HATCH_EMAIL / HATCH_PASSWORD (set in Railway).
+// The login comes from the household (entered in the app, see hatchCredentials.ts).
 
-const API_URL = "https://data.hatchbaby.com/";
+import { createHash } from "node:crypto";
+
+// HATCH_API_URL lets local tests point at a pretend Hatch server; it is ignored in production.
+const API_URL = process.env.NODE_ENV !== "production" && process.env.HATCH_API_URL ? process.env.HATCH_API_URL : "https://data.hatchbaby.com/";
 const REQUEST_TIMEOUT_MS = 10_000;
 const TOKEN_TTL_MS = 6 * 60 * 60_000;
 const ALARMS_FRESH_MS = 5 * 60_000;
@@ -52,8 +55,11 @@ export interface HatchSnapshot {
   stale: boolean;
 }
 
-export function isHatchConfigured(): boolean {
-  return !!process.env.HATCH_EMAIL?.trim() && !!process.env.HATCH_PASSWORD;
+export interface HatchAccount {
+  /** Stable id for caching, e.g. "household:3". */
+  key: string;
+  email: string;
+  password: string;
 }
 
 export function daysOfWeekLabel(daysOfWeek: number | null | undefined): string {
@@ -77,14 +83,43 @@ interface RawAlarm {
   startTime?: string | null; endTime?: string | null; daysOfWeek?: number | null; displayOrder?: number | null;
 }
 
-let token: { value: string; at: number } | null = null;
-let loginFailedAt = 0;
-let loginInFlight: Promise<string> | null = null;
-let snapshot: { value: HatchSnapshot; at: number } | null = null;
-let refreshInFlight: Promise<HatchSnapshot> | null = null;
+interface AccountState {
+  fingerprint: string;
+  token: { value: string; at: number } | null;
+  loginFailedAt: number;
+  loginInFlight: Promise<string> | null;
+  snapshot: { value: HatchSnapshot; at: number } | null;
+  refreshInFlight: Promise<HatchSnapshot> | null;
+}
 
-class HatchAuthError extends Error {}
+const accounts = new Map<string, AccountState>();
 
+/** Thrown when Hatch itself rejects the email and password. */
+export class HatchAuthError extends Error {}
+
+function stateFor(account: HatchAccount): AccountState {
+  const fingerprint = createHash("sha256").update(`${account.email}\n${account.password}`).digest("hex");
+  let state = accounts.get(account.key);
+  // New credentials for the same household: start clean rather than reuse the old session.
+  if (!state || state.fingerprint !== fingerprint) {
+    state = { fingerprint, token: null, loginFailedAt: 0, loginInFlight: null, snapshot: null, refreshInFlight: null };
+    accounts.set(account.key, state);
+  }
+  return state;
+}
+
+export function forgetHatchAccount(key: string): void {
+  accounts.delete(key);
+}
+
+/** Hatch asked us to slow down. */
+class HatchRateError extends Error {}
+/** Hatch understood the request and said no: bad input, bad login, or an error payload. */
+class HatchRejectedError extends Error {}
+
+// Hatch doesn't rely on HTTP status codes alone (see dahlb/hatch_rest_api,
+// hatch.py): replies carry `status: "success"`, and an expired session is
+// `errorCode: "1001"` inside the JSON. Both styles are handled here.
 async function hatchFetch(path: string, init: { method?: string; body?: unknown; token?: string; params?: URLSearchParams } = {}): Promise<unknown> {
   const url = new URL(path, API_URL);
   init.params?.forEach((value, key) => url.searchParams.append(key, value));
@@ -98,41 +133,66 @@ async function hatchFetch(path: string, init: { method?: string; body?: unknown;
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
+  if (response.status === 429) throw new HatchRateError("Hatch is rate limiting requests");
+
+  const json = await response.json().catch(() => null) as { status?: unknown; errorCode?: unknown; message?: unknown } | null;
+  if (json && typeof json === "object" && "status" in json && json.status !== "success") {
+    if (String(json.errorCode) === "1001") throw new HatchAuthError("Hatch says the session is no longer valid");
+    throw new HatchRejectedError(`Hatch error ${String(json.errorCode ?? response.status)}`);
+  }
   if (response.status === 401 || response.status === 403) throw new HatchAuthError(`Hatch refused the request (${response.status})`);
+  if (response.status >= 400 && response.status < 500) throw new HatchRejectedError(`Hatch rejected the request (${response.status})`);
   if (!response.ok) throw new Error(`Hatch returned ${response.status}`);
-  return response.json();
+  if (json === null) throw new Error("Hatch sent a reply that isn't JSON");
+  return json;
 }
 
-async function login(): Promise<string> {
-  if (token && Date.now() - token.at < TOKEN_TTL_MS) return token.value;
-  if (loginInFlight) return loginInFlight;
-  if (Date.now() - loginFailedAt < LOGIN_FAILURE_BACKOFF_MS) throw new Error("Hatch sign-in failed recently; waiting before trying again");
-  loginInFlight = (async () => {
+async function requestToken(email: string, password: string): Promise<string> {
+  try {
+    const body = await hatchFetch("public/v1/login", { method: "POST", body: { email, password } }) as { token?: string };
+    if (!body.token) throw new HatchAuthError("Hatch sign-in returned no token");
+    return body.token;
+  } catch (error) {
+    // At sign-in, Hatch saying "no" in any form means the email or password was not accepted.
+    if (error instanceof HatchRejectedError) throw new HatchAuthError(error.message);
+    throw error;
+  }
+}
+
+/**
+ * Checks an email and password against Hatch without touching any cached
+ * session. Throws HatchAuthError if Hatch says no, another Error if it can't be reached.
+ */
+export async function verifyHatchLogin(email: string, password: string): Promise<void> {
+  await requestToken(email, password);
+}
+
+async function login(account: HatchAccount, state: AccountState): Promise<string> {
+  if (state.token && Date.now() - state.token.at < TOKEN_TTL_MS) return state.token.value;
+  if (state.loginInFlight) return state.loginInFlight;
+  if (Date.now() - state.loginFailedAt < LOGIN_FAILURE_BACKOFF_MS) throw new Error("Hatch sign-in failed recently; waiting before trying again");
+  state.loginInFlight = (async () => {
     try {
-      const body = await hatchFetch("public/v1/login", {
-        method: "POST",
-        body: { email: process.env.HATCH_EMAIL?.trim(), password: process.env.HATCH_PASSWORD },
-      }) as { token?: string };
-      if (!body.token) throw new Error("Hatch sign-in returned no token");
-      token = { value: body.token, at: Date.now() };
-      return body.token;
+      const value = await requestToken(account.email, account.password);
+      state.token = { value, at: Date.now() };
+      return value;
     } catch (error) {
-      loginFailedAt = Date.now();
+      state.loginFailedAt = Date.now();
       throw error;
     } finally {
-      loginInFlight = null;
+      state.loginInFlight = null;
     }
   })();
-  return loginInFlight;
+  return state.loginInFlight;
 }
 
-async function authorizedGet(path: string, params: URLSearchParams): Promise<unknown> {
+async function authorizedGet(account: HatchAccount, state: AccountState, path: string, params: URLSearchParams): Promise<unknown> {
   try {
-    return await hatchFetch(path, { token: await login(), params });
+    return await hatchFetch(path, { token: await login(account, state), params });
   } catch (error) {
     if (!(error instanceof HatchAuthError)) throw error;
-    token = null;
-    return hatchFetch(path, { token: await login(), params });
+    state.token = null;
+    return hatchFetch(path, { token: await login(account, state), params });
   }
 }
 
@@ -157,10 +217,10 @@ export function buildDevice(raw: RawDevice, alarms: RawAlarm[] | null): HatchDev
   };
 }
 
-async function fetchSnapshot(): Promise<HatchSnapshot> {
+async function fetchSnapshot(account: HatchAccount, state: AccountState): Promise<HatchSnapshot> {
   const params = new URLSearchParams();
   IOT_PRODUCTS.forEach(product => params.append("iotProducts", product));
-  const devicesBody = await authorizedGet("service/app/iotDevice/v2/fetch", params) as { payload?: RawDevice[] };
+  const devicesBody = await authorizedGet(account, state, "service/app/iotDevice/v2/fetch", params) as { payload?: RawDevice[] };
 
   const devices: HatchDevice[] = [];
   for (const raw of devicesBody.payload ?? []) {
@@ -169,7 +229,7 @@ async function fetchSnapshot(): Promise<HatchSnapshot> {
       try {
         const alarmParams = new URLSearchParams({ macAddress: raw.macAddress });
         alarmParams.append("types", "alarm");
-        alarms = ((await authorizedGet("service/app/routine/v3/fetch", alarmParams)) as { payload?: RawAlarm[] }).payload ?? [];
+        alarms = ((await authorizedGet(account, state, "service/app/routine/v3/fetch", alarmParams)) as { payload?: RawAlarm[] }).payload ?? [];
       } catch {
         alarms = null; // one device failing shouldn't hide the others
       }
@@ -180,19 +240,20 @@ async function fetchSnapshot(): Promise<HatchSnapshot> {
   return { devices, fetchedAt: new Date().toISOString(), stale: false };
 }
 
-/** Returns Hatch devices and alarms, or null when Hatch isn't set up or can't be reached and nothing is cached. */
-export async function getHatchSnapshot(): Promise<HatchSnapshot | null> {
-  if (!isHatchConfigured()) return null;
-  if (snapshot && Date.now() - snapshot.at < ALARMS_FRESH_MS) return snapshot.value;
-  if (!refreshInFlight) {
-    refreshInFlight = fetchSnapshot()
-      .then(value => { snapshot = { value, at: Date.now() }; return value; })
-      .finally(() => { refreshInFlight = null; });
+/** Returns Hatch devices and alarms, or null when there's no login or Hatch can't be reached and nothing is cached. */
+export async function getHatchSnapshot(account: HatchAccount | null): Promise<HatchSnapshot | null> {
+  if (!account) return null;
+  const state = stateFor(account);
+  if (state.snapshot && Date.now() - state.snapshot.at < ALARMS_FRESH_MS) return state.snapshot.value;
+  if (!state.refreshInFlight) {
+    state.refreshInFlight = fetchSnapshot(account, state)
+      .then(value => { state.snapshot = { value, at: Date.now() }; return value; })
+      .finally(() => { state.refreshInFlight = null; });
   }
   try {
-    return await refreshInFlight;
+    return await state.refreshInFlight;
   } catch {
-    if (snapshot && Date.now() - snapshot.at < ALARMS_STALE_OK_MS) return { ...snapshot.value, stale: true };
+    if (state.snapshot && Date.now() - state.snapshot.at < ALARMS_STALE_OK_MS) return { ...state.snapshot.value, stale: true };
     return null;
   }
 }

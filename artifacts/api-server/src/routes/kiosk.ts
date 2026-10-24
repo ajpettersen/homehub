@@ -20,7 +20,8 @@ import {
   recordPairingFailure,
   requireKioskPairing,
 } from "../lib/kioskAccess";
-import { getHatchSnapshot, isHatchConfigured } from "../lib/hatchClient";
+import { getHatchSnapshot } from "../lib/hatchClient";
+import { loadHatchAccount } from "../lib/hatchCredentials";
 import { getKioskCalendar, getKioskWeather, parseCalendarSources } from "../lib/kioskFeeds";
 import { addMaintenanceDays, dateInMaintenanceTimeZone, resolveMaintenanceTimeZone } from "../lib/maintenanceDates";
 import { markChoreComplete } from "./chores";
@@ -131,7 +132,11 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
         // A missing photo should never take the whole screen down.
         .catch(() => null),
       // Hatch is an unofficial service; a failure there must never take the screen down.
-      getHatchSnapshot().catch(() => null),
+      loadHatchAccount(scope.householdId)
+        .then(found => found
+          ? getHatchSnapshot(found.account).then(snapshot => ({ configured: true, snapshot }))
+          : { configured: false, snapshot: null })
+        .catch(() => ({ configured: false, snapshot: null })),
     ]);
 
     const memberById = new Map(members.map(member => [member.id, member]));
@@ -166,9 +171,9 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
         isOverdue: task.nextDueDate < today,
       })),
       alarms: {
-        configured: isHatchConfigured(),
-        unavailable: isHatchConfigured() && hatch === null,
-        items: (hatch?.devices ?? []).flatMap(device => device.alarms.map(alarm => ({
+        configured: hatch.configured,
+        unavailable: hatch.configured && hatch.snapshot === null,
+        items: (hatch.snapshot?.devices ?? []).flatMap(device => device.alarms.map(alarm => ({
           id: `${device.id}:${alarm.id}`,
           deviceName: device.name,
           name: alarm.name,
@@ -176,7 +181,7 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
           wakeTime: alarm.wakeTime,
           days: alarm.days,
         }))),
-        unsupportedDevices: (hatch?.devices ?? []).filter(device => !device.alarmsSupported).map(device => device.name),
+        unsupportedDevices: (hatch.snapshot?.devices ?? []).filter(device => !device.alarmsSupported).map(device => device.name),
       },
       calendar: calendar === null
         ? { configured: false, events: [], failedCalendars: [] }

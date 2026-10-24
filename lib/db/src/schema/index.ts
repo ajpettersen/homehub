@@ -30,3 +30,4 @@ export * from "./notificationPreferences";
 export * from "./oneTimeCleanups";
 export * from "./chatAttachmentBlobs";
 export * from "./kioskPhotos";
+export * from "./hatchConnections";
