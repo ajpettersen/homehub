@@ -105,8 +105,14 @@ fallback. Things that cost time to learn:
 - Hatch reports failures inside the JSON (`status` not `"success"`, and
   `errorCode: "1001"` = expired session), not just with HTTP codes. At sign-in
   any rejection means "wrong email or password"; a 429 or 5xx never does.
-- Only Restore, Restore 2 and Restore 3 (`restoreIot`/`restoreV4`/`restoreV5`)
-  keep alarms as scheduled routines; older Rest models are listed but have no alarms.
+- Schedules come from `routine/v3/fetch` for every device: Restore models keep
+  `alarm` routines; Rest models (e.g. 2nd gen, product `riot`) keep `wake` and
+  `sleep` routines (times look like `"2026-01-07 06:45:00"`, days are the same
+  bit mask) plus `flex` favourites, which are ignored. Rest lists a bedtime
+  more than once (one per sound), so bedtimes are de-duplicated.
+- The device list only returns the products you ask for. Ask for what the
+  account owns (`member.products`) as well as the built-in list, or a model
+  this code doesn't know by name silently disappears. Use `productDevice.marketingName` for display.
 - Sign-in is cached six hours, alarms five minutes, and a failed sign-in backs
   off fifteen minutes, so a wrong stored password can't loop against Hatch.
 - `HATCH_API_URL` points the client at a fake server for local testing and is

@@ -34,7 +34,7 @@ assert.ok(!restore.id.includes("AA:BB"), "the device's MAC address is not expose
 
 const oldRest = buildDevice({ macAddress: "AA:BB:CC:DD:EE:02", name: "Leo's old Rest", product: "restBaby" }, null);
 assert.ok(oldRest);
-assert.equal(oldRest.alarmsSupported, false, "first-generation Rest has no scheduled-routine alarms");
+assert.equal(oldRest.alarmsSupported, false, "a device whose schedules couldn't be read is flagged as unreadable");
 assert.deepEqual(oldRest.alarms, []);
 assert.equal(buildDevice({ name: "No mac", product: "restoreV5" }, []), null, "devices without a MAC are ignored");
 
@@ -74,15 +74,37 @@ globalThis.fetch = (async (input: URL | string, init?: RequestInit) => {
     return expiredStyle === "payload" ? json({ status: "error", errorCode: "1001", message: "session invalid" }) : json({}, 401);
   }
   if (url.pathname === "/service/app/v2/member") {
-    return json({ status: "success", payload: { id: 1, email: "probe@example.com", firstName: "Probe", locations: [{ id: 3, locationName: "Cabin" }] } });
+    return json({ status: "success", payload: { id: 1, email: "probe@example.com", firstName: "Probe", products: ["riot", "restoreFuture"], locations: [{ id: 3, locationName: "Cabin" }] } });
   }
   if (url.pathname === "/service/app/iotDevice/v2/fetch") {
-    return json({ status: "success", payload: [
-      { macAddress: "AA:BB:CC:DD:EE:01", name: "Maya's room", product: "restoreV5" },
-      { macAddress: "AA:BB:CC:DD:EE:02", name: "Leo's old Rest", product: "restBaby" },
-    ] });
+    // Like Hatch, only devices of the requested products come back.
+    const requested = new Set(url.searchParams.getAll("iotProducts"));
+    const all = [
+      { macAddress: "AA:BB:CC:DD:EE:01", name: "Maya's room", product: "restoreV5", productDevice: { marketingName: "Restore 3" } },
+      { macAddress: "AA:BB:CC:DD:EE:02", name: "Leo's Rest", product: "riot", productDevice: { marketingName: "Rest 2nd Gen" } },
+      { macAddress: "AA:BB:CC:DD:EE:03", name: "Noor's night", product: "restoreFuture", productDevice: { marketingName: "Restore Next" } },
+    ];
+    return json({ status: "success", payload: all.filter(device => requested.has(device.product)) });
   }
   if (url.pathname === "/service/app/routine/v3/fetch") {
+    const mac = url.searchParams.get("macAddress");
+    if (mac === "AA:BB:CC:DD:EE:02") {
+      // Captured from a real Rest 2nd gen: a wake routine, the same bedtime listed twice, an unscheduled sleep, and favourites.
+      return json({ status: "success", payload: [
+        { id: 21, type: "wake", name: "Green", enabled: true, startTime: "2026-01-07 06:45:00", endTime: null, daysOfWeek: 60 },
+        { id: 22, type: "sleep", name: "Sleep", enabled: true, startTime: "2022-12-12 19:00:00", endTime: null, daysOfWeek: 127 },
+        { id: 23, type: "sleep", name: "Sleep", enabled: true, startTime: "2022-12-12 19:00:00", endTime: null, daysOfWeek: 127 },
+        { id: 24, type: "sleep", name: "Sleep", enabled: true, startTime: null, endTime: null, daysOfWeek: 0 },
+        { id: 25, type: "flex", name: "Ocean", enabled: true, startTime: null, endTime: null, daysOfWeek: null },
+        { id: 26, type: "flex", name: "Rain", enabled: true, startTime: null, endTime: null, daysOfWeek: null },
+      ] });
+    }
+    if (mac === "AA:BB:CC:DD:EE:03") {
+      return json({ status: "success", payload: [
+        { id: 31, type: "flex", name: "Stars", enabled: true, startTime: null, endTime: null, daysOfWeek: null },
+        { id: 32, type: "flex", name: "Waves", enabled: true, startTime: null, endTime: null, daysOfWeek: null },
+      ] });
+    }
     return json({ status: "success", payload: [{ id: 1, name: "School", type: "alarm", enabled: true, endTime: "2026-05-08T06:45:00", daysOfWeek: 62 }] });
   }
   return json({}, 404);
@@ -91,9 +113,19 @@ globalThis.fetch = (async (input: URL | string, init?: RequestInit) => {
 const first = await getHatchSnapshot(account);
 assert.ok(first);
 assert.equal(first.stale, false);
-assert.equal(first.devices.length, 2);
+assert.equal(first.devices.length, 3, "every device the account owns is returned, including a model this code doesn't know by name");
 assert.equal(first.devices[0].alarms[0].wakeTime, "06:45");
-assert.equal(first.devices[1].alarmsSupported, false);
+assert.equal(first.devices[0].modelName, "Restore 3", "Hatch's own model name is used");
+
+const rest = first.devices[1];
+assert.equal(rest.alarmsSupported, true, "a Rest's schedules are readable");
+assert.deepEqual(rest.alarms.map(alarm => [alarm.kind, alarm.name, alarm.wakeTime, alarm.days]), [
+  ["wake", "Green", "06:45", "Tue, Wed, Thu, Fri"],
+  ["bedtime", "Sleep", "19:00", "Every day"],
+], "a Rest shows its wake-up and one bedtime; the duplicate, the unscheduled sleep and the favourites are left out");
+
+assert.equal(first.devices[2].product, "restoreFuture");
+assert.equal(first.devices[2].alarms.length, 0, "a device with no schedules is still listed");
 
 const login = calls.find(call => call.path === "/public/v1/login");
 assert.ok(login);
@@ -101,10 +133,12 @@ assert.equal(login.method, "POST");
 assert.deepEqual(login.body, { email: "parent@example.com", password: "not-a-real-password" });
 assert.ok(calls.filter(call => call.path !== "/public/v1/login").every(call => call.auth === "token-1"), "the token is sent on every data call");
 const deviceCall = calls.find(call => call.path === "/service/app/iotDevice/v2/fetch");
-assert.ok(deviceCall?.search.includes("iotProducts=restoreV5") && deviceCall.search.includes("iotProducts=restBaby"), "product list is sent as repeated parameters");
+assert.ok(deviceCall?.search.includes("iotProducts=restoreV5") && deviceCall.search.includes("iotProducts=restBaby"), "the default product list is sent as repeated parameters");
+assert.ok(deviceCall?.search.includes("iotProducts=restoreFuture"), "products the account owns are requested too, even if unknown to this code");
 const alarmCalls = calls.filter(call => call.path === "/service/app/routine/v3/fetch");
-assert.equal(alarmCalls.length, 1, "alarms are only fetched for devices that support them");
-assert.ok(alarmCalls[0].search.includes("macAddress=AA%3ABB%3ACC%3ADD%3AEE%3A01") && alarmCalls[0].search.includes("types=alarm"));
+assert.equal(alarmCalls.length, 3, "schedules are read for every device");
+assert.ok(alarmCalls[0].search.includes("macAddress=AA%3ABB%3ACC%3ADD%3AEE%3A01"));
+assert.ok(alarmCalls.every(call => !call.search.includes("types=")), "everything Hatch holds for the device is requested; wake-ups and bedtimes are picked out afterwards");
 
 // A second call within five minutes is served from the cache: no extra requests.
 const callsBefore = calls.length;
@@ -201,16 +235,16 @@ const recoveredFromPayload = await getHatchSnapshot(payloadExpiry);
 assert.ok(recoveredFromPayload, "an expired-session code inside the reply is recovered by signing in again");
 expiredStyle = "http";
 
-// Devices whose alarms can't be read are looked at once per refresh and noted in the log;
-// readable ones aren't, and nothing is logged when no sink is given.
+// Devices with no wake-up schedule are noted in the log once per refresh; ones with a
+// schedule aren't, and nothing is logged when no sink is given.
 const noted: Array<{ details: Record<string, unknown>; message: string }> = [];
 const probeAccount: HatchAccount = { key: "household:6", email: "probe@example.com", password: "probe-password" };
 const probed = await getHatchSnapshot(probeAccount, { info: (details, message) => noted.push({ details: details as Record<string, unknown>, message }) });
 assert.ok(probed);
-const deviceNotes = noted.filter(note => note.message === "Hatch device without scheduled-routine alarms");
-assert.equal(deviceNotes.length, 1, "only the device without readable alarms is noted");
-assert.equal(deviceNotes[0].details.product, "restBaby");
-assert.equal(deviceNotes[0].details.routineCount, 1);
+const deviceNotes = noted.filter(note => note.message === "Hatch device with no wake-up schedule");
+assert.equal(deviceNotes.length, 1, "only the device with no wake-up schedule is noted");
+assert.equal(deviceNotes[0].details.product, "restoreFuture");
+assert.equal(deviceNotes[0].details.routineCount, 2);
 const accountNotes = noted.filter(note => note.message === "Hatch account shape");
 assert.equal(accountNotes.length, 1, "the account's structure is noted once per refresh");
 assert.ok(JSON.stringify(accountNotes[0]).includes("Cabin"), "location names from the account are visible in the note");

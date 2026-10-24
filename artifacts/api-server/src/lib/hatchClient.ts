@@ -18,8 +18,8 @@ const ALARMS_STALE_OK_MS = 60 * 60_000;
 // rate limit doesn't turn into a stream of login attempts.
 const LOGIN_FAILURE_BACKOFF_MS = 15 * 60_000;
 
-// Restore, Restore 2 and Restore 3 keep their alarms as scheduled routines.
-const SCHEDULED_ALARM_PRODUCTS = new Set(["restoreIot", "restoreV4", "restoreV5"]);
+// Products asked for by default. The account's own list (from its member record) is added to this,
+// so a model this code doesn't know by name is still returned.
 const IOT_PRODUCTS = ["restMini", "restPlus", "riot", "riotPlus", "restBaby", "restoreIot", "restoreV4", "restoreV5"];
 
 const WEEKDAY_BITS: Array<[string, number]> = [
@@ -31,6 +31,8 @@ const WEEKENDS_MASK = 1 | 64;
 
 export interface HatchAlarm {
   id: string;
+  /** "wake": a wake-up alarm (Restore alarms, Rest "wake" routines). "bedtime": a Rest "sleep" routine. */
+  kind: "wake" | "bedtime";
   name: string;
   enabled: boolean;
   /** 24-hour "HH:MM" local time on the device. */
@@ -44,6 +46,9 @@ export interface HatchDevice {
   id: string;
   name: string;
   product: string;
+  /** Hatch's own name for the model, e.g. "Restore 3", when it gives one. */
+  modelName: string | null;
+  /** False only when Hatch's schedules for this device couldn't be read at all. */
   alarmsSupported: boolean;
   alarms: HatchAlarm[];
 }
@@ -78,11 +83,12 @@ export function daysOfWeekLabel(daysOfWeek: number | null | undefined): string {
 
 /** The wake time is the end of the alarm's sunrise window; Hatch stores it as local wall-clock text. */
 export function wakeTimeOf(alarm: { startTime?: string | null; endTime?: string | null }): string | null {
-  const match = /T(\d{2}):(\d{2})/.exec(alarm.endTime ?? alarm.startTime ?? "");
+  // Restore uses "2026-05-08T07:30:00"; Rest uses "2026-01-07 06:45:00".
+  const match = /[T ](\d{2}):(\d{2})/.exec(alarm.endTime ?? alarm.startTime ?? "");
   return match ? `${match[1]}:${match[2]}` : null;
 }
 
-interface RawDevice { macAddress?: string; name?: string; product?: string }
+interface RawDevice { macAddress?: string; name?: string; product?: string; productDevice?: { marketingName?: string | null } }
 interface RawAlarm {
   id?: number | string; name?: string; type?: string; enabled?: boolean;
   startTime?: string | null; endTime?: string | null; daysOfWeek?: number | null; displayOrder?: number | null;
@@ -202,6 +208,7 @@ async function authorizedGet(account: HatchAccount, state: AccountState, path: s
 }
 
 const LOCATION_KEY = /location|home|room|space|group|label/i;
+const SHOWN_CODE_KEY = /^(products?|marketingName)$/;
 const NEVER_SHOWN_KEY = /mac|thing|email|token|password|phone|address|serial|secret|key/i;
 
 /**
@@ -210,78 +217,110 @@ const NEVER_SHOWN_KEY = /mac|thing|email|token|password|phone|address|serial|sec
  * anything that looks personal or like a credential or device identifier.
  */
 export function shapeOf(value: unknown, depth = 0, key = ""): unknown {
-  if (Array.isArray(value)) return { array: value.length, first: value.length ? shapeOf(value[0], depth + 1, key) : null };
+  if (Array.isArray(value)) {
+    if (SHOWN_CODE_KEY.test(key) && value.every(item => typeof item === "string")) return value.slice(0, 12).map(item => String(item).slice(0, 40));
+    return { array: value.length, first: value.length ? shapeOf(value[0], depth + 1, key) : null };
+  }
   if (value && typeof value === "object") {
     if (depth >= 4) return "{…}";
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shapeOf(v, depth + 1, k)]));
   }
-  if (LOCATION_KEY.test(key) && !NEVER_SHOWN_KEY.test(key) && (typeof value === "string" || typeof value === "number")) return String(value).slice(0, 60);
+  if ((SHOWN_CODE_KEY.test(key) || LOCATION_KEY.test(key)) && !NEVER_SHOWN_KEY.test(key) && (typeof value === "string" || typeof value === "number")) return String(value).slice(0, 60);
   return value === null ? "null" : typeof value;
 }
 
-export function buildDevice(raw: RawDevice, alarms: RawAlarm[] | null): HatchDevice | null {
+const WAKE_TYPES = new Set(["alarm", "wake"]);
+
+/** `routines` is everything Hatch holds for the device, or null if it couldn't be read. */
+export function buildDevice(raw: RawDevice, routines: RawAlarm[] | null): HatchDevice | null {
   if (!raw.macAddress || !raw.product) return null;
-  const supported = SCHEDULED_ALARM_PRODUCTS.has(raw.product);
+  const usable = (routines ?? []).filter(routine => routine.id !== undefined);
+  const wake: HatchAlarm[] = usable
+    .filter(routine => WAKE_TYPES.has(routine.type ?? ""))
+    .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
+    .map(routine => ({
+      id: String(routine.id),
+      kind: "wake" as const,
+      name: routine.name?.trim() || "Alarm",
+      enabled: routine.enabled === true,
+      wakeTime: wakeTimeOf(routine),
+      days: daysOfWeekLabel(routine.daysOfWeek),
+    }));
+  // Rest models list the same bedtime more than once (one per sound); show each time and days once.
+  const seenBedtimes = new Set<string>();
+  const bedtimes: HatchAlarm[] = usable
+    .filter(routine => routine.type === "sleep" && wakeTimeOf(routine) !== null)
+    .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
+    .filter(routine => {
+      const key = `${wakeTimeOf(routine)}|${routine.daysOfWeek ?? 0}|${routine.enabled === true}`;
+      if (seenBedtimes.has(key)) return false;
+      seenBedtimes.add(key);
+      return true;
+    })
+    .map(routine => ({
+      id: String(routine.id),
+      kind: "bedtime" as const,
+      name: routine.name?.trim() || "Bedtime",
+      enabled: routine.enabled === true,
+      wakeTime: wakeTimeOf(routine),
+      days: daysOfWeekLabel(routine.daysOfWeek),
+    }));
   return {
     id: Buffer.from(raw.macAddress).toString("base64url"),
     name: raw.name?.trim() || "Hatch",
     product: raw.product,
-    alarmsSupported: supported,
-    alarms: (alarms ?? [])
-      .filter(alarm => alarm.type === "alarm" && alarm.id !== undefined)
-      .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
-      .map(alarm => ({
-        id: String(alarm.id),
-        name: alarm.name?.trim() || "Alarm",
-        enabled: alarm.enabled === true,
-        wakeTime: wakeTimeOf(alarm),
-        days: daysOfWeekLabel(alarm.daysOfWeek),
-      })),
+    modelName: raw.productDevice?.marketingName?.trim() || null,
+    alarmsSupported: routines !== null,
+    alarms: [...wake, ...bedtimes],
   };
 }
 
 async function fetchSnapshot(account: HatchAccount, state: AccountState, log?: HatchDiagnostics): Promise<HatchSnapshot> {
+  // Ask for every product the account owns, not just the ones this code knows by name;
+  // otherwise a newer model is silently left out of the list.
+  let ownedProducts: string[] = [];
+  let memberPayload: unknown = null;
+  try {
+    const member = await authorizedGet(account, state, "service/app/v2/member", new URLSearchParams()) as { payload?: { products?: unknown } };
+    memberPayload = member.payload;
+    const products = member.payload?.products;
+    if (Array.isArray(products)) ownedProducts = products.filter((item): item is string => typeof item === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(item));
+  } catch (error) {
+    if (error instanceof HatchRateError) throw error;
+    log?.info({ error: error instanceof Error ? error.message : String(error) }, "Hatch account look-up failed");
+  }
   const params = new URLSearchParams();
-  IOT_PRODUCTS.forEach(product => params.append("iotProducts", product));
+  [...new Set([...IOT_PRODUCTS, ...ownedProducts])].forEach(product => params.append("iotProducts", product));
   const devicesBody = await authorizedGet(account, state, "service/app/iotDevice/v2/fetch", params) as { payload?: RawDevice[] };
 
-  if (log) {
-    // Read-only look at how Hatch describes this account and its devices (e.g. locations).
-    try {
-      const member = await authorizedGet(account, state, "service/app/v2/member", new URLSearchParams()) as { payload?: unknown };
-      log.info({ memberShape: shapeOf(member.payload), deviceShape: shapeOf((devicesBody.payload ?? [])[0]), deviceCount: (devicesBody.payload ?? []).length }, "Hatch account shape");
-    } catch (error) {
-      log.info({ error: error instanceof Error ? error.message : String(error) }, "Hatch account look-up failed");
-    }
-  }
+  log?.info({
+    memberShape: shapeOf(memberPayload),
+    deviceShape: shapeOf((devicesBody.payload ?? [])[0]),
+    deviceCount: (devicesBody.payload ?? []).length,
+    ownedProducts,
+  }, "Hatch account shape");
 
   const devices: HatchDevice[] = [];
   for (const raw of devicesBody.payload ?? []) {
-    let alarms: RawAlarm[] | null = null;
-    if (raw.macAddress && raw.product && SCHEDULED_ALARM_PRODUCTS.has(raw.product)) {
+    let routines: RawAlarm[] | null = null;
+    if (raw.macAddress) {
       try {
-        const alarmParams = new URLSearchParams({ macAddress: raw.macAddress });
-        alarmParams.append("types", "alarm");
-        alarms = ((await authorizedGet(account, state, "service/app/routine/v3/fetch", alarmParams)) as { payload?: RawAlarm[] }).payload ?? [];
-      } catch {
-        alarms = null; // one device failing shouldn't hide the others
-      }
-    }
-    if (log && raw.macAddress && raw.product && !SCHEDULED_ALARM_PRODUCTS.has(raw.product)) {
-      // Read-only look at what Hatch holds for models we can't read alarms from yet.
-      try {
-        const routines = ((await authorizedGet(account, state, "service/app/routine/v3/fetch", new URLSearchParams({ macAddress: raw.macAddress }))) as { payload?: RawAlarm[] }).payload ?? [];
-        log.info({
-          product: raw.product,
-          routineCount: routines.length,
-          routines: routines.slice(0, 20).map(r => ({ type: r.type, name: r.name, enabled: r.enabled, start: r.startTime, end: r.endTime, days: r.daysOfWeek })),
-        }, "Hatch device without scheduled-routine alarms");
+        // Everything Hatch holds for the device; wake-ups and bedtimes are picked out by type.
+        routines = ((await authorizedGet(account, state, "service/app/routine/v3/fetch", new URLSearchParams({ macAddress: raw.macAddress }))) as { payload?: RawAlarm[] }).payload ?? [];
       } catch (error) {
-        log.info({ product: raw.product, error: error instanceof Error ? error.message : String(error) }, "Hatch routine look-up failed");
+        if (error instanceof HatchRateError) throw error;
+        routines = null; // one device failing shouldn't hide the others
       }
     }
-    const device = buildDevice(raw, alarms);
+    const device = buildDevice(raw, routines);
     if (device) devices.push(device);
+    if (log && raw.macAddress && raw.product && routines && device && !device.alarms.some(alarm => alarm.kind === "wake")) {
+      log.info({
+        product: raw.product,
+        routineCount: routines.length,
+        routines: routines.slice(0, 20).map(r => ({ type: r.type, name: r.name, enabled: r.enabled, start: r.startTime, end: r.endTime, days: r.daysOfWeek })),
+      }, "Hatch device with no wake-up schedule");
+    }
   }
   return { devices, fetchedAt: new Date().toISOString(), stale: false };
 }

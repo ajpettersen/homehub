@@ -173,7 +173,7 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
       alarms: {
         configured: hatch.configured,
         unavailable: hatch.configured && hatch.snapshot === null,
-        items: (hatch.snapshot?.devices ?? []).flatMap(device => device.alarms.map(alarm => ({
+        items: (hatch.snapshot?.devices ?? []).flatMap(device => device.alarms.filter(alarm => alarm.kind === "wake").map(alarm => ({
           id: `${device.id}:${alarm.id}`,
           deviceName: device.name,
           name: alarm.name,

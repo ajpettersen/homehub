@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlarmClock, AlertTriangle, Loader2, Moon } from "lucide-react";
 
-interface HatchAlarm { id: string; name: string; enabled: boolean; wakeTime: string | null; days: string }
-interface HatchDevice { id: string; name: string; product: string; alarmsSupported: boolean; alarms: HatchAlarm[] }
+interface HatchAlarm { id: string; kind: "wake" | "bedtime"; name: string; enabled: boolean; wakeTime: string | null; days: string }
+interface HatchDevice { id: string; name: string; product: string; modelName: string | null; alarmsSupported: boolean; alarms: HatchAlarm[] }
 interface HatchAlarmsResponse {
   configured: boolean;
   unavailable: boolean;
@@ -26,8 +26,30 @@ const MODEL_NAMES: Record<string, string> = {
   restoreV5: "Hatch Restore 3",
 };
 
-function modelName(product: string): string {
-  return MODEL_NAMES[product] ?? "Hatch device";
+function modelName(device: HatchDevice): string {
+  return device.modelName ?? MODEL_NAMES[device.product] ?? "Hatch device";
+}
+
+function AlarmGroup({ title, alarms }: { title: string; alarms: HatchAlarm[] }) {
+  if (alarms.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
+      <ul className="divide-y divide-border">
+        {alarms.map(alarm => (
+          <li key={alarm.id} className={`flex items-center justify-between gap-3 py-3 ${alarm.enabled ? "" : "opacity-50"}`}>
+            <div className="min-w-0">
+              <p className="font-serif text-3xl font-bold tabular-nums">{formatWakeTime(alarm.wakeTime)}</p>
+              <p className="truncate text-sm text-muted-foreground">{alarm.name} · {alarm.days}</p>
+            </div>
+            <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${alarm.enabled ? "bg-green-100 text-green-800" : "bg-muted text-muted-foreground"}`}>
+              {alarm.enabled ? "On" : "Off"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** "06:45" -> "6:45 AM" */
@@ -221,27 +243,18 @@ export function KidsAlarms() {
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Moon className="h-5 w-5" /></div>
               <div className="min-w-0">
                 <h3 className="truncate font-bold text-foreground">{device.name}</h3>
-                <p className="text-xs font-semibold text-muted-foreground">{modelName(device.product)}</p>
+                <p className="text-xs font-semibold text-muted-foreground">{modelName(device)}</p>
               </div>
             </div>
             {!device.alarmsSupported ? (
-              <p className="text-sm text-muted-foreground">HomeHub can't read alarms from the {modelName(device.product)} yet. Only the Restore, Restore 2 and Restore 3 keep alarms it can see.</p>
+              <p className="text-sm text-muted-foreground">HomeHub couldn't read this device's schedules just now.</p>
             ) : device.alarms.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No alarms set up on this device.</p>
+              <p className="text-sm text-muted-foreground">No wake-up or bedtime schedule found. Some Hatch models only keep their schedules inside the device.</p>
             ) : (
-              <ul className="divide-y divide-border">
-                {device.alarms.map(alarm => (
-                  <li key={alarm.id} className={`flex items-center justify-between gap-3 py-3 ${alarm.enabled ? "" : "opacity-50"}`}>
-                    <div className="min-w-0">
-                      <p className="font-serif text-3xl font-bold tabular-nums">{formatWakeTime(alarm.wakeTime)}</p>
-                      <p className="truncate text-sm text-muted-foreground">{alarm.name} · {alarm.days}</p>
-                    </div>
-                    <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${alarm.enabled ? "bg-green-100 text-green-800" : "bg-muted text-muted-foreground"}`}>
-                      {alarm.enabled ? "On" : "Off"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-4">
+                <AlarmGroup title="Wake-up" alarms={device.alarms.filter(alarm => alarm.kind === "wake")} />
+                <AlarmGroup title="Bedtime" alarms={device.alarms.filter(alarm => alarm.kind === "bedtime")} />
+              </div>
             )}
           </section>
         ))}
