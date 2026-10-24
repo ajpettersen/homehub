@@ -4,6 +4,7 @@ import { fixStaleMaintenanceDates, fixStaleChoreDates } from "./seed";
 import { runOneTimeProdCleanup } from "./prodDataRepair";
 import { startNotificationScheduler } from "./notifications";
 import { ensureWebPushSchema } from "./lib/webPush";
+import { ensureAuthSchema } from "./lib/auth";
 import { startChatAttachmentFinalizer } from "./lib/chatAttachmentFinalizer";
 
 const rawPort = process.env["PORT"];
@@ -20,6 +21,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+await ensureAuthSchema();
 await ensureWebPushSchema();
 
 app.listen(port, async (err) => {

@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { useClerk } from "@clerk/react";
+import { useAuth } from "@/auth/AuthContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 
@@ -90,11 +90,11 @@ function logoutRedirectUrl(): string {
 
 /**
  * The only HomeHub Web sign-out path. It deliberately limits browser cleanup
- * to keys and cache names owned by this artifact, leaving Clerk and sibling
+ * to keys and cache names owned by this artifact, leaving sibling
  * artifacts on the origin untouched.
  */
 export function useHomeHubSignOut() {
-  const { signOut } = useClerk();
+  const { signOut } = useAuth();
   const queryClient = useQueryClient();
   const { setActiveMember } = useActiveMember();
   const signingOut = useRef(false);
@@ -108,16 +108,17 @@ export function useHomeHubSignOut() {
     removeKnownHomeHubStorage();
 
     // Updates and cache cleanup are best-effort, but finish their attempts
-    // before Clerk navigates away.
+    // before navigating away.
     await Promise.allSettled([
       updateHomeHubServiceWorker(),
       clearHomeHubCaches(),
     ]);
 
     try {
-      await signOut({ redirectUrl: logoutRedirectUrl() });
+      await signOut();
+      window.location.replace(logoutRedirectUrl());
     } finally {
-      // If Clerk rejects without navigating, allow the user to try again.
+      // If sign-out fails without navigating, allow the user to try again.
       signingOut.current = false;
     }
   }, [queryClient, setActiveMember, signOut]);
