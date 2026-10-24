@@ -20,6 +20,7 @@ import {
   recordPairingFailure,
   requireKioskPairing,
 } from "../lib/kioskAccess";
+import { getHatchSnapshot, isHatchConfigured } from "../lib/hatchClient";
 import { getKioskCalendar, getKioskWeather, parseCalendarSources } from "../lib/kioskFeeds";
 import { addMaintenanceDays, dateInMaintenanceTimeZone, resolveMaintenanceTimeZone } from "../lib/maintenanceDates";
 import { markChoreComplete } from "./chores";
@@ -162,6 +163,19 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
         nextDueDate: task.nextDueDate,
         isOverdue: task.nextDueDate < today,
       })),
+      alarms: {
+        configured: isHatchConfigured(),
+        unavailable: isHatchConfigured() && hatch === null,
+        items: (hatch?.devices ?? []).flatMap(device => device.alarms.map(alarm => ({
+          id: `${device.id}:${alarm.id}`,
+          deviceName: device.name,
+          name: alarm.name,
+          enabled: alarm.enabled,
+          wakeTime: alarm.wakeTime,
+          days: alarm.days,
+        }))),
+        unsupportedDevices: (hatch?.devices ?? []).filter(device => !device.alarmsSupported).map(device => device.name),
+      },
       calendar: calendar === null
         ? { configured: false, events: [], failedCalendars: [] }
         : { configured: true, events: calendar.events, failedCalendars: calendar.errors },

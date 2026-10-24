@@ -20,6 +20,7 @@ const allowedTests = new Set([
     "todo-bulk-validation.test.ts",
     "store-management.test.ts",
     "kiosk-photo.test.ts",
+    "hatch-client.test.ts",
 ]);
 if (!allowedTests.has(testFile)) {
   throw new Error(`Unknown test file: ${testFile}`);
