@@ -201,6 +201,24 @@ async function authorizedGet(account: HatchAccount, state: AccountState, path: s
   }
 }
 
+const LOCATION_KEY = /location|home|room|space|group|label/i;
+const NEVER_SHOWN_KEY = /mac|thing|email|token|password|phone|address|serial|secret|key/i;
+
+/**
+ * A description of a reply's structure for diagnostics: field names and types,
+ * plus short values only for fields that look like locations. Never includes
+ * anything that looks personal or like a credential or device identifier.
+ */
+export function shapeOf(value: unknown, depth = 0, key = ""): unknown {
+  if (Array.isArray(value)) return { array: value.length, first: value.length ? shapeOf(value[0], depth + 1, key) : null };
+  if (value && typeof value === "object") {
+    if (depth >= 4) return "{…}";
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shapeOf(v, depth + 1, k)]));
+  }
+  if (LOCATION_KEY.test(key) && !NEVER_SHOWN_KEY.test(key) && (typeof value === "string" || typeof value === "number")) return String(value).slice(0, 60);
+  return value === null ? "null" : typeof value;
+}
+
 export function buildDevice(raw: RawDevice, alarms: RawAlarm[] | null): HatchDevice | null {
   if (!raw.macAddress || !raw.product) return null;
   const supported = SCHEDULED_ALARM_PRODUCTS.has(raw.product);
@@ -226,6 +244,16 @@ async function fetchSnapshot(account: HatchAccount, state: AccountState, log?: H
   const params = new URLSearchParams();
   IOT_PRODUCTS.forEach(product => params.append("iotProducts", product));
   const devicesBody = await authorizedGet(account, state, "service/app/iotDevice/v2/fetch", params) as { payload?: RawDevice[] };
+
+  if (log) {
+    // Read-only look at how Hatch describes this account and its devices (e.g. locations).
+    try {
+      const member = await authorizedGet(account, state, "service/app/v2/member", new URLSearchParams()) as { payload?: unknown };
+      log.info({ memberShape: shapeOf(member.payload), deviceShape: shapeOf((devicesBody.payload ?? [])[0]), deviceCount: (devicesBody.payload ?? []).length }, "Hatch account shape");
+    } catch (error) {
+      log.info({ error: error instanceof Error ? error.message : String(error) }, "Hatch account look-up failed");
+    }
+  }
 
   const devices: HatchDevice[] = [];
   for (const raw of devicesBody.payload ?? []) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { HatchAuthError, HatchRateError, buildDevice, daysOfWeekLabel, forgetHatchAccount, getHatchSnapshot, verifyHatchLogin, wakeTimeOf, type HatchAccount } from "../src/lib/hatchClient";
+import { HatchAuthError, HatchRateError, buildDevice, shapeOf, daysOfWeekLabel, forgetHatchAccount, getHatchSnapshot, verifyHatchLogin, wakeTimeOf, type HatchAccount } from "../src/lib/hatchClient";
 
 // ── pure helpers ──────────────────────────────────────────────────────────────
 assert.equal(daysOfWeekLabel(127), "Every day");
@@ -72,6 +72,9 @@ globalThis.fetch = (async (input: URL | string, init?: RequestInit) => {
   if (rejectNextAuthedCall) {
     rejectNextAuthedCall = false;
     return expiredStyle === "payload" ? json({ status: "error", errorCode: "1001", message: "session invalid" }) : json({}, 401);
+  }
+  if (url.pathname === "/service/app/v2/member") {
+    return json({ status: "success", payload: { id: 1, email: "probe@example.com", firstName: "Probe", locations: [{ id: 3, locationName: "Cabin" }] } });
   }
   if (url.pathname === "/service/app/iotDevice/v2/fetch") {
     return json({ status: "success", payload: [
@@ -204,10 +207,24 @@ const noted: Array<{ details: Record<string, unknown>; message: string }> = [];
 const probeAccount: HatchAccount = { key: "household:6", email: "probe@example.com", password: "probe-password" };
 const probed = await getHatchSnapshot(probeAccount, { info: (details, message) => noted.push({ details: details as Record<string, unknown>, message }) });
 assert.ok(probed);
-assert.equal(noted.length, 1, "only the device without readable alarms is noted");
-assert.equal(noted[0].details.product, "restBaby");
-assert.equal(noted[0].details.routineCount, 1);
-assert.ok(!JSON.stringify(noted[0]).includes("AA:BB"), "the device's MAC address is never logged");
-assert.ok(!JSON.stringify(noted[0]).includes("probe-password"), "credentials are never logged");
+const deviceNotes = noted.filter(note => note.message === "Hatch device without scheduled-routine alarms");
+assert.equal(deviceNotes.length, 1, "only the device without readable alarms is noted");
+assert.equal(deviceNotes[0].details.product, "restBaby");
+assert.equal(deviceNotes[0].details.routineCount, 1);
+const accountNotes = noted.filter(note => note.message === "Hatch account shape");
+assert.equal(accountNotes.length, 1, "the account's structure is noted once per refresh");
+assert.ok(JSON.stringify(accountNotes[0]).includes("Cabin"), "location names from the account are visible in the note");
+assert.ok(!JSON.stringify(noted).includes("AA:BB"), "device MAC addresses are never logged");
+assert.ok(!JSON.stringify(noted).includes("probe-password") && !JSON.stringify(noted).includes("probe@example.com"), "credentials are never logged");
+
+// Diagnostics describe structure without leaking personal data or device identifiers.
+const shape = JSON.stringify(shapeOf({
+  id: 7, email: "mom@example.com", macAddress: "AA:BB:CC:DD:EE:FF", token: "secret-token", firstName: "Emily",
+  locations: [{ id: 3, locationName: "Cabin", homeAddress: "1 Lake Rd", macAddress: "AA:11" }],
+  nested: { deep: { deeper: { deepest: { tooDeep: true } } } },
+}));
+assert.ok(shape.includes("Cabin"), "location names are shown");
+assert.ok(!shape.includes("mom@example.com") && !shape.includes("AA:BB") && !shape.includes("secret-token") && !shape.includes("Emily") && !shape.includes("1 Lake Rd"), "personal data and identifiers are never shown");
+assert.ok(shape.includes('"email":"string"') && shape.includes('"locations":{"array":1'), "structure and types are still visible");
 
 console.log("hatch-client: all checks passed");
