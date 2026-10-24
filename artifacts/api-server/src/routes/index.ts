@@ -22,6 +22,7 @@ import storesRouter from "./stores";
 import inventoryRouter from "./inventory";
 import walletsRouter from "./wallets";
 import kioskRouter from "./kiosk";
+import hatchRouter from "./hatch";
 import { requireApprovedHousehold } from "../middlewares/requireApprovedHousehold";
 
 const router: IRouter = Router();
@@ -38,6 +39,7 @@ router.use(familyRouter);
 router.use(propertiesRouter);
 router.use(choresRouter);
 router.use(walletsRouter);
+router.use(hatchRouter);
 router.use(groceryRouter);
 router.use(storesRouter);
 router.use(inventoryRouter);

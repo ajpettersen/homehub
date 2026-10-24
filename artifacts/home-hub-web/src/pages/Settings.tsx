@@ -213,7 +213,7 @@ function AppearanceAndTabsSection() {
   const canAdministerHousehold = me?.role === "family" && me.isAdmin;
   const visibleTabs = new Set<HomeHubWebTab>(me?.visibleTabs ?? ["home", "properties", "chores", "meals", "tasks", "workouts", "people", "settings"]);
   const optionalTabs: Array<{ key: HomeHubWebTab; label: string; description: string }> = [
-    { key: "chores", label: "Chores", description: "Recurring household responsibilities." },
+    { key: "chores", label: "Kids", description: "Chores, allowance wallets, and wake-up alarms." },
     { key: "meals", label: "Meals", description: "Meal plans, groceries, and recipes." },
     { key: "tasks", label: "Tasks", description: "Shared household lists and projects." },
     { key: "properties", label: "Maintenance", description: "Recurring upkeep for each of your properties." },
@@ -319,8 +319,8 @@ function AppearanceAndTabsSection() {
               onChange={value => setTabPreference("home", "focus", value as "overview" | "assistant")}
             />
             <PreferenceChoice
-              label="Chores"
-              description="Pick the filter shown automatically whenever you open Chores."
+              label="Kids: chores"
+              description="Pick the chore filter shown automatically whenever you open Kids."
               value={tab.chores.defaultFilter}
               options={[
                 { value: "all", label: "All pending" }, { value: "today", label: "Due today" },

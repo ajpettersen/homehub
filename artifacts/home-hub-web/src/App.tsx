@@ -228,6 +228,7 @@ function AuthenticatedApp() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/chores" component={Chores} />
+          <Route path="/kids" component={Chores} />
           <Route path="/meals" component={Kitchen} />
           <Route path="/tasks" component={Tasks} />
           <Route path="/workouts" component={Workouts} />
@@ -248,6 +249,7 @@ function AuthenticatedApp() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/chores" component={Chores} />
+          <Route path="/kids" component={Chores} />
           <Route path="/meals" component={Kitchen} />
           <Route path="/tasks" component={Tasks} />
           <Route path="/workouts" component={Workouts} />

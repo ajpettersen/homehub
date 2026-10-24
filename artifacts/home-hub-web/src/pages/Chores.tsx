@@ -19,7 +19,9 @@ import { useActiveMember } from "@/context/ActiveMemberContext";
 import { usePreferences } from "@/context/PreferencesContext";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Plus, Trash2, X, Check, Home, CalendarClock, CreditCard, ChevronRight, AlertCircle, Clock, CheckCircle, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Plus, Trash2, X, Check, Home, CalendarClock, CreditCard, ChevronRight, AlertCircle, Clock, CheckCircle, AlertTriangle, Smile, ListChecks, Wallet, AlarmClock } from "lucide-react";
+import { useLocation, useSearch } from "wouter";
+import { KidsAlarms } from "@/components/kids/KidsAlarms";
 import { addDays, isToday, parseISO } from "date-fns";
 import { formatDateOnly, getLocalDateOnly, getResolvedTimeZone } from "@/lib/dateOnly";
 
@@ -611,6 +613,11 @@ export default function Chores() {
 
   const isParent = activeMember?.role === "parent";
 
+  const [location, setLocation] = useLocation();
+  const viewParam = new URLSearchParams(useSearch()).get("view");
+  const view: "chores" | "wallet" | "alarms" = viewParam === "wallet" || viewParam === "alarms" ? viewParam : "chores";
+  const setView = (next: "chores" | "wallet" | "alarms") => setLocation(next === "chores" ? location : `${location}?view=${next}`);
+
   const choresParams = { timezone: getResolvedTimeZone() };
   const { data: chores, isLoading, isError: isChoresError, refetch: refetchChores } = useGetChores(choresParams, { query: { queryKey: getGetChoresQueryKey(choresParams), retry: false } });
   const { data: properties } = useGetProperties({ query: { queryKey: getGetPropertiesQueryKey() } });
@@ -770,72 +777,124 @@ export default function Chores() {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="font-serif text-4xl font-bold text-foreground flex items-center gap-3">
-            <CheckCircle2 className="w-8 h-8 text-accent-foreground" />
-            Chores & Allowance
+            <Smile className="w-8 h-8 text-accent-foreground" />
+            Kids
           </h1>
-          <p className="text-muted-foreground mt-2 text-lg">Earn rewards by helping around the house.</p>
+          <p className="text-muted-foreground mt-2 text-lg">Chores, allowance and wake-up alarms.</p>
         </div>
-        <button
-          onClick={() => {
-            clearError("createChore");
-            setAdding(true);
-          }}
-          className="flex items-center justify-center gap-2 px-5 py-3 min-h-11 rounded-xl bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20 hover:bg-primary/90 transition-all hover:-translate-y-0.5"
-        >
-          <Plus className="w-5 h-5" /> New Chore
-        </button>
+        {view === "chores" && (
+          <button
+            onClick={() => {
+              clearError("createChore");
+              setAdding(true);
+            }}
+            className="flex items-center justify-center gap-2 px-5 py-3 min-h-11 rounded-xl bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20 hover:bg-primary/90 transition-all hover:-translate-y-0.5"
+          >
+            <Plus className="w-5 h-5" /> New Chore
+          </button>
+        )}
       </div>
 
-      {/* Wallets */}
-      {members && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Sections */}
+      <div role="tablist" aria-label="Kids sections" className="grid grid-cols-3 gap-1 rounded-2xl bg-muted/60 p-1">
+        {([
+          { id: "chores", label: "Chores", Icon: ListChecks },
+          { id: "wallet", label: "Wallet", Icon: Wallet },
+          { id: "alarms", label: "Alarms", Icon: AlarmClock },
+        ] as const).map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={view === id}
+            onClick={() => setView(id)}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${view === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Wallet */}
+      {view === "wallet" && members && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {walletsLoading ? (
-            <div className="h-24 bg-muted/50 rounded-3xl animate-pulse" />
+            <div className="h-32 bg-muted/50 rounded-3xl animate-pulse" />
           ) : walletsError ? (
-            <div className="rounded-3xl border-2 border-destructive/20 bg-destructive/5 p-4 flex items-center gap-3">
+            <div className="rounded-3xl border-2 border-destructive/20 bg-destructive/5 p-4 flex items-center gap-3 md:col-span-2">
               <AlertTriangle className="text-destructive w-5 h-5 shrink-0" />
               <p className="text-sm font-medium text-destructive flex-1">Failed to load allowances.</p>
               <button onClick={() => void refetchWallets()} className="text-xs min-h-11 px-3 font-bold border border-destructive/30 rounded-lg hover:bg-destructive/10">Retry</button>
             </div>
           ) : (() => {
             const visibleWallets = isParent ? wallets : wallets?.filter(w => w.memberId === activeMember?.id);
-            if (!visibleWallets?.length) return null;
+            if (!visibleWallets?.length) {
+              return (
+                <div className="md:col-span-2 py-16 flex flex-col items-center justify-center bg-card rounded-[2rem] border-2 border-dashed border-border text-center px-4">
+                  <Wallet className="w-12 h-12 text-muted-foreground/30 mb-3" />
+                  <h3 className="font-serif text-2xl font-bold text-foreground mb-2">No wallets yet</h3>
+                  <p className="text-muted-foreground">Allowance wallets will show up here.</p>
+                </div>
+              );
+            }
             return visibleWallets.map(wallet => {
               const member = members.find(m => m.id === wallet.memberId);
               if (!member) return null;
               return (
-                <div key={wallet.memberId} className="flex items-center justify-between bg-card border-2 border-border p-4 rounded-3xl shadow-sm group">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm"
-                      style={{ backgroundColor: member.color || "var(--color-primary)" }}
-                    >
-                      {member.name.charAt(0)}
+                <section key={wallet.memberId} className="bg-card border-2 border-border p-5 rounded-3xl shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className="w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm"
+                        style={{ backgroundColor: member.color || "var(--color-primary)" }}
+                      >
+                        {member.name.charAt(0)}
+                      </div>
+                      <h3 className="font-bold text-foreground truncate">{isParent ? member.name : "My Wallet"}</h3>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-foreground">{isParent ? member.name : "My Wallet"}</h3>
-                      <p className="text-sm font-semibold text-green-600 dark:text-green-500">{formatMoney(wallet.balanceCents)}</p>
-                    </div>
+                    {isParent && (
+                      <button
+                        onClick={() => {
+                          clearError("walletModal");
+                          setTransactWallet(wallet);
+                        }}
+                        className="flex items-center gap-2 min-h-11 px-4 rounded-xl bg-muted text-foreground font-bold text-sm hover:bg-foreground hover:text-background transition-colors"
+                        aria-label={`Adjust allowance for ${member.name}`}
+                      >
+                        <Plus className="w-4 h-4" /> Adjust
+                      </button>
+                    )}
                   </div>
-                  {isParent && (
-                    <button
-                      onClick={() => {
-                        clearError("walletModal");
-                        setTransactWallet(wallet);
-                      }}
-                      className="w-10 h-10 min-h-[44px] min-w-[44px] rounded-xl bg-muted text-foreground flex items-center justify-center hover:bg-foreground hover:text-background transition-colors"
-                      aria-label={`Adjust allowance for ${member.name}`}
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
+                  <p className={`mt-3 font-serif text-4xl font-bold tabular-nums ${wallet.balanceCents < 0 ? "text-destructive" : "text-green-600 dark:text-green-500"}`}>
+                    {wallet.balanceCents < 0 ? "-" : ""}{formatMoney(wallet.balanceCents)}
+                  </p>
+                  {wallet.recentTransactions.length > 0 ? (
+                    <ul className="mt-4 divide-y divide-border border-t border-border">
+                      {wallet.recentTransactions.slice(0, 5).map(tx => (
+                        <li key={tx.id} className="flex items-center justify-between gap-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground truncate">{tx.description}</p>
+                            <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</p>
+                          </div>
+                          <span className={`shrink-0 text-sm font-bold tabular-nums ${tx.amountCents < 0 ? "text-destructive" : "text-green-600 dark:text-green-500"}`}>
+                            {tx.amountCents < 0 ? "-" : "+"}{formatMoney(tx.amountCents)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-4 border-t border-border pt-3 text-sm text-muted-foreground">No activity yet.</p>
                   )}
-                </div>
+                </section>
               );
             });
           })()}
         </div>
       )}
 
+      {/* Alarms */}
+      {view === "alarms" && <KidsAlarms />}
+
+      {view === "chores" && (<>
       {/* Filters */}
       <div className="flex flex-wrap gap-2 pb-2" aria-label="Chore filters">
         <FilterPill id="all" label="All Open" count={stats.total} icon={CheckCircle2} />
@@ -890,6 +949,7 @@ export default function Chores() {
           ))
         )}
       </div>
+      </>)}
 
       {adding && (
         <AddChoreForm

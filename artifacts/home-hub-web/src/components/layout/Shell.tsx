@@ -1,5 +1,5 @@
 import { Link, useLocation, useSearch } from "wouter";
-import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, ArrowLeft, LogOut, BadgeDollarSign, Wrench, type LucideIcon } from "lucide-react";
+import { Home, CheckSquare, Settings, Utensils, ChevronDown, Dumbbell, ArrowLeft, LogOut, Smile, Wrench, type LucideIcon } from "lucide-react";
 import { useActiveMember } from "@/context/ActiveMemberContext";
 import { useHomeHubSignOut } from "@/hooks/useHomeHubSignOut";
 import {
@@ -27,7 +27,7 @@ const MAINTENANCE: NavItem = { tabs: ["properties"], href: "/tasks?view=maintena
 // The phone tab bar has no room for both, so one entry opens whichever Tasks views are turned on.
 const TASKS_COMBINED: NavItem = { tabs: ["tasks", "properties"], href: "/tasks", label: "Tasks", icon: CheckSquare, isActive: path => path === "/tasks" };
 const REST: NavItem[] = [
-  { tabs: ["chores"], href: "/chores", label: "Chores", icon: BadgeDollarSign, isActive: path => path === "/chores" },
+  { tabs: ["chores"], href: "/kids", label: "Kids", icon: Smile, isActive: path => path === "/kids" || path === "/chores" },
   { tabs: ["meals"], href: "/meals", label: "Meals", icon: Utensils, isActive: path => path === "/meals" },
   { tabs: ["workouts"], href: "/workouts", label: "Workouts", icon: Dumbbell, isActive: path => path === "/workouts" },
   // People is opened from Settings, so it keeps Settings highlighted.
