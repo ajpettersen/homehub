@@ -81,7 +81,7 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
       && !!process.env.KIOSK_LATITUDE && !!process.env.KIOSK_LONGITUDE;
 
     const noProperties = scope.propertyIds.length === 0;
-    const [members, chores, maintenance, meals, calendar, weather, photo] = await Promise.all([
+    const [members, chores, maintenance, meals, calendar, weather, photo, hatch] = await Promise.all([
       db.select({
         id: familyMembersTable.id,
         name: familyMembersTable.name,
@@ -130,6 +130,8 @@ router.get("/kiosk/summary", requireKioskPairing, async (req, res) => {
         .where(eq(kioskPhotosTable.householdId, scope.householdId)).then(rows => rows[0] ?? null)
         // A missing photo should never take the whole screen down.
         .catch(() => null),
+      // Hatch is an unofficial service; a failure there must never take the screen down.
+      getHatchSnapshot().catch(() => null),
     ]);
 
     const memberById = new Map(members.map(member => [member.id, member]));
