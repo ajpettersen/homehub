@@ -112,8 +112,8 @@ export function forgetHatchAccount(key: string): void {
   accounts.delete(key);
 }
 
-/** Hatch asked us to slow down. */
-class HatchRateError extends Error {}
+/** Hatch asked us to slow down (HTTP 429). */
+export class HatchRateError extends Error {}
 /** Hatch understood the request and said no: bad input, bad login, or an error payload. */
 class HatchRejectedError extends Error {}
 

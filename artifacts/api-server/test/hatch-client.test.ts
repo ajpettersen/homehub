@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { HatchAuthError, buildDevice, daysOfWeekLabel, forgetHatchAccount, getHatchSnapshot, verifyHatchLogin, wakeTimeOf, type HatchAccount } from "../src/lib/hatchClient";
+import { HatchAuthError, HatchRateError, buildDevice, daysOfWeekLabel, forgetHatchAccount, getHatchSnapshot, verifyHatchLogin, wakeTimeOf, type HatchAccount } from "../src/lib/hatchClient";
 
 // ── pure helpers ──────────────────────────────────────────────────────────────
 assert.equal(daysOfWeekLabel(127), "Every day");
@@ -47,7 +47,7 @@ type Call = { method: string; path: string; search: string; auth: string | null;
 const calls: Call[] = [];
 let rejectNextAuthedCall = false;
 let loginStatus = 200;
-let loginMode: "ok" | "error-payload" = "ok";
+let loginMode: "ok" | "error-payload" | "real-failure" = "ok";
 let expiredStyle: "http" | "payload" = "http";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -64,6 +64,7 @@ globalThis.fetch = (async (input: URL | string, init?: RequestInit) => {
   });
   assert.equal(url.origin, "https://data.hatchbaby.com", "only ever talks to Hatch");
   if (url.pathname === "/public/v1/login") {
+    if (loginMode === "real-failure") return json({ errorCode: "1001", message: "Login failed for [parent@example.com]", payload: null, status: "failure", sync: null });
     if (loginMode === "error-payload") return json({ status: "error", errorCode: "2002", message: "Invalid credentials" });
     if (loginStatus !== 200) return json({}, loginStatus);
     return json({ status: "success", token: `token-${calls.filter(c => c.path === "/public/v1/login").length}` });
@@ -171,6 +172,10 @@ loginStatus = 200;
 loginMode = "error-payload";
 await assert.rejects(() => verifyHatchLogin("parent@example.com", "wrong"), HatchAuthError, "an error payload at sign-in is a refused login");
 loginMode = "ok";
+// ...including the exact shape real Hatch uses (HTTP 200 with status "failure" and errorCode "1001").
+loginMode = "real-failure";
+await assert.rejects(() => verifyHatchLogin("parent@example.com", "wrong"), HatchAuthError, "Hatch's real bad-login reply is a refused login");
+loginMode = "ok";
 // ...a 400-style rejection at sign-in is too...
 loginStatus = 400;
 await assert.rejects(() => verifyHatchLogin("parent@example.com", "wrong"), HatchAuthError, "a 4xx at sign-in is a refused login");
@@ -178,8 +183,8 @@ await assert.rejects(() => verifyHatchLogin("parent@example.com", "wrong"), Hatc
 loginStatus = 429;
 await assert.rejects(
   () => verifyHatchLogin("parent@example.com", "anything"),
-  (error: unknown) => error instanceof Error && !(error instanceof HatchAuthError),
-  "rate limiting is not mistaken for a wrong password",
+  HatchRateError,
+  "rate limiting is reported as rate limiting, not as a wrong password or an outage",
 );
 loginStatus = 200;
 
