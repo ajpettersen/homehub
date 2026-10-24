@@ -16,13 +16,18 @@ interface HatchAlarmsResponse {
 }
 
 const MODEL_NAMES: Record<string, string> = {
+  restMini: "Hatch Rest Mini",
+  restPlus: "Hatch Rest+",
+  restBaby: "Hatch Rest (original)",
+  riot: "Hatch Rest (2nd gen)",
+  riotPlus: "Hatch Rest+ (2nd gen)",
   restoreIot: "Hatch Restore",
   restoreV4: "Hatch Restore 2",
   restoreV5: "Hatch Restore 3",
 };
 
 function modelName(product: string): string {
-  return MODEL_NAMES[product] ?? "Hatch Rest";
+  return MODEL_NAMES[product] ?? "Hatch device";
 }
 
 /** "06:45" -> "6:45 AM" */
@@ -220,7 +225,7 @@ export function KidsAlarms() {
               </div>
             </div>
             {!device.alarmsSupported ? (
-              <p className="text-sm text-muted-foreground">HomeHub can't read alarms from this Hatch model yet.</p>
+              <p className="text-sm text-muted-foreground">HomeHub can't read alarms from the {modelName(device.product)} yet. Only the Restore, Restore 2 and Restore 3 keep alarms it can see.</p>
             ) : device.alarms.length === 0 ? (
               <p className="text-sm text-muted-foreground">No alarms set up on this device.</p>
             ) : (

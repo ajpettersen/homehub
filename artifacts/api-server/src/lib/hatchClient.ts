@@ -55,6 +55,11 @@ export interface HatchSnapshot {
   stale: boolean;
 }
 
+/** Where to note what Hatch returns for devices we can't read alarms from (e.g. a request logger). */
+export interface HatchDiagnostics {
+  info: (details: object, message: string) => void;
+}
+
 export interface HatchAccount {
   /** Stable id for caching, e.g. "household:3". */
   key: string;
@@ -217,7 +222,7 @@ export function buildDevice(raw: RawDevice, alarms: RawAlarm[] | null): HatchDev
   };
 }
 
-async function fetchSnapshot(account: HatchAccount, state: AccountState): Promise<HatchSnapshot> {
+async function fetchSnapshot(account: HatchAccount, state: AccountState, log?: HatchDiagnostics): Promise<HatchSnapshot> {
   const params = new URLSearchParams();
   IOT_PRODUCTS.forEach(product => params.append("iotProducts", product));
   const devicesBody = await authorizedGet(account, state, "service/app/iotDevice/v2/fetch", params) as { payload?: RawDevice[] };
@@ -234,6 +239,19 @@ async function fetchSnapshot(account: HatchAccount, state: AccountState): Promis
         alarms = null; // one device failing shouldn't hide the others
       }
     }
+    if (log && raw.macAddress && raw.product && !SCHEDULED_ALARM_PRODUCTS.has(raw.product)) {
+      // Read-only look at what Hatch holds for models we can't read alarms from yet.
+      try {
+        const routines = ((await authorizedGet(account, state, "service/app/routine/v3/fetch", new URLSearchParams({ macAddress: raw.macAddress }))) as { payload?: RawAlarm[] }).payload ?? [];
+        log.info({
+          product: raw.product,
+          routineCount: routines.length,
+          routines: routines.slice(0, 20).map(r => ({ type: r.type, name: r.name, enabled: r.enabled, start: r.startTime, end: r.endTime, days: r.daysOfWeek })),
+        }, "Hatch device without scheduled-routine alarms");
+      } catch (error) {
+        log.info({ product: raw.product, error: error instanceof Error ? error.message : String(error) }, "Hatch routine look-up failed");
+      }
+    }
     const device = buildDevice(raw, alarms);
     if (device) devices.push(device);
   }
@@ -241,12 +259,12 @@ async function fetchSnapshot(account: HatchAccount, state: AccountState): Promis
 }
 
 /** Returns Hatch devices and alarms, or null when there's no login or Hatch can't be reached and nothing is cached. */
-export async function getHatchSnapshot(account: HatchAccount | null): Promise<HatchSnapshot | null> {
+export async function getHatchSnapshot(account: HatchAccount | null, log?: HatchDiagnostics): Promise<HatchSnapshot | null> {
   if (!account) return null;
   const state = stateFor(account);
   if (state.snapshot && Date.now() - state.snapshot.at < ALARMS_FRESH_MS) return state.snapshot.value;
   if (!state.refreshInFlight) {
-    state.refreshInFlight = fetchSnapshot(account, state)
+    state.refreshInFlight = fetchSnapshot(account, state, log)
       .then(value => { state.snapshot = { value, at: Date.now() }; return value; })
       .finally(() => { state.refreshInFlight = null; });
   }

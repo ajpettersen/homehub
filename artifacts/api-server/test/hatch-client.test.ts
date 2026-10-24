@@ -198,4 +198,16 @@ const recoveredFromPayload = await getHatchSnapshot(payloadExpiry);
 assert.ok(recoveredFromPayload, "an expired-session code inside the reply is recovered by signing in again");
 expiredStyle = "http";
 
+// Devices whose alarms can't be read are looked at once per refresh and noted in the log;
+// readable ones aren't, and nothing is logged when no sink is given.
+const noted: Array<{ details: Record<string, unknown>; message: string }> = [];
+const probeAccount: HatchAccount = { key: "household:6", email: "probe@example.com", password: "probe-password" };
+const probed = await getHatchSnapshot(probeAccount, { info: (details, message) => noted.push({ details: details as Record<string, unknown>, message }) });
+assert.ok(probed);
+assert.equal(noted.length, 1, "only the device without readable alarms is noted");
+assert.equal(noted[0].details.product, "restBaby");
+assert.equal(noted[0].details.routineCount, 1);
+assert.ok(!JSON.stringify(noted[0]).includes("AA:BB"), "the device's MAC address is never logged");
+assert.ok(!JSON.stringify(noted[0]).includes("probe-password"), "credentials are never logged");
+
 console.log("hatch-client: all checks passed");

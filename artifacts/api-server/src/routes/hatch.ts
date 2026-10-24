@@ -35,7 +35,7 @@ router.get("/hatch/alarms", async (req, res) => {
       res.json({ ...base, configured: false, unavailable: false, stale: false, devices: [] });
       return;
     }
-    const snapshot = await getHatchSnapshot(found.account);
+    const snapshot = await getHatchSnapshot(found.account, req.log);
     res.json({
       ...base,
       configured: true,
