@@ -47,7 +47,6 @@ app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 // different port than the API), and any other real deployment of this app.
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://homehub-production-5db0.up.railway.app",
-  "https://home-life-manager.replit.app",
 ];
 const EXTRA_ALLOWED_ORIGINS = (process.env.EXTRA_ALLOWED_ORIGINS ?? "")
   .split(",")
@@ -83,9 +82,8 @@ app.use(
 
 app.use("/api", router);
 
-// Replit's deployment router combines the frontend and backend into one URL
-// automatically. Outside Replit there's no such magic, so in production this
-// same server also serves the frontend's already-built files directly.
+// In production this same server also serves the frontend's already-built
+// files directly, so the app and its API share one URL.
 if (process.env.NODE_ENV === "production") {
   const staticDir = path.resolve(import.meta.dirname, "../../home-hub-web/dist/public");
   if (fs.existsSync(staticDir)) {

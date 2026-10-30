@@ -3,8 +3,6 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
-import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
-
 const rawPort = process.env.PORT;
 
 if (!rawPort) {
@@ -32,20 +30,6 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    ...(process.env.NODE_ENV !== 'production' ? [runtimeErrorOverlay()] : []),
-    ...(process.env.NODE_ENV !== 'production' &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import('@replit/vite-plugin-cartographer').then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, '..'),
-            }),
-          ),
-          await import('@replit/vite-plugin-dev-banner').then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
   ],
   resolve: {
     alias: {
@@ -72,9 +56,9 @@ export default defineConfig({
     fs: {
       strict: true,
     },
-    // Local dev only: Replit's deployment infra routes /api to the backend
-    // automatically, but two separate local dev servers need this bridged
-    // by hand. Point API_PROXY_TARGET at wherever the api-server is running.
+    // Local dev only: in production the api-server serves the frontend, but
+    // two separate local dev servers need /api bridged by hand. Point
+    // API_PROXY_TARGET at wherever the api-server is running.
     proxy: process.env.API_PROXY_TARGET
       ? {
           '/api': {

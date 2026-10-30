@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Practical notes for working in this repo, especially the parts that cost real
-debugging time to figure out the first time. See `replit.md` for product and
+debugging time to figure out the first time. See `README.md` for product and
 architecture context.
 
 ## Local setup
@@ -35,6 +35,12 @@ architecture context.
   which is not what we want. If you ever see that happen, discard the
   proposal and redeploy the existing single `homehub` service instead.
 - Auto-deploys on every push to `main`.
+- **Deploys do not run database migrations.** (Replit used to, via a
+  post-merge hook that's now gone.) Production's `schema_migrations` log may
+  not match the files in `lib/db/migrations`, so don't run
+  `lib/db/migrate.mjs` against production blindly: apply a new additive
+  migration on its own with `railway run --service homehub …`. Reconcile the
+  log before ever adding the migrate script as a Railway pre-deploy step.
 - In production, `app.ts` serves the built frontend directly (static files +
   SPA fallback) since Railway has no Replit-style automatic frontend/backend
   routing. This only activates when `NODE_ENV=production`.
