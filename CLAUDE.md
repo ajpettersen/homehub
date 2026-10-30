@@ -18,8 +18,7 @@ architecture context.
   `pnpm install` for whoever's on that platform, no error pointing at the
   actual cause.
 - The API server needs real env vars to even boot (`DATABASE_URL`,
-  `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `AI_INTEGRATIONS_OPENAI_*`,
-  `SESSION_SECRET`) — most of the app's lib modules throw at import time if
+  `AI_INTEGRATIONS_OPENAI_*`, `SESSION_SECRET`) — most of the app's lib modules throw at import time if
   these are missing, not lazily. A `.env` file at the repo root works for
   local dev; load it into the shell with `set -a && source .env && set +a`
   before running commands (values contain characters like `&` that break a
@@ -45,26 +44,35 @@ architecture context.
   SPA fallback) since Railway has no Replit-style automatic frontend/backend
   routing. This only activates when `NODE_ENV=production`.
 
-## Clerk auth in production
+## Sign-in (HomeHub's own, not Clerk)
 
-This app uses Clerk via Replit's managed "Users & Auth" integration (not a
-normal clerk.com account — there's no dashboard access to it outside Replit's
-own UI). It runs on Clerk's free/development tier (`sk_test_...`/`pk_test_...`
-keys), not a paid production tier, which is important:
+HomeHub runs its own email + password sign-in (`routes/auth.ts`,
+`lib/userSessions.ts`, `lib/passwords.ts`, `lib/passwordSetup.ts`, and
+`context/AuthContext.tsx` / `pages/AuthPages.tsx` on the web). It replaced
+Clerk, which ran through Replit's managed integration with no dashboard of our
+own. Things to know:
 
-- **In `NODE_ENV=production`, the app tries to proxy Clerk's Frontend API
-  through its own domain** (`CLERK_PROXY_PATH`, `VITE_CLERK_PROXY_URL`). That
-  proxy mechanism is really meant for Clerk's paid tier, which requires
-  registering the proxy domain in a Clerk dashboard we don't have access to —
-  using it here causes cryptic failures (`clerk.browser.js` 502s, "unable to
-  attribute this request to an instance"). **Leave `VITE_CLERK_PROXY_URL`
-  unset** so the frontend talks to Clerk's dev-tier domain directly, the same
-  way it already works in local dev. Only revisit this if the app is ever
-  moved to Clerk's actual paid production tier with real dashboard access.
-- The bootstrap identity (`HOMEHUB_BOOTSTRAP_EMAIL`) only gets promoted to
-  household owner on a `pending` profile with no `linked_family_member_id`
-  colliding with another linked adult — see `lib/bootstrapIdentity.ts` and
-  `routes/me.ts` if this needs to change.
+- **Account ids didn't change.** `user_profiles.clerk_id` (and every other
+  `*clerk_id` column) is still the account id: Clerk's `user_…` id for people
+  from before, `hh_…` for accounts made since. The name is historical; don't
+  rename columns for it.
+- Logins live in `user_credentials` (lowercased email, scrypt hash, nullable
+  until set). Sessions are rows in `user_sessions` keyed by a SHA-256 of the
+  `homehub_session` HttpOnly cookie; deleting the row signs that browser out.
+- **HomeHub sends no email**, so typed emails are unproven. `email_verified`
+  is true only for emails imported from Clerk. The bootstrap owner
+  (`HOMEHUB_BOOTSTRAP_EMAIL`) needs a verified email, or a database with no
+  household admin yet. Forgotten passwords are handled by a household admin
+  making a single-use, 7-day link (Settings → Household Roles & Access), or by
+  `pnpm --filter @workspace/api-server run auth password-link <email>`
+  (prefix `railway run --service homehub` for production).
+- `auth import-clerk-users` copied existing people's emails and names out of
+  Clerk once (needs `CLERK_SECRET_KEY`). Safe to rerun; it skips accounts that
+  already have a login. After that, no `CLERK_*` variable is used.
+- Wrong passwords are limited per email and overall, in memory
+  (`lib/signInLimits.ts`), never per IP (see "Wall screen" below for why).
+- The parked Expo app (`artifacts/home-hub`) still uses Clerk and can't sign
+  in anymore. Give it a cookie- or token-based login before reviving it.
 
 ## Wall screen (`/kiosk`)
 

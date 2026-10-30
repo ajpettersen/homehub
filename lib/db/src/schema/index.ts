@@ -31,3 +31,4 @@ export * from "./oneTimeCleanups";
 export * from "./chatAttachmentBlobs";
 export * from "./kioskPhotos";
 export * from "./hatchConnections";
+export * from "./userCredentials";

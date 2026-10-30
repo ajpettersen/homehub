@@ -41,8 +41,9 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Check, MapPin, Image, Mountain,
   CalendarDays, Wrench, Droplets, Filter, Leaf, Repeat, ChevronDown,
   ClipboardList, Brain, Sparkles, Bell, BellOff, Smartphone,
-  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2, Store, ChevronUp, ChevronRight, Contact, Monitor
+  SlidersHorizontal, UserCog, Merge, AlertTriangle, Link as LinkIcon, Copy, Loader2, Store, ChevronUp, ChevronRight, Contact, Monitor, KeyRound
 } from "lucide-react";
+import { postAuth, useAuth } from "@/context/AuthContext";
 import { usePreferences } from "@/context/PreferencesContext";
 import {
   disableWebPush,
@@ -1747,6 +1748,143 @@ function FamilyLinkingSection({ familyMembers }: { familyMembers: any[] }) {
   );
 }
 
+function PasswordSection() {
+  const { email, isSignedIn } = useAuth();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!isSignedIn) return null;
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setSaved(false);
+    setBusy(true);
+    try {
+      await postAuth("change-password", { currentPassword: current, newPassword: next });
+      setCurrent("");
+      setNext("");
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change your password.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AccordionSection
+      icon={<KeyRound className="h-4 w-4" />}
+      title="Sign-in & Password"
+      summary={email ? <span className="text-xs text-muted-foreground">Signed in as {email}</span> : undefined}
+      defaultOpen={false}
+    >
+      <form onSubmit={submit} className="max-w-sm space-y-3">
+        <input type="email" autoComplete="username" value={email ?? ""} readOnly hidden />
+        <label className="block text-sm font-bold text-foreground">
+          Current password
+          <input type="password" autoComplete="current-password" value={current} onChange={e => setCurrent(e.target.value)}
+            className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal" />
+        </label>
+        <label className="block text-sm font-bold text-foreground">
+          New password
+          <input type="password" autoComplete="new-password" required minLength={8} value={next} onChange={e => setNext(e.target.value)}
+            className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal" />
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">At least 8 characters. Other devices signed in to your account will be signed out.</span>
+        </label>
+        {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+        {saved && <p className="text-sm font-medium text-green-700">Password changed.</p>}
+        <button type="submit" disabled={busy || !next}
+          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+          Change password
+        </button>
+      </form>
+    </AccordionSection>
+  );
+}
+
+/** A household admin makes a single-use link that lets someone set (or reset) their password. */
+function PasswordLinkControl({ clerkId, hasEmail, hasPassword, isSelf }: { clerkId: string; hasEmail: boolean; hasPassword: boolean; isSelf: boolean }) {
+  const queryClient = useQueryClient();
+  const [link, setLink] = useState<string | null>(null);
+  const [askEmail, setAskEmail] = useState(false);
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const create = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(clerkId)}/password-link`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(askEmail ? { email } : {}),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (data?.needsEmail) setAskEmail(true);
+        setError(typeof data?.error === "string" ? data.error : "Could not make a link.");
+        return;
+      }
+      setLink(`${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, "")}/set-password#${data.token}`);
+      setAskEmail(false);
+      await queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    } catch {
+      setError("Could not make a link.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Couldn't copy. Select the link and copy it by hand.");
+    }
+  };
+
+  if (link) {
+    return (
+      <div className="w-full max-w-xs space-y-1.5 sm:text-right">
+        <p className="text-xs font-semibold text-muted-foreground">Send this privately. It works once, for 7 days.</p>
+        <div className="flex gap-1.5">
+          <input readOnly value={link} onFocus={e => e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-border bg-muted/40 px-2 py-1.5 text-xs" />
+          <button type="button" onClick={() => void copy()} className="flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs font-bold hover:bg-muted">
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full max-w-xs flex-col gap-1.5 sm:items-end">
+      {(askEmail || !hasEmail) && (
+        <input type="email" placeholder="Their email" value={email} onChange={e => { setEmail(e.target.value); setAskEmail(true); }}
+          className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs" />
+      )}
+      <button type="button" onClick={() => void create()} disabled={busy || ((askEmail || !hasEmail) && !email)}
+        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-foreground hover:bg-muted disabled:opacity-50">
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+        {hasPassword ? (isSelf ? "Make a reset link for yourself" : "Make a password reset link") : "Make a set-password link"}
+      </button>
+      {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
   const queryClient = useQueryClient();
   const { data: me } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
@@ -1778,8 +1916,10 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
   };
 
   const active = accounts?.filter(account => account.role !== "pending") ?? [];
-  const accountLabel = (clerkId: string) =>
-    clerkId === me.clerkId ? "Your account" : `Household account •••${clerkId.slice(-4)}`;
+  const accountLabel = (account: { clerkId: string; email?: string | null }) =>
+    account.clerkId === me.clerkId
+      ? `Your account${account.email ? ` · ${account.email}` : ""}`
+      : account.email ?? `Household account •••${account.clerkId.slice(-4)}`;
 
   return (
     <AccordionSection
@@ -1797,13 +1937,15 @@ function AccountsAndAccessSection({ familyMembers }: { familyMembers: any[] }) {
               return (
                 <div key={account.clerkId} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-bold text-foreground">{accountLabel(account.clerkId)}</p>
+                    <p className="text-sm font-bold text-foreground">{accountLabel(account)}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {account.isAdmin ? "Household administrator" : "Household member"}
                       {account.linkedFamilyMemberName ? ` · Linked to ${account.linkedFamilyMemberName}` : " · Not linked to a family member"}
+                      {!account.hasPassword && " · No password yet"}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 sm:items-end">
+                  <PasswordLinkControl clerkId={account.clerkId} hasEmail={!!account.email} hasPassword={!!account.hasPassword} isSelf={isSelf} />
                   {account.role === "family" && account.linkedFamilyMemberId ? (
                     <p className="text-xs font-bold text-green-700">Family account · adult linked</p>
                   ) : account.role === "family" ? (
@@ -2462,6 +2604,8 @@ export default function Settings() {
       </div>
 
       <YourProfile />
+
+      <PasswordSection />
 
       <AppearanceAndTabsSection />
 

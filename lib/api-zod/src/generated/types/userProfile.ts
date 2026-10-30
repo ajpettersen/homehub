@@ -23,4 +23,8 @@ export interface UserProfile {
   linkedFamilyMemberId?: string | null;
   linkedFamilyMemberName?: string | null;
   createdAt?: string | null;
+  /** Sign-in email. Only included in the household admin's account list. */
+  email?: string | null;
+  /** Whether the account has set a password. Only included in the household admin's account list. */
+  hasPassword?: boolean;
 }

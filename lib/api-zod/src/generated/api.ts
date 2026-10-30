@@ -1534,7 +1534,9 @@ export const GetMeResponse = zod.object({
   "allowedPropertyName": zod.string().nullish(),
   "linkedFamilyMemberId": zod.string().nullish(),
   "linkedFamilyMemberName": zod.string().nullish(),
-  "createdAt": zod.string().nullish()
+  "createdAt": zod.string().nullish(),
+  "email": zod.string().nullish().describe('Sign-in email. Only included in the household admin\'s account list.'),
+  "hasPassword": zod.boolean().optional().describe('Whether the account has set a password. Only included in the household admin\'s account list.')
 })
 
 
@@ -1666,7 +1668,9 @@ export const ListUsersResponseItem = zod.object({
   "allowedPropertyName": zod.string().nullish(),
   "linkedFamilyMemberId": zod.string().nullish(),
   "linkedFamilyMemberName": zod.string().nullish(),
-  "createdAt": zod.string().nullish()
+  "createdAt": zod.string().nullish(),
+  "email": zod.string().nullish().describe('Sign-in email. Only included in the household admin\'s account list.'),
+  "hasPassword": zod.boolean().optional().describe('Whether the account has set a password. Only included in the household admin\'s account list.')
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
 
