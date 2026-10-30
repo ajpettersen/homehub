@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { createHash, randomBytes } from "node:crypto";
-import { clerkClient } from "@clerk/express";
 import {
   choresTable,
   aiMemoriesTable,
@@ -15,6 +14,7 @@ import {
   mealRatingsTable,
   todoItemsTable,
   todoListsTable,
+  userCredentialsTable,
   userProfilesTable,
   workoutParticipantsTable,
   workoutsTable,
@@ -29,6 +29,7 @@ import {
 } from "@workspace/api-zod";
 import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { isConfiguredBootstrapIdentity } from "../lib/bootstrapIdentity";
+import { accountDisplayName, getAccount, getAccountByEmail } from "../lib/accounts";
 import { getEffectiveClerkId } from "../lib/effectiveClerkId";
 
 const router = Router();
@@ -122,14 +123,6 @@ async function ensureBootstrapHousehold(tx: any): Promise<number> {
     .values({ name: "HomeHub Household" })
     .returning({ id: householdsTable.id });
   return createdHousehold.id;
-}
-
-function clerkIdentityDisplayName(user: Awaited<ReturnType<typeof clerkClient.users.getUser>>): string {
-  const verifiedEmail = user.emailAddresses.find(email => email.verification?.status === "verified")?.emailAddress;
-  return [user.firstName, user.lastName].filter(Boolean).join(" ").trim()
-    || user.username
-    || verifiedEmail?.split("@")[0]
-    || "Household administrator";
 }
 
 async function ensureBootstrapAdult(
@@ -248,7 +241,7 @@ router.get("/me", async (req, res): Promise<void> => {
           return;
         }
 
-        const bootstrapUser = await clerkClient.users.getUser(clerkId);
+        const bootstrapUser = await getAccount(clerkId);
         const [resolvedProfile] = await db.transaction(async (tx) => {
           await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('homehub-user-profile-bootstrap'))`);
           const [currentProfile] = await tx
@@ -268,7 +261,7 @@ router.get("/me", async (req, res): Promise<void> => {
               })
               .where(eq(userProfilesTable.clerkId, clerkId))
               .returning();
-            return [await ensureBootstrapAdult(tx, promoted, clerkIdentityDisplayName(bootstrapUser))];
+            return [await ensureBootstrapAdult(tx, promoted, accountDisplayName(bootstrapUser, "Household administrator"))];
           }
 
           return [currentProfile ?? profile];
@@ -283,11 +276,11 @@ router.get("/me", async (req, res): Promise<void> => {
       }
 
       if (await isConfiguredBootstrapIdentity(clerkId)) {
-        const bootstrapUser = await clerkClient.users.getUser(clerkId);
+        const bootstrapUser = await getAccount(clerkId);
         const resolvedProfile = await db.transaction(async (tx) => {
           const [locked] = await tx.select().from(userProfilesTable)
             .where(eq(userProfilesTable.clerkId, clerkId)).for("update").limit(1);
-          return ensureBootstrapAdult(tx, locked, clerkIdentityDisplayName(bootstrapUser));
+          return ensureBootstrapAdult(tx, locked, accountDisplayName(bootstrapUser, "Household administrator"));
         });
         const [resolvedMember] = resolvedProfile.linkedFamilyMemberId
           ? await db.select().from(familyMembersTable).where(eq(familyMembersTable.id, resolvedProfile.linkedFamilyMemberId)).limit(1)
@@ -313,7 +306,7 @@ router.get("/me", async (req, res): Promise<void> => {
     // Bootstrap only the explicitly configured household owner. All other
     // accounts remain pending until a family administrator grants access.
     const isBootstrapOwner = await isConfiguredBootstrapIdentity(clerkId);
-    const bootstrapUser = isBootstrapOwner ? await clerkClient.users.getUser(clerkId) : null;
+    const bootstrapUser = isBootstrapOwner ? await getAccount(clerkId) : null;
     const [newProfile] = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('homehub-user-profile-bootstrap'))`);
       const [existingProfile] = await tx
@@ -334,7 +327,7 @@ router.get("/me", async (req, res): Promise<void> => {
             })
             .where(eq(userProfilesTable.clerkId, clerkId))
             .returning();
-          return [await ensureBootstrapAdult(tx, promoted, clerkIdentityDisplayName(bootstrapUser!))];
+          return [await ensureBootstrapAdult(tx, promoted, accountDisplayName(bootstrapUser, "Household administrator"))];
         }
         return [existingProfile];
       }
@@ -350,7 +343,7 @@ router.get("/me", async (req, res): Promise<void> => {
         })
         .returning();
       return [isBootstrapOwner
-        ? await ensureBootstrapAdult(tx, created, clerkIdentityDisplayName(bootstrapUser!))
+        ? await ensureBootstrapAdult(tx, created, accountDisplayName(bootstrapUser, "Household administrator"))
         : created];
     });
 
@@ -677,12 +670,8 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
 
   try {
     const rateAllowed = await claimJoinAttempt(clerkId, req.ip || "unknown");
-    const requester = await clerkClient.users.getUser(clerkId).catch(() => null);
-    const users = await clerkClient.users.getUserList({
-       emailAddress: [householdMemberEmail],
-      limit: 2,
-    }).catch(() => ({ data: [] }));
-    const householdMember = users.data.length === 1 ? users.data[0] : null;
+    const requester = await getAccount(clerkId).catch(() => null);
+    const householdMember = await getAccountByEmail(householdMemberEmail).catch(() => null);
     // Always perform this lookup, including self and unknown identities.
     const [householdMemberProfile] = await db
       .select({
@@ -691,12 +680,8 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
         linkedFamilyMemberId: userProfilesTable.linkedFamilyMemberId,
       })
       .from(userProfilesTable)
-      .where(eq(userProfilesTable.clerkId, householdMember?.id ?? "__no_matching_clerk_user__"))
+      .where(eq(userProfilesTable.clerkId, householdMember?.clerkId ?? "__no_matching_account__"))
       .limit(1);
-    const targetHasVerifiedEmail = householdMember?.emailAddresses.some(
-      email => email.verification?.status === "verified"
-        && email.emailAddress.trim().toLowerCase() === householdMemberEmail,
-    ) ?? false;
     const [targetAdult] = householdMemberProfile?.householdId && householdMemberProfile.linkedFamilyMemberId
       ? await db.select({ id: familyMembersTable.id }).from(familyMembersTable).where(and(
         eq(familyMembersTable.id, householdMemberProfile.linkedFamilyMemberId),
@@ -704,22 +689,16 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
         eq(familyMembersTable.role, "parent"),
       )).limit(1)
       : [null];
-    const verifiedEmail = requester?.emailAddresses.find(
-      email => email.verification?.status === "verified",
-    )?.emailAddress ?? null;
-    const requesterDisplayName = [requester?.firstName, requester?.lastName]
-      .filter(Boolean)
-      .join(" ")
-      || requester?.username
-      || verifiedEmail?.split("@")[0]
-      || "HomeHub member";
+    // HomeHub doesn't send email, so this is the address the requester signed
+    // up with, not a proven one. The adult approving sees it with the name.
+    const requesterEmail = requester?.email ?? null;
+    const requesterDisplayName = accountDisplayName(requester, "HomeHub member");
     const eligible = rateAllowed
-       && householdMember?.id !== clerkId
-       && targetHasVerifiedEmail
+       && householdMember?.clerkId !== clerkId
        && householdMemberProfile?.role === "family"
        && !!targetAdult
        && !!householdMemberProfile.householdId
-      && !!verifiedEmail;
+      && !!requesterEmail;
 
     await db.transaction(async (tx) => {
       // This lock is shared with decisions so a retry cannot retarget a request
@@ -748,7 +727,7 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
           requesterClerkId: clerkId,
            targetHouseholdId: householdMemberProfile.householdId!,
           requesterDisplayName,
-          requesterEmail: verifiedEmail!,
+          requesterEmail: requesterEmail!,
           status: "pending",
           updatedAt: new Date(),
           decidedAt: null,
@@ -757,7 +736,7 @@ router.post("/me/join-request", async (req, res): Promise<void> => {
         await tx.update(householdJoinRequestsTable).set({
             targetHouseholdId: householdMemberProfile.householdId!,
             requesterDisplayName,
-            requesterEmail: verifiedEmail!,
+            requesterEmail: requesterEmail!,
             status: "pending",
             updatedAt: new Date(),
             decidedAt: null,
@@ -874,7 +853,7 @@ router.post("/me/household-invites/validate", async (req, res): Promise<void> =>
   }
 });
 
-/** Redeem an invite once for the authenticated Clerk user and create its parent link if needed. */
+/** Redeem an invite once for the signed-in account and create its parent link if needed. */
 router.post("/me/household-invites/redeem", async (req, res): Promise<void> => {
   const clerkId = getEffectiveClerkId(req);
   const token = typeof req.body?.token === "string" ? req.body.token : "";
@@ -887,12 +866,8 @@ router.post("/me/household-invites/redeem", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const clerkUser = await clerkClient.users.getUser(clerkId);
-    if (!clerkUser.emailAddresses.some(email => email.verification?.status === "verified")) {
-      res.status(403).json({ error: "A verified Clerk email is required to redeem a household invite" });
-      return;
-    }
-    const displayName = clerkIdentityDisplayName(clerkUser);
+    // The invite link itself is the proof: only a household adult can make one.
+    const displayName = accountDisplayName(await getAccount(clerkId), "Household adult");
     const result = await db.transaction(async (tx) => {
       const [invite] = await tx.select().from(householdInvitesTable)
         .where(eq(householdInvitesTable.tokenHash, hashInviteToken(token))).for("update").limit(1);
@@ -954,17 +929,20 @@ router.get("/admin/users", async (req, res) => {
     const admin = await requireFamilyAdmin(req, res);
     if (!admin) return;
     const rows = await db
-      .select({ profile: userProfilesTable, member: familyMembersTable, property: propertiesTable })
+      .select({ profile: userProfilesTable, member: familyMembersTable, property: propertiesTable, account: userCredentialsTable })
       .from(userProfilesTable)
       .leftJoin(familyMembersTable, eq(userProfilesTable.linkedFamilyMemberId, familyMembersTable.id))
       .leftJoin(propertiesTable, eq(userProfilesTable.allowedPropertyId, propertiesTable.id))
+      .leftJoin(userCredentialsTable, eq(userProfilesTable.clerkId, userCredentialsTable.clerkId))
       .where(eq(userProfilesTable.householdId, admin.householdId))
       .orderBy(userProfilesTable.createdAt);
 
     const household = await getHouseholdSummary(admin.householdId);
-    res.json(rows.map(({ profile, member, property }) =>
-      formatProfile(profile, member ?? null, property ?? null, household),
-    ));
+    res.json(rows.map(({ profile, member, property, account }) => ({
+      ...formatProfile(profile, member ?? null, property ?? null, household),
+      email: account?.email ?? null,
+      hasPassword: !!account?.passwordHash,
+    })));
   } catch (err) {
     req.log.error({ err }, "Failed to list users");
     res.status(500).json({ error: "Internal server error" });

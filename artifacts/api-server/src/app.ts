@@ -3,13 +3,7 @@ import fs from "node:fs";
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import { clerkMiddleware } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
-import {
-  CLERK_PROXY_PATH,
-  clerkProxyMiddleware,
-  getClerkProxyHost,
-} from "./middlewares/clerkProxyMiddleware";
+import { loadSignedInUser } from "./lib/userSessions";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { serializeRequestForLog } from "./lib/requestLogging";
@@ -36,9 +30,6 @@ app.use(
     },
   }),
 );
-
-// Clerk proxy — mount before body parsers (streams raw bytes)
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 // Same-origin browser requests (the normal case now that this server also
 // serves the built frontend) carry no Origin header at all and are never
@@ -70,15 +61,8 @@ app.use(cors({
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Clerk auth middleware
-app.use(
-  clerkMiddleware((req) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  })),
-);
+// Works out who is signed in (HomeHub's own session cookie) for every route.
+app.use(loadSignedInUser);
 
 app.use("/api", router);
 

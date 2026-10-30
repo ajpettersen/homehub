@@ -24,18 +24,16 @@ auto-deploys on every push to `main`. The Express server serves the built
 frontend directly in production (see `app.ts`), so the app and its API share
 one URL.
 
-Required env vars: `DATABASE_URL`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
-`VITE_CLERK_PUBLISHABLE_KEY`, `SESSION_SECRET`, `HOMEHUB_BOOTSTRAP_EMAIL`,
+Required env vars: `DATABASE_URL`, `SESSION_SECRET`, `HOMEHUB_BOOTSTRAP_EMAIL`,
 `AI_INTEGRATIONS_OPENAI_BASE_URL`, `AI_INTEGRATIONS_OPENAI_API_KEY`. In
-production, also `NODE_ENV=production` and `VITE_CLERK_PROXY_URL` (only if
-using Clerk's production proxy — see `CLAUDE.md`).
+production, also `NODE_ENV=production`.
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
 - DB: PostgreSQL (Neon) + Drizzle ORM
-- Auth: Clerk
+- Auth: HomeHub's own email + password sign-in (see `CLAUDE.md`)
 - AI: OpenAI (`gpt-5.6-luna` for text/vision, `gpt-image-1` for recipe
   photos, `gpt-audio` for guided-cooking read-aloud)
 - Validation: Zod (`zod/v4`), `drizzle-zod`
@@ -64,7 +62,7 @@ using Clerk's production proxy — see `CLAUDE.md`).
 
 ## Product
 
-Family members sign in via Clerk (Google or email) and land in a household
+Family members sign in with their email and password and land in a household
 scoped to their account. One "bootstrap" identity (matching
 `HOMEHUB_BOOTSTRAP_EMAIL`) owns the household on first sign-in; everyone else
 starts pending until approved or invited. Core surfaces: Dashboard (AI
@@ -80,7 +78,7 @@ Settings.
 ## Gotchas
 
 See `CLAUDE.md` for the full list — it covers the Node/pnpm version pinning
-Railway needs, the AirPlay port conflict, the Clerk production-proxy setup,
+Railway needs, the AirPlay port conflict, how sign-in works,
 and a real week-start convention bug that was fixed (meal plans key off
 Monday-based weeks everywhere; don't reintroduce a Sunday-based one).
 

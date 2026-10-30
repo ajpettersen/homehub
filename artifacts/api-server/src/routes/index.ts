@@ -13,6 +13,7 @@ import workoutsRouter from "./workouts";
 import pushTokensRouter from "./pushTokens";
 import webPushRouter from "./webPush";
 import meRouter from "./me";
+import authRouter from "./auth";
 import householdRouter from "./household";
 import onboardingRouter from "./onboarding";
 import recipesRouter from "./recipes";
@@ -28,6 +29,7 @@ import { requireApprovedHousehold } from "../middlewares/requireApprovedHousehol
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(authRouter);
 router.use(meRouter);
 // Mounted before requireApprovedHousehold: the wall screen is paired with a key, not signed in.
 router.use(kioskRouter);

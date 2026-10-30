@@ -22,6 +22,7 @@ const allowedTests = new Set([
     "kiosk-photo.test.ts",
     "hatch-client.test.ts",
     "hatch-crypto.test.ts",
+    "passwords.test.ts",
 ]);
 if (!allowedTests.has(testFile)) {
   throw new Error(`Unknown test file: ${testFile}`);

@@ -4818,6 +4818,13 @@ components:
         createdAt:
           type: string
           nullable: true
+        email:
+          type: string
+          nullable: true
+          description: Sign-in email. Only included in the household admin's account list.
+        hasPassword:
+          type: boolean
+          description: Whether the account has set a password. Only included in the household admin's account list.
 
     HouseholdJoinRequest:
       type: object

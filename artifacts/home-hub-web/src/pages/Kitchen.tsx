@@ -1597,7 +1597,7 @@ export default function Meals() {
   }
 
   // Recipes (cookbook) — scoped to house property.
-  // Only fetched when the Cookbook tab is active so that the Clerk session
+  // Only fetched when the Cookbook tab is active so that the sign-in session
   // is fully established before the first authenticated request fires.
   const propertyIdStr = houseProperty ? String(houseProperty.id) : "";
   const recipesParams = houseProperty ? { propertyId: propertyIdStr } : null;
