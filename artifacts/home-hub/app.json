@@ -24,7 +24,7 @@
       [
         "expo-router",
         {
-          "origin": "https://replit.com/"
+          "origin": "https://homehub-production-5db0.up.railway.app/"
         }
       ],
       "expo-font",

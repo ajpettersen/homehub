@@ -36,7 +36,7 @@
  *  - The three seeded to-do lists, only if they contain no items.
  *
  * Safety:
- *  - Runs ONLY in deployed production (REPLIT_DEPLOYMENT / NODE_ENV). The
+ *  - Runs ONLY in deployed production (NODE_ENV). The
  *    development database intentionally keeps its seeded household and MUST
  *    NOT be touched — never remove the environment gate or add a force flag.
  *  - Runs ONCE: a marker row in one_time_cleanups is claimed inside the same
@@ -60,10 +60,7 @@ const AFFECTED_CLERK_ID = "user_3IJxMddG5C1sFYf0BAbFZdmo7Ou";
 const CREATED_BEFORE = "2026-08-24T00:00:00Z";
 
 function isProduction(): boolean {
-  return (
-    process.env["REPLIT_DEPLOYMENT"] === "1" ||
-    process.env["NODE_ENV"] === "production"
-  );
+  return process.env["NODE_ENV"] === "production";
 }
 
 export async function runOneTimeProdCleanup(): Promise<void> {
