@@ -19,7 +19,7 @@ non-obvious parts):
   Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 
-**Production**: deployed on Railway (`railway.json` + `nixpacks.toml`),
+**Production**: deployed on Railway (`.railway/railway.ts` + `nixpacks.toml`),
 auto-deploys on every push to `main`. The Express server serves the built
 frontend directly in production (see `app.ts`), so the app and its API share
 one URL.
