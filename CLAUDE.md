@@ -27,8 +27,13 @@ architecture context.
 
 ## Deployment (Railway)
 
-- `railway.json` + `nixpacks.toml` define the build/start commands
-  explicitly. Don't rely on Railway's monorepo auto-detection ("Deploy the
+- `.railway/railway.ts` (Railway's infrastructure-as-code file) owns the
+  `homehub` service's settings: Nixpacks builder and start command. Preview
+  changes with `railway config plan`, apply with `railway config apply`.
+  Variables are deliberately unmanaged (set them in Railway, not the file).
+  `nixpacks.toml` still defines the install/build steps. (This replaced
+  `railway.json`, which Railway stops reading after 2026-12-01.)
+- Don't rely on Railway's monorepo auto-detection ("Deploy the
   repo" in the dashboard) — it tries to split this workspace into five
   separate services (one per `artifacts/*` package with a `package.json`),
   which is not what we want. If you ever see that happen, discard the
@@ -41,8 +46,16 @@ architecture context.
   migration on its own with `railway run --service homehub …`. Reconcile the
   log before ever adding the migrate script as a Railway pre-deploy step.
 - In production, `app.ts` serves the built frontend directly (static files +
-  SPA fallback) since Railway has no Replit-style automatic frontend/backend
-  routing. This only activates when `NODE_ENV=production`.
+  SPA fallback), so the app and its API share one URL. This only activates
+  when `NODE_ENV=production`.
+- **The production database is Railway Postgres** (service `Postgres-C3u6`;
+  `homehub`'s `DATABASE_URL` references it), moved off a Replit-era Neon
+  database on 2026-10-31. Its host is private (`*.railway.internal`): use
+  `railway run --service homehub …` for app-level scripts, or a temporary
+  `railway tcp-proxy` for local database tools (delete it afterward). The
+  older service named just `Postgres` is a stale Oct 24 copy the app never
+  used. `OLD_NEON_DATABASE_URL` points at the old Neon database as a backup.
+  The repo's `.env` database is a separate dev database, not production.
 
 ## Sign-in (HomeHub's own, not Clerk)
 
@@ -185,10 +198,6 @@ fallback. Things that cost time to learn:
 
 ## Known trade-offs, not yet resolved
 
-- Both this deployment and the original Replit deployment currently point at
-  the same live production database — fine today, but a future schema change
-  could break whichever one isn't redeployed. No decision yet on when to
-  retire the Replit deployment.
 - The frontend ships as a single ~1MB JS bundle (no code-splitting) and two
   page files (`Settings.tsx`, `Kitchen.tsx`) are each 2,500+ lines. Nothing
   urgent, but worth splitting if either becomes a real pain point.
